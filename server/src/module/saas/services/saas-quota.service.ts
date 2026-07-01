@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 
 import { SaasPlanQuotaEntity } from '../entities/saas-plan-quota.entity';
 import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
@@ -14,8 +14,11 @@ export class SaasQuotaService {
     private readonly saasTenantResourceRepo: Repository<SaasTenantResourceEntity>,
   ) {}
 
-  async initializeTenantQuota(tenantId: number, planId: number): Promise<void> {
-    const planQuotas = await this.saasPlanQuotaRepo.find({
+  async initializeTenantQuota(tenantId: number, planId: number, manager?: EntityManager): Promise<void> {
+    const planQuotaRepo = this.resolvePlanQuotaRepo(manager);
+    const tenantResourceRepo = this.resolveTenantResourceRepo(manager);
+
+    const planQuotas = await planQuotaRepo.find({
       where: {
         planId,
         status: 1,
@@ -29,7 +32,7 @@ export class SaasQuotaService {
       return;
     }
 
-    await this.saasTenantResourceRepo.upsert(
+    await tenantResourceRepo.upsert(
       planQuotas.map((item) => ({
         tenantId,
         resourceType: item.quotaType,
@@ -39,6 +42,14 @@ export class SaasQuotaService {
       })),
       ['tenantId', 'resourceType'],
     );
+  }
+
+  private resolvePlanQuotaRepo(manager?: EntityManager) {
+    return manager ? manager.getRepository(SaasPlanQuotaEntity) : this.saasPlanQuotaRepo;
+  }
+
+  private resolveTenantResourceRepo(manager?: EntityManager) {
+    return manager ? manager.getRepository(SaasTenantResourceEntity) : this.saasTenantResourceRepo;
   }
 
   async getTenantUsageSummary(tenantId: number): Promise<Array<{ resource_type: string; quota: number; used: number; remaining: number }>> {

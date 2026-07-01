@@ -155,13 +155,13 @@ export class SaasProvisioningService {
         );
       }
 
+      await this.saasQuotaService.initializeTenantQuota(tenant.id, freePlan.id, manager);
+
       return {
         userId: user.id,
         tenantId: tenant.id,
       };
     });
-
-    await this.saasQuotaService.initializeTenantQuota(result.tenantId, freePlan.id);
     return result;
   }
 

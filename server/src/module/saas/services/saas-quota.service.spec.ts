@@ -17,8 +17,30 @@ describe('SaasQuotaService', () => {
     find: jest.fn(),
   };
 
+  const txPlanQuotaRepo = {
+    find: jest.fn(),
+  };
+
+  const txTenantResourceRepo = {
+    upsert: jest.fn(),
+  };
+
+  const txManager = {
+    getRepository: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
+
+    txManager.getRepository.mockImplementation((entity) => {
+      if (entity === SaasPlanQuotaEntity) {
+        return txPlanQuotaRepo;
+      }
+      if (entity === SaasTenantResourceEntity) {
+        return txTenantResourceRepo;
+      }
+      return undefined;
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -68,6 +90,31 @@ describe('SaasQuotaService', () => {
       ],
       ['tenantId', 'resourceType'],
     );
+  });
+
+  it('uses the transaction manager repositories when one is provided', async () => {
+    txPlanQuotaRepo.find.mockResolvedValue([{ quotaType: 'users', totalQuota: 5, status: 1 }]);
+    txTenantResourceRepo.upsert.mockResolvedValue(undefined);
+
+    await service.initializeTenantQuota(88, 12, txManager as any);
+
+    expect(txManager.getRepository).toHaveBeenCalledWith(SaasPlanQuotaEntity);
+    expect(txManager.getRepository).toHaveBeenCalledWith(SaasTenantResourceEntity);
+    expect(txPlanQuotaRepo.find).toHaveBeenCalledWith({
+      where: {
+        planId: 12,
+        status: 1,
+      },
+      order: {
+        id: 'ASC',
+      },
+    });
+    expect(txTenantResourceRepo.upsert).toHaveBeenCalledWith(
+      [{ tenantId: 88, resourceType: 'users', totalQuota: 5, usedQuota: 0, status: 1 }],
+      ['tenantId', 'resourceType'],
+    );
+    expect(planQuotaRepo.find).not.toHaveBeenCalled();
+    expect(tenantResourceRepo.upsert).not.toHaveBeenCalled();
   });
 
   it('returns tenant usage summary with non-negative remaining quota', async () => {

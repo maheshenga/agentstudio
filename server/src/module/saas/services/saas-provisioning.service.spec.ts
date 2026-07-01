@@ -64,7 +64,13 @@ describe('SaasProvisioningService', () => {
       return { id: 999, ...payload };
     });
 
-    dataSource.transaction.mockImplementation(async (callback) => callback(manager));
+    dataSource.transaction.mockImplementation(async (callback) => {
+      const resultPromise = callback(manager);
+      expect(saasQuotaService.initializeTenantQuota).not.toHaveBeenCalled();
+      const result = await resultPromise;
+      expect(saasQuotaService.initializeTenantQuota).toHaveBeenCalledWith(202, 9, manager);
+      return result;
+    });
     saasPlanService.getFreePlan.mockResolvedValue(freePlan);
     saasQuotaService.initializeTenantQuota.mockResolvedValue(undefined);
 
@@ -185,7 +191,7 @@ describe('SaasProvisioningService', () => {
     const trialPayload = manager.save.mock.calls.find(([entity]) => entity === SaasTrialEntity)?.[1];
     expect(trialPayload.endTime.getTime() - trialPayload.startTime.getTime()).toBe(14 * 24 * 60 * 60 * 1000);
 
-    expect(saasQuotaService.initializeTenantQuota).toHaveBeenCalledWith(202, 9);
+    expect(saasQuotaService.initializeTenantQuota).toHaveBeenCalledWith(202, 9, manager);
   });
 
   it('creates a tenant from the platform with an explicit tenant code', async () => {
