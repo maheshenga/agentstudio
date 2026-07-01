@@ -14,10 +14,11 @@ export interface SaasSignupResult {
   tenantId: number
 }
 
-export interface TenantUsageSummary {
-  tenantId?: number
-  usedSeats?: number
-  maxSeats?: number
+export interface TenantUsageQuotaRecord {
+  resource_type: string
+  quota: number
+  used: number
+  remaining: number
   [key: string]: any
 }
 
@@ -44,7 +45,7 @@ export function signupTenant(params: SaasSignupParams) {
 }
 
 export function fetchTenantUsage() {
-  return request.get<TenantUsageSummary>({
+  return request.get<TenantUsageQuotaRecord[]>({
     url: '/api/saas/tenant/usage'
   })
 }

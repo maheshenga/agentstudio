@@ -33,7 +33,7 @@
         </template>
       </ElResult>
 
-      <div v-else-if="!usageInfo" class="tenant-usage-page__state">
+      <div v-else-if="!usageRecords.length" class="tenant-usage-page__state">
         <ElEmpty description="暂无用量信息" />
         <ElButton type="primary" :loading="loading" @click="loadUsage">刷新</ElButton>
       </div>
@@ -41,7 +41,7 @@
       <div v-else class="tenant-usage-page__grid">
         <ElCard
           v-for="card in quotaCards"
-          :key="card.label"
+          :key="card.resourceType"
           shadow="never"
           class="tenant-usage-page__quota-card"
         >
@@ -49,9 +49,11 @@
             <div class="tenant-usage-page__quota-header">
               <div>
                 <p class="tenant-usage-page__quota-label">{{ card.label }}</p>
-                <p class="tenant-usage-page__quota-meta">已用 {{ card.usedText }} / {{ card.limitText }}</p>
+                <p class="tenant-usage-page__quota-meta">
+                  已用 {{ card.usedText }} / {{ card.quotaText }} · 剩余 {{ card.remainingText }}
+                </p>
               </div>
-              <ElTag v-if="!card.hasLimit" type="info" effect="plain">不限</ElTag>
+              <ElTag v-if="card.isUnlimited" type="info" effect="plain">不限</ElTag>
             </div>
 
             <div class="tenant-usage-page__quota-value">{{ card.usedText }}</div>
@@ -70,73 +72,54 @@
 </template>
 
 <script setup lang="ts">
-  import { fetchTenantUsage, type TenantUsageSummary } from '@/api/saas'
+  import { fetchTenantUsage, type TenantUsageQuotaRecord } from '@/api/saas'
 
   defineOptions({ name: 'SaasTenantUsagePage' })
 
-  const usageInfo = ref<TenantUsageSummary | null>(null)
+  type UsageCard = {
+    resourceType: string
+    label: string
+    usedText: string
+    quotaText: string
+    remainingText: string
+    isUnlimited: boolean
+    hasProgress: boolean
+    percent: number
+  }
+
+  const usageRecords = ref<TenantUsageQuotaRecord[]>([])
   const loading = ref(false)
   const errorMessage = ref('')
 
-  const pickValue = (source: Record<string, any> | null, keys: string[]) => {
-    if (!source) return undefined
+  const quotaConfigs = [
+    { resourceType: 'users', label: '用户数', formatter: formatCount },
+    { resourceType: 'storage_mb', label: '存储空间', formatter: formatStorageMb },
+    { resourceType: 'ai_calls', label: 'AI 调用次数', formatter: formatCount },
+    { resourceType: 'rag_documents', label: '知识库文档数', formatter: formatCount },
+    { resourceType: 'tokens', label: 'Token 用量', formatter: formatCount }
+  ] as const
 
-    for (const key of keys) {
-      const value = source[key]
-      if (value !== undefined && value !== null && value !== '') {
-        return value
-      }
+  const quotaConfigMap = {
+    users: { label: '用户数', formatter: formatCount },
+    storage_mb: { label: '存储空间', formatter: formatStorageMb },
+    ai_calls: { label: 'AI 调用次数', formatter: formatCount },
+    rag_documents: { label: '知识库文档数', formatter: formatCount },
+    tokens: { label: 'Token 用量', formatter: formatCount }
+  } as const
+
+  function normalizePayload(payload: any): TenantUsageQuotaRecord[] {
+    const data = payload && typeof payload === 'object' && 'data' in payload ? payload.data : payload
+
+    if (!Array.isArray(data)) {
+      return []
     }
 
-    return undefined
+    return data.filter((item): item is TenantUsageQuotaRecord => {
+      return item !== null && typeof item === 'object' && typeof item.resource_type === 'string'
+    })
   }
 
-  const normalizePayload = (payload: any) => {
-    if (!payload) return null
-    if (typeof payload === 'object' && 'data' in payload && payload.data) {
-      return payload.data
-    }
-
-    return payload
-  }
-
-  const formatCount = (value: unknown) => {
-    if (value === undefined || value === null || value === '') {
-      return '-'
-    }
-
-    const numericValue = Number(value)
-    if (Number.isFinite(numericValue)) {
-      return new Intl.NumberFormat('zh-CN').format(numericValue)
-    }
-
-    return String(value)
-  }
-
-  const formatBytes = (value: unknown) => {
-    if (value === undefined || value === null || value === '') {
-      return '-'
-    }
-
-    const numericValue = Number(value)
-    if (!Number.isFinite(numericValue)) {
-      return String(value)
-    }
-
-    const units = ['B', 'KB', 'MB', 'GB', 'TB']
-    let size = numericValue
-    let unitIndex = 0
-
-    while (size >= 1024 && unitIndex < units.length - 1) {
-      size /= 1024
-      unitIndex += 1
-    }
-
-    const displayValue = size >= 100 || unitIndex === 0 ? Math.round(size) : Number(size.toFixed(1))
-    return `${displayValue} ${units[unitIndex]}`
-  }
-
-  const toNumber = (value: unknown) => {
+  function toNumber(value: unknown) {
     if (value === undefined || value === null || value === '') {
       return null
     }
@@ -145,67 +128,81 @@
     return Number.isFinite(numericValue) ? numericValue : null
   }
 
-  const quotaConfigs = [
-    {
-      label: '用户数',
-      usedKeys: ['usedSeats', 'user_count', 'current_user_count', 'used_users'],
-      limitKeys: ['maxSeats', 'max_users', 'seat_limit', 'user_limit'],
-      formatter: formatCount
-    },
-    {
-      label: '存储空间',
-      usedKeys: ['storageUsed', 'usedStorage', 'storage_usage', 'used_storage'],
-      limitKeys: ['storageQuota', 'maxStorage', 'storage_limit', 'storage_quota'],
-      formatter: formatBytes
-    },
-    {
-      label: 'AI 调用次数',
-      usedKeys: ['aiCallsUsed', 'ai_call_count', 'ai_calls_used', 'used_ai_calls'],
-      limitKeys: ['aiCallQuota', 'ai_call_limit', 'max_ai_calls', 'ai_calls_limit'],
-      formatter: formatCount
-    },
-    {
-      label: '知识库文档数',
-      usedKeys: ['knowledgeDocsUsed', 'document_count', 'kb_doc_count', 'knowledge_doc_count'],
-      limitKeys: ['knowledgeDocsQuota', 'document_limit', 'kb_doc_limit', 'knowledge_doc_limit'],
-      formatter: formatCount
-    },
-    {
-      label: 'Token 用量',
-      usedKeys: ['tokenUsed', 'token_usage', 'used_tokens', 'token_count'],
-      limitKeys: ['tokenQuota', 'token_limit', 'max_tokens', 'token_budget'],
-      formatter: formatCount
+  function formatCount(value: unknown) {
+    const numericValue = toNumber(value)
+    if (numericValue === null) {
+      return '-'
     }
-  ] as const
+
+    return new Intl.NumberFormat('zh-CN').format(numericValue)
+  }
+
+  function formatStorageMb(value: unknown) {
+    const numericValue = toNumber(value)
+    if (numericValue === null) {
+      return '-'
+    }
+
+    return `${new Intl.NumberFormat('zh-CN').format(numericValue)} MB`
+  }
+
+  function formatQuotaValue(record: TenantUsageQuotaRecord, formatter: (value: unknown) => string) {
+    if (record.resource_type === 'storage_mb') {
+      return formatStorageMb(record.quota)
+    }
+
+    return formatter(record.quota)
+  }
+
+  function getCard(record: TenantUsageQuotaRecord): UsageCard {
+    const config = quotaConfigMap[record.resource_type as keyof typeof quotaConfigMap]
+    const formatter = config?.formatter ?? formatCount
+    const quotaNumber = toNumber(record.quota)
+    const usedNumber = toNumber(record.used)
+    const remainingNumber = toNumber(record.remaining)
+    const isUnlimited = quotaNumber === null || quotaNumber <= 0
+
+    return {
+      resourceType: record.resource_type,
+      label: config?.label ?? record.resource_type,
+      usedText: formatter(record.used),
+      quotaText: isUnlimited ? '不限' : formatQuotaValue(record, formatter),
+      remainingText: remainingNumber === null
+        ? '-'
+        : record.resource_type === 'storage_mb'
+          ? formatStorageMb(remainingNumber)
+          : formatCount(remainingNumber),
+      isUnlimited,
+      hasProgress: !isUnlimited && usedNumber !== null,
+      percent:
+        !isUnlimited && usedNumber !== null && quotaNumber !== null && quotaNumber > 0
+          ? Math.min(100, Math.round((usedNumber / quotaNumber) * 100))
+          : 0
+    }
+  }
+
+  const usageRecordMap = computed(() => new Map(usageRecords.value.map((record) => [record.resource_type, record])))
 
   const quotaCards = computed(() =>
     quotaConfigs.map((config) => {
-      const usedRaw = pickValue(usageInfo.value, [...config.usedKeys])
-      const limitRaw = pickValue(usageInfo.value, [...config.limitKeys])
-      const usedNumber = toNumber(usedRaw)
-      const limitNumber = toNumber(limitRaw)
+      const record = usageRecordMap.value.get(config.resourceType)
 
-      return {
-        label: config.label,
-        usedText: formatTextWithFallback(config.formatter(usedRaw), '-'),
-        limitText: limitRaw === undefined ? '不限' : config.formatter(limitRaw),
-        hasLimit: limitNumber !== null && limitNumber > 0,
-        hasProgress: usedNumber !== null && limitNumber !== null && limitNumber > 0,
-        percent:
-          usedNumber !== null && limitNumber !== null && limitNumber > 0
-            ? Math.min(100, Math.round((usedNumber / limitNumber) * 100))
-            : 0
+      if (!record) {
+        return {
+          resourceType: config.resourceType,
+          label: config.label,
+          usedText: '-',
+          quotaText: '-',
+          remainingText: '-',
+          isUnlimited: true,
+          hasProgress: false,
+          percent: 0
+        }
       }
+
+      return getCard(record)
     })
   )
-
-  const formatTextWithFallback = (value: string, fallback: string) => {
-    if (!value || value === '-') {
-      return fallback
-    }
-
-    return value
-  }
 
   const loadUsage = async () => {
     loading.value = true
@@ -213,11 +210,11 @@
 
     try {
       const payload = await fetchTenantUsage()
-      usageInfo.value = normalizePayload(payload)
+      usageRecords.value = normalizePayload(payload)
     } catch (error) {
       console.error('[SaasTenantUsagePage] load usage failed:', error)
       errorMessage.value = '加载用量信息失败'
-      usageInfo.value = null
+      usageRecords.value = []
     } finally {
       loading.value = false
     }
