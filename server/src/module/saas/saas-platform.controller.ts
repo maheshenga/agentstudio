@@ -11,7 +11,7 @@ import { SaasProvisioningService } from './services/saas-provisioning.service';
 
 @ApiTags('SaaS Platform')
 @ApiBearerAuth('Authorization')
-@Controller('api/saas/platform')
+@Controller('saas/platform')
 export class SaasPlatformController {
   constructor(private readonly provisioning: SaasProvisioningService) {}
 

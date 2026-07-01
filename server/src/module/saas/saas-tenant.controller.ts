@@ -10,7 +10,7 @@ import { SaasQuotaService } from './services/saas-quota.service';
 
 @ApiTags('SaaS Tenant')
 @ApiBearerAuth('Authorization')
-@Controller('api/saas/tenant')
+@Controller('saas/tenant')
 export class SaasTenantController {
   constructor(
     @InjectRepository(SaasSubscriptionEntity)
