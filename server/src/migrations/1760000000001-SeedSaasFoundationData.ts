@@ -266,111 +266,71 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
       WHERE \`code\` IN ('free', 'pro', 'enterprise')
     `);
 
-    await queryRunner.query(`
-      DELETE FROM \`sa_system_menu\`
-      WHERE \`parent_id\` IN (
-        SELECT \`child\`.\`id\`
-        FROM \`sa_system_menu\` \`child\`
-        INNER JOIN \`sa_system_menu\` \`root\`
-          ON \`child\`.\`parent_id\` = \`root\`.\`id\`
-        WHERE \`root\`.\`parent_id\` = (
-          SELECT \`id\`
-          FROM \`sa_system_menu\`
-          WHERE \`code\` = 'System'
-            AND \`path\` = '/system'
-            AND \`type\` = 1
-            AND \`delete_time\` IS NULL
-          ORDER BY \`id\` ASC
-          LIMIT 1
-        )
-          AND \`root\`.\`path\` = '/saas-platform'
-          AND \`root\`.\`type\` = 1
-          AND \`root\`.\`component\` = ''
-          AND \`root\`.\`delete_time\` IS NULL
+    const platformPermissionIds = await this.fetchMenuIds(queryRunner, `
+      SELECT \`id\`
+      FROM \`sa_system_menu\`
+      WHERE \`slug\` IN (
+        'saas:tenant:index',
+        'saas:tenant:save',
+        'saas:plan:index',
+        'saas:plan:update',
+        'saas:subscription:index',
+        'saas:usage:index'
       )
-    `);
-
-    await queryRunner.query(`
-      DELETE FROM \`sa_system_menu\`
-      WHERE \`parent_id\` IN (
-        SELECT \`child\`.\`id\`
-        FROM \`sa_system_menu\` \`child\`
-        INNER JOIN \`sa_system_menu\` \`root\`
-          ON \`child\`.\`parent_id\` = \`root\`.\`id\`
-        WHERE \`root\`.\`parent_id\` = 0
-          AND \`root\`.\`path\` = '/tenant-saas'
-          AND \`root\`.\`type\` = 1
-          AND \`root\`.\`component\` = ''
-          AND \`root\`.\`delete_time\` IS NULL
-      )
-    `);
-
-    await queryRunner.query(`
-      DELETE FROM \`sa_system_menu\`
-      WHERE \`parent_id\` = (
-        SELECT \`root\`.\`id\`
-        FROM \`sa_system_menu\` \`root\`
-        WHERE \`root\`.\`parent_id\` = (
-          SELECT \`id\`
-          FROM \`sa_system_menu\`
-          WHERE \`code\` = 'System'
-            AND \`path\` = '/system'
-            AND \`type\` = 1
-            AND \`delete_time\` IS NULL
-          ORDER BY \`id\` ASC
-          LIMIT 1
-        )
-          AND \`root\`.\`path\` = '/saas-platform'
-          AND \`root\`.\`type\` = 1
-          AND \`root\`.\`component\` = ''
-          AND \`root\`.\`delete_time\` IS NULL
-        ORDER BY \`root\`.\`id\` ASC
-        LIMIT 1
-      )
-      AND \`parent_id\` <> 0
-    `);
-
-    await queryRunner.query(`
-      DELETE FROM \`sa_system_menu\`
-      WHERE \`parent_id\` = (
-        SELECT \`id\`
-        FROM \`sa_system_menu\`
-        WHERE \`code\` = 'System'
-          AND \`path\` = '/system'
-          AND \`type\` = 1
-          AND \`delete_time\` IS NULL
-        ORDER BY \`id\` ASC
-        LIMIT 1
-      )
-      AND \`path\` = '/saas-platform'
-      AND \`type\` = 1
-      AND \`component\` = ''
       AND \`delete_time\` IS NULL
     `);
+    await this.deleteMenusByIds(queryRunner, platformPermissionIds);
 
-    await queryRunner.query(`
-      DELETE FROM \`sa_system_menu\`
-      WHERE \`parent_id\` = (
-        SELECT \`root\`.\`id\`
-        FROM \`sa_system_menu\` \`root\`
-        WHERE \`root\`.\`parent_id\` = 0
-          AND \`root\`.\`path\` = '/tenant-saas'
-          AND \`root\`.\`type\` = 1
-          AND \`root\`.\`component\` = ''
-          AND \`root\`.\`delete_time\` IS NULL
-        ORDER BY \`root\`.\`id\` ASC
-        LIMIT 1
+    const tenantPermissionIds = await this.fetchMenuIds(queryRunner, `
+      SELECT \`id\`
+      FROM \`sa_system_menu\`
+      WHERE \`slug\` IN (
+        'tenant:billing:view',
+        'tenant:billing:upgrade',
+        'tenant:quota:view',
+        'tenant:resource:buy'
       )
+      AND \`delete_time\` IS NULL
     `);
+    await this.deleteMenusByIds(queryRunner, tenantPermissionIds);
 
-    await queryRunner.query(`
-      DELETE FROM \`sa_system_menu\`
-      WHERE \`parent_id\` = 0
+    const platformMenuIds = await this.fetchMenuIds(queryRunner, `
+      SELECT \`id\`
+      FROM \`sa_system_menu\`
+      WHERE \`code\` IN ('SaasTenant', 'SaasPlan', 'SaasSubscription', 'SaasUsage')
+      AND \`delete_time\` IS NULL
+    `);
+    await this.deleteMenusByIds(queryRunner, platformMenuIds);
+
+    const tenantMenuIds = await this.fetchMenuIds(queryRunner, `
+      SELECT \`id\`
+      FROM \`sa_system_menu\`
+      WHERE \`code\` IN ('TenantBilling', 'TenantQuota')
+      AND \`delete_time\` IS NULL
+    `);
+    await this.deleteMenusByIds(queryRunner, tenantMenuIds);
+
+    const platformRootIds = await this.fetchMenuIds(queryRunner, `
+      SELECT \`id\`
+      FROM \`sa_system_menu\`
+      WHERE \`code\` = 'SaasManage'
+        AND \`path\` = '/saas-platform'
+        AND \`type\` = 1
+        AND \`component\` = ''
+        AND \`delete_time\` IS NULL
+    `);
+    await this.deleteMenusByIds(queryRunner, platformRootIds);
+
+    const tenantRootIds = await this.fetchMenuIds(queryRunner, `
+      SELECT \`id\`
+      FROM \`sa_system_menu\`
+      WHERE \`code\` = 'TenantSaas'
         AND \`path\` = '/tenant-saas'
         AND \`type\` = 1
         AND \`component\` = ''
         AND \`delete_time\` IS NULL
     `);
+    await this.deleteMenusByIds(queryRunner, tenantRootIds);
   }
 
   private async insertPlan(queryRunner: QueryRunner, plan: PlanSeed): Promise<void> {
@@ -402,14 +362,14 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
         FROM \`saas_plan\` \`plan\`
         WHERE \`plan\`.\`code\` = ?
           AND \`plan\`.\`delete_time\` IS NULL
-          AND NOT EXISTS (
-            SELECT 1
-            FROM \`saas_plan_quota\` \`quota\`
-            WHERE \`quota\`.\`plan_id\` = \`plan\`.\`id\`
-              AND \`quota\`.\`quota_type\` = ?
-          )
+        ON DUPLICATE KEY UPDATE
+          \`total_quota\` = VALUES(\`total_quota\`),
+          \`status\` = VALUES(\`status\`),
+          \`remark\` = VALUES(\`remark\`),
+          \`delete_time\` = NULL,
+          \`update_time\` = NOW()
       `,
-      [quota.quotaType, quota.totalQuota, quota.remark, planCode, quota.quotaType],
+      [quota.quotaType, quota.totalQuota, quota.remark, planCode],
     );
   }
 
@@ -587,5 +547,19 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
         permission.slug,
       ],
     );
+  }
+
+  private async fetchMenuIds(queryRunner: QueryRunner, sql: string): Promise<number[]> {
+    const rows = (await queryRunner.query(sql)) as Array<{ id: string | number }>;
+    return rows.map((row) => Number(row.id)).filter((id) => Number.isFinite(id));
+  }
+
+  private async deleteMenusByIds(queryRunner: QueryRunner, ids: number[]): Promise<void> {
+    if (ids.length === 0) {
+      return;
+    }
+
+    const placeholders = ids.map(() => '?').join(', ');
+    await queryRunner.query(`DELETE FROM \`sa_system_menu\` WHERE \`id\` IN (${placeholders})`, ids);
   }
 }
