@@ -32,7 +32,7 @@ export class CreateSaasFoundationTables1760000000000 implements MigrationInterfa
         \`update_time\` datetime NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         \`delete_time\` datetime NULL,
         PRIMARY KEY (\`id\`),
-        KEY \`idx_saas_plan_feature_plan_id\` (\`plan_id\`)
+        UNIQUE KEY \`uk_saas_plan_feature_plan_key\` (\`plan_id\`, \`feature_key\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
@@ -67,7 +67,7 @@ export class CreateSaasFoundationTables1760000000000 implements MigrationInterfa
         \`update_time\` datetime NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         \`delete_time\` datetime NULL,
         PRIMARY KEY (\`id\`),
-        UNIQUE KEY \`uk_saas_subscription_tenant_active\` (\`tenant_id\`, \`status\`),
+        KEY \`idx_saas_subscription_tenant_status\` (\`tenant_id\`, \`status\`),
         KEY \`idx_saas_subscription_plan_id\` (\`plan_id\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);

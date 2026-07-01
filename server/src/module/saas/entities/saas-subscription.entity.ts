@@ -1,5 +1,6 @@
-import { Column, CreateDateColumn, DeleteDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, DeleteDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
+@Index('idx_saas_subscription_tenant_status', ['tenantId', 'status'])
 @Entity('saas_subscription', { comment: 'SaaS tenant subscriptions' })
 export class SaasSubscriptionEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'id' })

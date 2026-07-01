@@ -1,5 +1,6 @@
-import { Column, CreateDateColumn, DeleteDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, DeleteDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
+@Index('uk_saas_plan_feature_plan_key', ['planId', 'featureKey'], { unique: true })
 @Entity('saas_plan_feature', { comment: 'SaaS plan feature flags' })
 export class SaasPlanFeatureEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'id' })
