@@ -421,15 +421,7 @@ bun install
 
 ### 2. 配置环境变量
 
-```bash
-# 复制示例配置
-cp .env.example .env
-
-# 创建开发环境配置（不提交 Git）
-cp .env.example .env.development
-```
-
-编辑 `.env.development`，填入本地 MySQL 和 Redis 连接信息：
+编辑 `.env.development`，填入本地 MySQL 和 Redis 连接, Neo4j, Qdrant 等信息(参考.env.example)：
 
 ```env
 NODE_ENV=development
