@@ -17,7 +17,10 @@ export const AppDataSource = new DataSource({
   database: process.env.DB_NAME ?? 'nestjs',
   charset: 'utf8',
   entities: [join(process.cwd(), 'src', 'module', '**', '*.entity.{ts,js}')],
-  migrations: [join(process.cwd(), 'migrations')],
+  migrations: [
+    join(process.cwd(), 'migrations', '*.{ts,js}'),
+    join(process.cwd(), 'src', 'migrations', '*.{ts,js}'),
+  ],
   synchronize: false,
   logging: process.env.DB_LOGGING === 'true',
 });
