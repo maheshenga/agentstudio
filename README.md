@@ -285,7 +285,6 @@ server1/
 | Post | 岗位管理 |
 | Dict | 字典类型 + 字典数据 |
 | Config | 系统参数配置（支持 Redis 缓存） |
-| Notice | 通知公告发布 |
 | Tenant | 多租户管理 |
 | Plugin | 插件注册与管理 |
 | Tool | 代码生成（支持模板引擎，NestJS + Vue模板） |
@@ -399,6 +398,15 @@ server1/
 
 ```bash
 git clone <repo-url>
+
+前端：
+cd Web
+
+# 推荐使用 pnpm
+pnpm install
+
+
+后端：
 cd server1
 
 # 推荐使用 pnpm
@@ -454,21 +462,18 @@ pnpm run migration:run
 # 方式三：同步 Entity（仅开发环境临时使用，需设置 DB_SYNC=true）
 ```
 
-### 5. 初始化管理员账号
-
-```bash
-# 构建项目
-pnpm run build
-
-# 初始化认证数据（创建默认 admin 账号）
-pnpm run init:auth
-```
 
 默认管理员：`admin`，密码：`123456`
 
-### 6. 启动开发服务器
+### 5. 启动开发服务器
 
 ```bash
+前端：pnpm run dev
+
+前端默认启动于 `http://localhost:5730`。
+
+后端：
+
 # 使用 Bun（最快热重启）
 pnpm run dev
 
