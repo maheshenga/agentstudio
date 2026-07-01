@@ -8,6 +8,7 @@ import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
 import { SaasTenantResourceEntity } from './entities/saas-tenant-resource.entity';
 import { SaasTrialEntity } from './entities/saas-trial.entity';
 import { SaasPlanService } from './services/saas-plan.service';
+import { SaasProvisioningService } from './services/saas-provisioning.service';
 import { SaasQuotaService } from './services/saas-quota.service';
 
 @Module({
@@ -21,7 +22,7 @@ import { SaasQuotaService } from './services/saas-quota.service';
       SaasTrialEntity,
     ]),
   ],
-  providers: [SaasPlanService, SaasQuotaService],
-  exports: [SaasPlanService, SaasQuotaService],
+  providers: [SaasPlanService, SaasQuotaService, SaasProvisioningService],
+  exports: [SaasPlanService, SaasQuotaService, SaasProvisioningService],
 })
 export class SaasModule {}
