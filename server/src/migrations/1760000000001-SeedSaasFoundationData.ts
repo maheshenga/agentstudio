@@ -268,35 +268,108 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
 
     await queryRunner.query(`
       DELETE FROM \`sa_system_menu\`
-      WHERE \`slug\` IN (
-        'saas:tenant:index',
-        'saas:tenant:save',
-        'saas:plan:index',
-        'saas:plan:update',
-        'saas:subscription:index',
-        'saas:usage:index',
-        'tenant:billing:view',
-        'tenant:billing:upgrade',
-        'tenant:quota:view',
-        'tenant:resource:buy'
+      WHERE \`parent_id\` IN (
+        SELECT \`child\`.\`id\`
+        FROM \`sa_system_menu\` \`child\`
+        INNER JOIN \`sa_system_menu\` \`root\`
+          ON \`child\`.\`parent_id\` = \`root\`.\`id\`
+        WHERE \`root\`.\`parent_id\` = (
+          SELECT \`id\`
+          FROM \`sa_system_menu\`
+          WHERE \`code\` = 'System'
+            AND \`path\` = '/system'
+            AND \`type\` = 1
+            AND \`delete_time\` IS NULL
+          ORDER BY \`id\` ASC
+          LIMIT 1
+        )
+          AND \`root\`.\`path\` = '/saas-platform'
+          AND \`root\`.\`type\` = 1
+          AND \`root\`.\`component\` = ''
+          AND \`root\`.\`delete_time\` IS NULL
       )
     `);
 
     await queryRunner.query(`
       DELETE FROM \`sa_system_menu\`
-      WHERE \`code\` IN (
-        'SaasTenant',
-        'SaasPlan',
-        'SaasSubscription',
-        'SaasUsage',
-        'TenantBilling',
-        'TenantQuota'
+      WHERE \`parent_id\` IN (
+        SELECT \`child\`.\`id\`
+        FROM \`sa_system_menu\` \`child\`
+        INNER JOIN \`sa_system_menu\` \`root\`
+          ON \`child\`.\`parent_id\` = \`root\`.\`id\`
+        WHERE \`root\`.\`parent_id\` = 0
+          AND \`root\`.\`path\` = '/tenant-saas'
+          AND \`root\`.\`type\` = 1
+          AND \`root\`.\`component\` = ''
+          AND \`root\`.\`delete_time\` IS NULL
       )
     `);
 
     await queryRunner.query(`
       DELETE FROM \`sa_system_menu\`
-      WHERE \`code\` IN ('SaasManage', 'TenantSaas')
+      WHERE \`parent_id\` = (
+        SELECT \`root\`.\`id\`
+        FROM \`sa_system_menu\` \`root\`
+        WHERE \`root\`.\`parent_id\` = (
+          SELECT \`id\`
+          FROM \`sa_system_menu\`
+          WHERE \`code\` = 'System'
+            AND \`path\` = '/system'
+            AND \`type\` = 1
+            AND \`delete_time\` IS NULL
+          ORDER BY \`id\` ASC
+          LIMIT 1
+        )
+          AND \`root\`.\`path\` = '/saas-platform'
+          AND \`root\`.\`type\` = 1
+          AND \`root\`.\`component\` = ''
+          AND \`root\`.\`delete_time\` IS NULL
+        ORDER BY \`root\`.\`id\` ASC
+        LIMIT 1
+      )
+      AND \`parent_id\` <> 0
+    `);
+
+    await queryRunner.query(`
+      DELETE FROM \`sa_system_menu\`
+      WHERE \`parent_id\` = (
+        SELECT \`id\`
+        FROM \`sa_system_menu\`
+        WHERE \`code\` = 'System'
+          AND \`path\` = '/system'
+          AND \`type\` = 1
+          AND \`delete_time\` IS NULL
+        ORDER BY \`id\` ASC
+        LIMIT 1
+      )
+      AND \`path\` = '/saas-platform'
+      AND \`type\` = 1
+      AND \`component\` = ''
+      AND \`delete_time\` IS NULL
+    `);
+
+    await queryRunner.query(`
+      DELETE FROM \`sa_system_menu\`
+      WHERE \`parent_id\` = (
+        SELECT \`root\`.\`id\`
+        FROM \`sa_system_menu\` \`root\`
+        WHERE \`root\`.\`parent_id\` = 0
+          AND \`root\`.\`path\` = '/tenant-saas'
+          AND \`root\`.\`type\` = 1
+          AND \`root\`.\`component\` = ''
+          AND \`root\`.\`delete_time\` IS NULL
+        ORDER BY \`root\`.\`id\` ASC
+        LIMIT 1
+      )
+    `);
+
+    await queryRunner.query(`
+      DELETE FROM \`sa_system_menu\`
+      WHERE \`parent_id\` = 0
+        AND \`path\` = '/tenant-saas'
+        AND \`type\` = 1
+        AND \`component\` = ''
+        AND \`delete_time\` IS NULL
     `);
   }
 
@@ -304,15 +377,16 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
     await queryRunner.query(
       `
         INSERT INTO \`saas_plan\` (\`code\`, \`name\`, \`billing_cycle\`, \`status\`, \`sort\`, \`remark\`)
-        SELECT ?, ?, 'monthly', 1, ?, ?
-        FROM DUAL
-        WHERE NOT EXISTS (
-          SELECT 1
-          FROM \`saas_plan\`
-          WHERE \`code\` = ?
-        )
+        VALUES (?, ?, 'monthly', 1, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          \`name\` = VALUES(\`name\`),
+          \`billing_cycle\` = VALUES(\`billing_cycle\`),
+          \`status\` = VALUES(\`status\`),
+          \`sort\` = VALUES(\`sort\`),
+          \`remark\` = VALUES(\`remark\`),
+          \`delete_time\` = NULL
       `,
-      [plan.code, plan.name, plan.sort, plan.remark, plan.code],
+      [plan.code, plan.name, plan.sort, plan.remark],
     );
   }
 
@@ -327,6 +401,7 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
         SELECT \`plan\`.\`id\`, ?, ?, 1, ?
         FROM \`saas_plan\` \`plan\`
         WHERE \`plan\`.\`code\` = ?
+          AND \`plan\`.\`delete_time\` IS NULL
           AND NOT EXISTS (
             SELECT 1
             FROM \`saas_plan_quota\` \`quota\`
