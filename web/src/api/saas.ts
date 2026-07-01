@@ -21,6 +21,21 @@ export interface TenantUsageSummary {
   [key: string]: any
 }
 
+export interface TenantSubscriptionSummary {
+  tenantId?: number
+  tenant_id?: number
+  currentPlan?: string
+  current_plan?: string
+  planName?: string
+  plan_name?: string
+  subscriptionStatus?: string | number
+  subscription_status?: string | number
+  status?: string | number
+  trialEndTime?: string | number
+  trial_end_time?: string | number
+  [key: string]: any
+}
+
 export function signupTenant(params: SaasSignupParams) {
   return request.post<SaasSignupResult>({
     url: '/api/saas/signup',
@@ -31,5 +46,11 @@ export function signupTenant(params: SaasSignupParams) {
 export function fetchTenantUsage() {
   return request.get<TenantUsageSummary>({
     url: '/api/saas/tenant/usage'
+  })
+}
+
+export function fetchTenantSubscription() {
+  return request.get<TenantSubscriptionSummary>({
+    url: '/api/saas/tenant/subscription'
   })
 }
