@@ -7,6 +7,9 @@ import { SaasPlanEntity } from './entities/saas-plan.entity';
 import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
 import { SaasTenantResourceEntity } from './entities/saas-tenant-resource.entity';
 import { SaasTrialEntity } from './entities/saas-trial.entity';
+import { SaasPlatformController } from './saas-platform.controller';
+import { SaasPublicController } from './saas-public.controller';
+import { SaasTenantController } from './saas-tenant.controller';
 import { SaasPlanService } from './services/saas-plan.service';
 import { SaasProvisioningService } from './services/saas-provisioning.service';
 import { SaasQuotaService } from './services/saas-quota.service';
@@ -22,6 +25,7 @@ import { SaasQuotaService } from './services/saas-quota.service';
       SaasTrialEntity,
     ]),
   ],
+  controllers: [SaasPublicController, SaasPlatformController, SaasTenantController],
   providers: [SaasPlanService, SaasQuotaService, SaasProvisioningService],
   exports: [SaasPlanService, SaasQuotaService, SaasProvisioningService],
 })
