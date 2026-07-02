@@ -5,6 +5,7 @@ import { SaasPlanFeatureEntity } from './entities/saas-plan-feature.entity';
 import { SaasPlanQuotaEntity } from './entities/saas-plan-quota.entity';
 import { SaasOrderEntity } from './entities/saas-order.entity';
 import { SaasPlanEntity } from './entities/saas-plan.entity';
+import { SaasPaymentConfigEntity } from './entities/saas-payment-config.entity';
 import { SaasResourcePackOrderEntity } from './entities/saas-resource-pack-order.entity';
 import { SaasResourcePackEntity } from './entities/saas-resource-pack.entity';
 import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
@@ -17,6 +18,7 @@ import { SaasTenantController } from './saas-tenant.controller';
 import { SaasPlanService } from './services/saas-plan.service';
 import { SaasOrderService } from './services/saas-order.service';
 import { SaasPaymentService } from './services/saas-payment.service';
+import { SaasPaymentConfigService } from './services/saas-payment-config.service';
 import { SaasPlatformService } from './services/saas-platform.service';
 import { SaasProvisioningService } from './services/saas-provisioning.service';
 import { SaasQuotaService } from './services/saas-quota.service';
@@ -30,6 +32,7 @@ import { SaasResourcePackService } from './services/saas-resource-pack.service';
       SaasOrderEntity,
       SaasPlanQuotaEntity,
       SaasPlanFeatureEntity,
+      SaasPaymentConfigEntity,
       SaasResourcePackEntity,
       SaasResourcePackOrderEntity,
       SaasSubscriptionEntity,
@@ -42,6 +45,7 @@ import { SaasResourcePackService } from './services/saas-resource-pack.service';
     SaasPlanService,
     SaasOrderService,
     SaasPaymentService,
+    SaasPaymentConfigService,
     SaasPlatformService,
     SaasQuotaService,
     SaasResourcePackService,
@@ -52,6 +56,7 @@ import { SaasResourcePackService } from './services/saas-resource-pack.service';
     SaasPlanService,
     SaasOrderService,
     SaasPaymentService,
+    SaasPaymentConfigService,
     SaasPlatformService,
     SaasQuotaService,
     SaasResourcePackService,
