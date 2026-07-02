@@ -63,7 +63,7 @@
                 show-password
               />
             </ElFormItem>
-            <ElFormItem prop="code">
+            <ElFormItem v-if="captchaEnabled" prop="code">
               <ElInput
                 class="custom-height"
                 :placeholder="$t('login.placeholder.code')"
@@ -164,6 +164,7 @@
   import { HttpError } from '@/utils/http/error'
   import {
     fetchCaptcha,
+    fetchLoginCaptchaStatus,
     fetchLogin,
     fetchGetUserInfo,
     fetchTenantsByUsername,
@@ -190,6 +191,7 @@
   const captcha = ref(
     'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
   )
+  const captchaEnabled = ref(true)
 
   const systemName = ref(AppConfig.systemInfo.name)
   const formRef = ref<FormInstance>()
@@ -209,7 +211,9 @@
   const rules = computed<FormRules>(() => ({
     username: [{ required: true, message: t('login.placeholder.username'), trigger: 'blur' }],
     password: [{ required: true, message: t('login.placeholder.password'), trigger: 'blur' }],
-    code: [{ required: true, message: t('login.placeholder.code'), trigger: 'blur' }],
+    ...(captchaEnabled.value
+      ? { code: [{ required: true, message: t('login.placeholder.code'), trigger: 'blur' }] }
+      : {}),
     tenant_id: [{ required: true, message: '请选择租户', trigger: 'change' }]
   }))
 
@@ -230,9 +234,26 @@
     }
   }
 
-  onMounted(() => {
+  const loadLoginCaptchaStatus = async () => {
+    try {
+      const res = await fetchLoginCaptchaStatus()
+      captchaEnabled.value = res?.enabled !== false
+      if (!captchaEnabled.value) {
+        formData.code = ''
+        formData.uuid = ''
+      }
+    } catch (error) {
+      captchaEnabled.value = true
+      console.error('[Login] Failed to load captcha status:', error)
+    }
+  }
+
+  onMounted(async () => {
     loadSystemName()
-    refreshCaptcha()
+    await loadLoginCaptchaStatus()
+    if (captchaEnabled.value) {
+      refreshCaptcha()
+    }
     // 如果有默认用户名，自动加载租户列表
     if (formData.username) {
       loadTenantList()
@@ -301,13 +322,18 @@
       loading.value = true
 
       // 登录请求
-      const { access_token, refresh_token } = await fetchLogin({
+      const loginParams: Api.Auth.LoginParams = {
         username: formData.username,
         password: formData.password,
-        code: formData.code,
-        uuid: formData.uuid,
         tenant_id: formData.tenant_id
-      })
+      }
+
+      if (captchaEnabled.value) {
+        loginParams.code = formData.code
+        loginParams.uuid = formData.uuid
+      }
+
+      const { access_token, refresh_token } = await fetchLogin(loginParams)
 
       // 验证token
       if (!access_token) {
@@ -340,6 +366,8 @@
 
   // 获取验证码
   const refreshCaptcha = async () => {
+    if (!captchaEnabled.value) return
+
     fetchCaptcha().then((res) => {
       formData.uuid = res.uuid
       captcha.value = res.image

@@ -1,5 +1,6 @@
 const routerWhitelist = [
   { path: '/api/core/captcha', method: 'GET' },
+  { path: '/api/core/login-captcha', method: 'GET' },
   { path: '/api/core/login', method: 'POST' },
   { path: '/api/core/logout', method: 'POST' },
   { path: '/api/core/refresh', method: 'POST' },

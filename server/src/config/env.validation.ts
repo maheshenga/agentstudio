@@ -21,6 +21,7 @@ export const envValidationSchema = Joi.object({
 
   JWT_SECRET: Joi.string().min(32).required(),
   JWT_EXPIRES_IN: Joi.string().default('2h'),
+  LOGIN_CAPTCHA_ENABLED: Joi.boolean().truthy('true').falsy('false').default(true),
 
   REDIS_HOST: Joi.string().required(),
   REDIS_PORT: Joi.number().port().default(6379),

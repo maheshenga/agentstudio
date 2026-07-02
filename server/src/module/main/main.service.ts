@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 
 import { createNumeric } from '../../common/utils/captcha';
+import { isLoginCaptchaEnabled } from '../../common/utils/auth-config.util';
 import { ResultData, SUCCESS_CODE } from '../../common/utils/result';
 import { CacheEnum } from '../../common/enum/index';
 import { LOGIN_TOKEN_EXPIRESIN, ACCESS_TOKEN_EXPIRESIN } from '../../common/constant/index';
@@ -93,7 +94,7 @@ export class MainService {
     }
 
     const { username, password, uuid, code } = body;
-    if (uuid && code) {
+    if (isLoginCaptchaEnabled() && uuid && code) {
       const cacheCode = await this.redisService.get(`${CacheEnum.CAPTCHA_CODE_KEY}${uuid}`);
       if (!cacheCode || cacheCode !== code.toLowerCase()) {
         return ResultData.fail(500, '验证码错误');
@@ -423,5 +424,8 @@ export class MainService {
   async isRegisterEnabled(): Promise<ResultData> {
     const res = await this.configService.getConfigValue('sys.account.registerUser');
     return ResultData.ok(res === 'true', '操作成功');
+  }
+  isLoginCaptchaEnabled(): ResultData {
+    return ResultData.ok({ enabled: isLoginCaptchaEnabled() });
   }
 }

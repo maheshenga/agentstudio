@@ -3,6 +3,7 @@ import { RedisService } from '../../redis/redis.service';
 import { CacheEnum } from '../enum/index';
 import { paramsKeyGetObj } from '../utils/decorator';
 import { ResultData } from '../utils/result';
+import { isLoginCaptchaEnabled } from '../utils/auth-config.util';
 
 /**
  * @Captcha — 验证码校验装饰器。
@@ -17,6 +18,10 @@ export function Captcha(CACHE_KEY: string) {
     const originMethod = descriptor.value;
 
     descriptor.value = async function (...args: any[]) {
+      if (!isLoginCaptchaEnabled()) {
+        return await originMethod.apply(this, args);
+      }
+
       const user = paramsKeyGetObj(originMethod, CACHE_KEY, args);
       const code = await (this as any).redisService.get(CacheEnum.CAPTCHA_CODE_KEY + user.uuid);
 
