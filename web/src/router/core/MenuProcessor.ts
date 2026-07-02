@@ -259,6 +259,7 @@ export class MenuProcessor {
       return {
         ...item,
         path: fullPath,
+        name: fullPath ? this.generateRouteName(fullPath) : item.name,
         children
       }
     })

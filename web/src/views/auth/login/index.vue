@@ -348,7 +348,8 @@
 
       // 登录成功处理
       showLoginSuccessNotice()
-      router.push('/')
+      const redirect = router.currentRoute.value.query.redirect
+      router.push(typeof redirect === 'string' ? redirect : '/')
     } catch (error) {
       // 处理 HttpError
       if (error instanceof HttpError) {
