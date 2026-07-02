@@ -4,6 +4,7 @@ import { createSign, createVerify } from 'crypto';
 
 import { SAAS_ORDER_PENDING, SAAS_PAYMENT_ALIPAY } from '../constants';
 import { SaasOrderService } from './saas-order.service';
+import { SaasResourcePackOrderService } from './saas-resource-pack-order.service';
 
 const ALIPAY_MISSING_CONFIG_MESSAGE =
   'Alipay sandbox config is missing. Set ALIPAY_APP_ID, ALIPAY_PRIVATE_KEY, ALIPAY_PUBLIC_KEY, ALIPAY_NOTIFY_URL and ALIPAY_RETURN_URL.';
@@ -40,22 +41,28 @@ interface AlipayConfig {
   gatewayUrl: string;
 }
 
+export type SaasPaymentOrderType = 'plan' | 'resource_pack';
+
+type SaasPayableOrder = {
+  orderNo: string;
+  amountCents: number;
+  subject: string;
+};
+
 @Injectable()
 export class SaasPaymentService {
   constructor(
     private readonly saasOrderService: SaasOrderService,
+    private readonly saasResourcePackOrderService: SaasResourcePackOrderService,
     private readonly configService: ConfigService,
   ) {}
 
-  async createAlipayPayment(tenantId: number, orderNo: string): Promise<SaasAlipayPaymentResult> {
-    const order = await this.saasOrderService.findTenantOrder(tenantId, orderNo);
-    if (!order) {
-      throw new NotFoundException('Order not found');
-    }
-    if (order.status !== SAAS_ORDER_PENDING) {
-      throw new BadRequestException('Only pending orders can be paid');
-    }
-
+  async createAlipayPayment(
+    tenantId: number,
+    orderNo: string,
+    orderType: SaasPaymentOrderType = 'plan',
+  ): Promise<SaasAlipayPaymentResult> {
+    const order = await this.resolvePayableOrder(tenantId, orderNo, orderType);
     const config = this.getAlipayConfig();
     if (!this.isAlipayConfigured(config)) {
       return {
@@ -71,11 +78,7 @@ export class SaasPaymentService {
       configured: true,
       provider: SAAS_PAYMENT_ALIPAY,
       order_no: order.orderNo,
-      pay_url: this.buildSignedPagePayUrl(config, {
-        orderNo: order.orderNo,
-        amountCents: order.amountCents,
-        planCode: order.planCode,
-      }),
+      pay_url: this.buildSignedPagePayUrl(config, order),
       message: ALIPAY_PAGE_PAY_READY_MESSAGE,
     };
   }
@@ -143,14 +146,41 @@ export class SaasPaymentService {
     return checks.filter(([, present]) => !present).map(([key]) => key);
   }
 
-  private buildSignedPagePayUrl(
-    config: AlipayConfig,
-    order: {
-      orderNo: string;
-      amountCents: number;
-      planCode: string;
-    },
-  ): string {
+  private async resolvePayableOrder(
+    tenantId: number,
+    orderNo: string,
+    orderType: SaasPaymentOrderType,
+  ): Promise<SaasPayableOrder> {
+    if (orderType === 'resource_pack') {
+      const order = await this.saasResourcePackOrderService.findTenantOrder(tenantId, orderNo);
+      if (!order) {
+        throw new NotFoundException('Resource pack order not found');
+      }
+      if (order.status !== SAAS_ORDER_PENDING) {
+        throw new BadRequestException('Only pending orders can be paid');
+      }
+      return {
+        orderNo: order.orderNo,
+        amountCents: order.amountCents,
+        subject: `SaaS resource pack ${order.resourcePackCode}`,
+      };
+    }
+
+    const order = await this.saasOrderService.findTenantOrder(tenantId, orderNo);
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+    if (order.status !== SAAS_ORDER_PENDING) {
+      throw new BadRequestException('Only pending orders can be paid');
+    }
+    return {
+      orderNo: order.orderNo,
+      amountCents: order.amountCents,
+      subject: `SaaS plan ${order.planCode}`,
+    };
+  }
+
+  private buildSignedPagePayUrl(config: AlipayConfig, order: SaasPayableOrder): string {
     const params: Record<string, string> = {
       app_id: config.appId,
       method: ALIPAY_PAGE_PAY_METHOD,
@@ -164,7 +194,7 @@ export class SaasPaymentService {
       biz_content: JSON.stringify({
         out_trade_no: order.orderNo,
         total_amount: this.formatAmountYuan(order.amountCents),
-        subject: `SaaS plan ${order.planCode}`,
+        subject: order.subject,
         product_code: ALIPAY_PAGE_PAY_PRODUCT_CODE,
       }),
     };

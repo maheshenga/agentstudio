@@ -4,6 +4,7 @@ import * as tenantUtils from '../../common/utils/tenant.util';
 import { SaasPaymentController } from './saas-payment.controller';
 import { SaasOrderService } from './services/saas-order.service';
 import { SaasPaymentService } from './services/saas-payment.service';
+import { SaasResourcePackOrderService } from './services/saas-resource-pack-order.service';
 
 describe('SaasPaymentController', () => {
   let controller: SaasPaymentController;
@@ -16,6 +17,15 @@ describe('SaasPaymentController', () => {
     createAlipayPayment: jest.fn(),
     verifyAlipayNotify: jest.fn(),
     getAlipayConfigStatus: jest.fn(),
+  };
+  const resourcePackOrderService = {
+    confirmDevPayment: jest.fn(),
+    confirmAlipayPayment: jest.fn(),
+    toResponse: jest.fn((order) => ({
+      order_no: order.orderNo,
+      resource_pack_code: order.resourcePackCode,
+      status: order.status,
+    })),
   };
 
   beforeEach(async () => {
@@ -31,6 +41,10 @@ describe('SaasPaymentController', () => {
         {
           provide: SaasPaymentService,
           useValue: saasPaymentService,
+        },
+        {
+          provide: SaasResourcePackOrderService,
+          useValue: resourcePackOrderService,
         },
       ],
     }).compile();
@@ -70,6 +84,27 @@ describe('SaasPaymentController', () => {
     });
   });
 
+  it('dev-confirms a resource pack order when order_type is resource_pack', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
+    resourcePackOrderService.confirmDevPayment.mockResolvedValue({
+      orderNo: 'RPO20260703120000001000001',
+      resourcePackCode: 'tokens_1m',
+      status: 'paid',
+    });
+
+    const result = await controller.devConfirm({
+      order_no: 'RPO20260703120000001000001',
+      order_type: 'resource_pack',
+    });
+
+    expect(resourcePackOrderService.confirmDevPayment).toHaveBeenCalledWith(88, 'RPO20260703120000001000001');
+    expect(result.data).toEqual({
+      order_no: 'RPO20260703120000001000001',
+      resource_pack_code: 'tokens_1m',
+      status: 'paid',
+    });
+  });
+
   it('confirms an order when Alipay notifies trade success', async () => {
     saasPaymentService.verifyAlipayNotify.mockReturnValue(true);
     saasOrderService.confirmAlipayPayment.mockResolvedValue({
@@ -94,6 +129,25 @@ describe('SaasPaymentController', () => {
       'SO20260702000000001000001',
       '2026070222000000000001',
     );
+  });
+
+  it('routes RPO Alipay notify orders to resource pack confirmation', async () => {
+    saasPaymentService.verifyAlipayNotify.mockReturnValue(true);
+    resourcePackOrderService.confirmAlipayPayment.mockResolvedValue({ status: 'paid' });
+
+    await expect(
+      controller.alipayNotify({
+        out_trade_no: 'RPO20260703120000001000001',
+        trade_no: '2026070322000000000001',
+        trade_status: 'TRADE_SUCCESS',
+      }),
+    ).resolves.toBe('success');
+
+    expect(resourcePackOrderService.confirmAlipayPayment).toHaveBeenCalledWith(
+      'RPO20260703120000001000001',
+      '2026070322000000000001',
+    );
+    expect(saasOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
   });
 
   it('ignores non-success Alipay notifications without mutating orders', async () => {
@@ -161,7 +215,7 @@ describe('SaasPaymentController', () => {
       order_no: 'SO20260702000000001000001',
     });
 
-    expect(saasPaymentService.createAlipayPayment).toHaveBeenCalledWith(12, 'SO20260702000000001000001');
+    expect(saasPaymentService.createAlipayPayment).toHaveBeenCalledWith(12, 'SO20260702000000001000001', 'plan');
     expect(result.data).toEqual({
       configured: false,
       provider: 'alipay',

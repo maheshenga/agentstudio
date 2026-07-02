@@ -7,6 +7,8 @@ import { getTenantId } from '../../common/utils/tenant.util';
 import { SaasOrderEntity } from './entities/saas-order.entity';
 import { SaasOrderService } from './services/saas-order.service';
 import { SaasPaymentService } from './services/saas-payment.service';
+import type { SaasPaymentOrderType } from './services/saas-payment.service';
+import { SaasResourcePackOrderService } from './services/saas-resource-pack-order.service';
 
 const ALIPAY_PAID_TRADE_STATUSES = new Set(['TRADE_SUCCESS', 'TRADE_FINISHED']);
 
@@ -17,14 +19,23 @@ export class SaasPaymentController {
   constructor(
     private readonly saasOrderService: SaasOrderService,
     private readonly saasPaymentService: SaasPaymentService,
+    private readonly saasResourcePackOrderService: SaasResourcePackOrderService,
   ) {}
 
   @Post('dev-confirm')
   @ApiOperation({ summary: 'Development-only SaaS payment confirmation' })
-  async devConfirm(@Body() body: { order_no: string }) {
+  async devConfirm(@Body() body: { order_no: string; order_type?: SaasPaymentOrderType }) {
     const tenantId = getTenantId();
     if (!tenantId) {
       return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    if (body.order_type === 'resource_pack') {
+      return ResultData.ok(
+        this.saasResourcePackOrderService.toResponse(
+          await this.saasResourcePackOrderService.confirmDevPayment(tenantId, body.order_no),
+        ),
+      );
     }
 
     return ResultData.ok(this.toOrderResponse(await this.saasOrderService.confirmDevPayment(tenantId, body.order_no)));
@@ -32,13 +43,13 @@ export class SaasPaymentController {
 
   @Post('alipay/create')
   @ApiOperation({ summary: 'Create Alipay SaaS payment' })
-  async createAlipayPayment(@Body() body: { order_no: string }) {
+  async createAlipayPayment(@Body() body: { order_no: string; order_type?: SaasPaymentOrderType }) {
     const tenantId = getTenantId();
     if (!tenantId) {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
-    return ResultData.ok(await this.saasPaymentService.createAlipayPayment(tenantId, body.order_no));
+    return ResultData.ok(await this.saasPaymentService.createAlipayPayment(tenantId, body.order_no, body.order_type || 'plan'));
   }
 
   @Get('alipay/config-status')
@@ -66,7 +77,13 @@ export class SaasPaymentController {
     }
 
     try {
-      await this.saasOrderService.confirmAlipayPayment(String(body.out_trade_no || ''), String(body.trade_no || ''));
+      const orderNo = String(body.out_trade_no || '');
+      if (orderNo.startsWith('RPO')) {
+        await this.saasResourcePackOrderService.confirmAlipayPayment(orderNo, String(body.trade_no || ''));
+        return 'success';
+      }
+
+      await this.saasOrderService.confirmAlipayPayment(orderNo, String(body.trade_no || ''));
       return 'success';
     } catch {
       return 'fail';

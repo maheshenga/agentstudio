@@ -5,9 +5,13 @@ import { createSign, createVerify, generateKeyPairSync } from 'crypto';
 import { SAAS_ORDER_PAID, SAAS_ORDER_PENDING } from '../constants';
 import { SaasOrderService } from './saas-order.service';
 import { SaasPaymentService } from './saas-payment.service';
+import { SaasResourcePackOrderService } from './saas-resource-pack-order.service';
 
 describe('SaasPaymentService', () => {
   const saasOrderService = {
+    findTenantOrder: jest.fn(),
+  };
+  const resourcePackOrderService = {
     findTenantOrder: jest.fn(),
   };
   const configService = {
@@ -20,6 +24,7 @@ describe('SaasPaymentService', () => {
     jest.clearAllMocks();
     service = new SaasPaymentService(
       saasOrderService as unknown as SaasOrderService,
+      resourcePackOrderService as unknown as SaasResourcePackOrderService,
       configService as unknown as ConfigService,
     );
   });
@@ -100,6 +105,48 @@ describe('SaasPaymentService', () => {
       createVerify('RSA-SHA256')
         .update(buildAlipaySignContent(params), 'utf8')
         .verify(publicKey, sign, 'base64'),
+    ).toBe(true);
+  });
+
+  it('returns a signed Alipay URL for resource pack orders with resource pack subject', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+    });
+    resourcePackOrderService.findTenantOrder.mockResolvedValue({
+      orderNo: 'RPO20260703120000001000001',
+      tenantId: 12,
+      status: SAAS_ORDER_PENDING,
+      resourcePackCode: 'tokens_1m',
+      amountCents: 19900,
+    });
+    configService.get.mockImplementation((key: string) => {
+      const values: Record<string, string | boolean> = {
+        'payment.alipay.enabled': true,
+        'payment.alipay.appId': '2026070200000001',
+        'payment.alipay.privateKey': privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+        'payment.alipay.publicKey': publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+        'payment.alipay.notifyUrl': 'http://127.0.0.1:8181/api/saas/payment/alipay/notify',
+        'payment.alipay.returnUrl': 'http://127.0.0.1:5731/#/tenant-saas/resource-packs',
+        'payment.alipay.gatewayUrl': 'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+      };
+      return values[key];
+    });
+
+    const result = await service.createAlipayPayment(12, 'RPO20260703120000001000001', 'resource_pack');
+
+    expect(resourcePackOrderService.findTenantOrder).toHaveBeenCalledWith(12, 'RPO20260703120000001000001');
+    const payUrl = new URL(result.pay_url || '');
+    const params = Object.fromEntries(payUrl.searchParams.entries());
+    expect(JSON.parse(params.biz_content)).toEqual({
+      out_trade_no: 'RPO20260703120000001000001',
+      total_amount: '199.00',
+      subject: 'SaaS resource pack tokens_1m',
+      product_code: 'FAST_INSTANT_TRADE_PAY',
+    });
+    expect(
+      createVerify('RSA-SHA256')
+        .update(buildAlipaySignContent(params), 'utf8')
+        .verify(publicKey, params.sign, 'base64'),
     ).toBe(true);
   });
 
