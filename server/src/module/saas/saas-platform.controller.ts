@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -7,13 +7,17 @@ import { TenantContext } from '../../common/tenant/tenant.context';
 import { User } from '../system/user/user.decorator';
 import type { UserDto } from '../system/user/user.decorator';
 import { TenantProvisionDto } from './dto/tenant-provision.dto';
+import { SaasPlatformListQuery, SaasPlatformService } from './services/saas-platform.service';
 import { SaasProvisioningService } from './services/saas-provisioning.service';
 
 @ApiTags('SaaS Platform')
 @ApiBearerAuth('Authorization')
 @Controller('api/saas/platform')
 export class SaasPlatformController {
-  constructor(private readonly provisioning: SaasProvisioningService) {}
+  constructor(
+    private readonly provisioning: SaasProvisioningService,
+    private readonly platformService: SaasPlatformService,
+  ) {}
 
   @Post('tenants')
   @ApiOperation({ summary: 'Create SaaS tenant from platform' })
@@ -27,6 +31,36 @@ export class SaasPlatformController {
         ignoreTenant: true,
       },
       () => this.provisioning.createTenantFromPlatform(body).then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Get('orders')
+  @ApiOperation({ summary: 'List SaaS platform orders' })
+  @RequirePermission('saas:order:list')
+  listOrders(@Query() query: SaasPlatformListQuery, @User() user: UserDto) {
+    return TenantContext.run(
+      {
+        tenantId: undefined,
+        userId: user?.userId,
+        ignoreAudit: false,
+        ignoreTenant: true,
+      },
+      () => this.platformService.listOrders(query).then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Get('subscriptions')
+  @ApiOperation({ summary: 'List SaaS platform subscriptions' })
+  @RequirePermission('saas:subscription:list')
+  listSubscriptions(@Query() query: SaasPlatformListQuery, @User() user: UserDto) {
+    return TenantContext.run(
+      {
+        tenantId: undefined,
+        userId: user?.userId,
+        ignoreAudit: false,
+        ignoreTenant: true,
+      },
+      () => this.platformService.listSubscriptions(query).then((data) => ResultData.ok(data)),
     );
   }
 }
