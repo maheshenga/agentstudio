@@ -8,6 +8,7 @@ type PlanSeed = {
 };
 
 type QuotaSeed = {
+  planCode: string;
   quotaType: string;
   totalQuota: number;
   remark: string;
@@ -39,12 +40,22 @@ const PLAN_SEEDS: PlanSeed[] = [
   { code: 'enterprise', name: 'Enterprise', sort: 30, remark: 'Seeded enterprise SaaS plan' },
 ];
 
-const FREE_PLAN_QUOTAS: QuotaSeed[] = [
-  { quotaType: 'users', totalQuota: 3, remark: 'Seeded free plan user quota' },
-  { quotaType: 'storage_mb', totalQuota: 512, remark: 'Seeded free plan storage quota' },
-  { quotaType: 'ai_calls', totalQuota: 100, remark: 'Seeded free plan AI call quota' },
-  { quotaType: 'rag_documents', totalQuota: 10, remark: 'Seeded free plan RAG document quota' },
-  { quotaType: 'tokens', totalQuota: 100000, remark: 'Seeded free plan token quota' },
+const PLAN_QUOTAS: QuotaSeed[] = [
+  { planCode: 'free', quotaType: 'users', totalQuota: 3, remark: 'Seeded free plan user quota' },
+  { planCode: 'free', quotaType: 'storage_mb', totalQuota: 512, remark: 'Seeded free plan storage quota' },
+  { planCode: 'free', quotaType: 'ai_calls', totalQuota: 100, remark: 'Seeded free plan AI call quota' },
+  { planCode: 'free', quotaType: 'rag_documents', totalQuota: 10, remark: 'Seeded free plan RAG document quota' },
+  { planCode: 'free', quotaType: 'tokens', totalQuota: 100000, remark: 'Seeded free plan token quota' },
+  { planCode: 'pro', quotaType: 'users', totalQuota: 20, remark: 'Seeded pro plan user quota' },
+  { planCode: 'pro', quotaType: 'storage_mb', totalQuota: 10240, remark: 'Seeded pro plan storage quota' },
+  { planCode: 'pro', quotaType: 'ai_calls', totalQuota: 5000, remark: 'Seeded pro plan AI call quota' },
+  { planCode: 'pro', quotaType: 'rag_documents', totalQuota: 500, remark: 'Seeded pro plan RAG document quota' },
+  { planCode: 'pro', quotaType: 'tokens', totalQuota: 5000000, remark: 'Seeded pro plan token quota' },
+  { planCode: 'enterprise', quotaType: 'users', totalQuota: 100, remark: 'Seeded enterprise plan user quota' },
+  { planCode: 'enterprise', quotaType: 'storage_mb', totalQuota: 102400, remark: 'Seeded enterprise plan storage quota' },
+  { planCode: 'enterprise', quotaType: 'ai_calls', totalQuota: 50000, remark: 'Seeded enterprise plan AI call quota' },
+  { planCode: 'enterprise', quotaType: 'rag_documents', totalQuota: 5000, remark: 'Seeded enterprise plan RAG document quota' },
+  { planCode: 'enterprise', quotaType: 'tokens', totalQuota: 50000000, remark: 'Seeded enterprise plan token quota' },
 ];
 
 const PLATFORM_ROOT_MENU: MenuSeed = {
@@ -229,8 +240,8 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
       await this.insertPlan(queryRunner, plan);
     }
 
-    for (const quota of FREE_PLAN_QUOTAS) {
-      await this.insertPlanQuota(queryRunner, 'free', quota);
+    for (const quota of PLAN_QUOTAS) {
+      await this.insertPlanQuota(queryRunner, quota);
     }
 
     await this.insertRootMenuUnderSystem(queryRunner, PLATFORM_ROOT_MENU);
@@ -256,7 +267,7 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
       WHERE \`plan_id\` IN (
         SELECT \`id\`
         FROM \`saas_plan\`
-        WHERE \`code\` = 'free'
+        WHERE \`code\` IN ('free', 'pro', 'enterprise')
       )
       AND \`quota_type\` IN ('users', 'storage_mb', 'ai_calls', 'rag_documents', 'tokens')
     `);
@@ -352,7 +363,6 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
 
   private async insertPlanQuota(
     queryRunner: QueryRunner,
-    planCode: string,
     quota: QuotaSeed,
   ): Promise<void> {
     await queryRunner.query(
@@ -369,7 +379,7 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
           \`delete_time\` = NULL,
           \`update_time\` = NOW()
       `,
-      [quota.quotaType, quota.totalQuota, quota.remark, planCode],
+      [quota.quotaType, quota.totalQuota, quota.remark, quota.planCode],
     );
   }
 

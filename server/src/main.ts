@@ -94,8 +94,12 @@ async function bootstrap(): Promise<void> {
       }),
     );
 
-    // 设置全局前缀
-    app.setGlobalPrefix(globalPrefix);
+    // Existing controllers already include the /api route segment. Avoid
+    // turning APP_API_PREFIX=api into /api/api/... while still allowing
+    // custom deployment prefixes such as /nest-api.
+    if (globalPrefix && globalPrefix !== displayPrefix) {
+      app.setGlobalPrefix(globalPrefix);
+    }
 
     // CORS 配置
     configureCors(app, configService);

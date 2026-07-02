@@ -7,7 +7,7 @@ import { SaasSignupDto } from './dto/signup.dto';
 import { SaasProvisioningService } from './services/saas-provisioning.service';
 
 @ApiTags('SaaS Public')
-@Controller('saas')
+@Controller('api/saas')
 export class SaasPublicController {
   constructor(private readonly provisioning: SaasProvisioningService) {}
 
