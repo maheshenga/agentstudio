@@ -8,7 +8,7 @@ export class OperLogEntity extends BaseEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'id', comment: '日志主键' })
   public id: number;
 
-  @Column({ type: 'varchar', name: 'username', length: 20, default: '', comment: '操作人员' })
+  @Column({ type: 'varchar', name: 'username', length: 64, default: '', comment: '操作人员' })
   public username: string;
 
   @Column({ type: 'varchar', name: 'app', length: 50, default: '', comment: '应用模块' })

@@ -8,7 +8,7 @@ export class LoginLogEntity extends BaseEntity {
   @PrimaryGeneratedColumn({ type: 'int', name: 'id', comment: '访问ID' })
   public id: number;
 
-  @Column({ type: 'varchar', name: 'username', length: 20, default: '', comment: '用户账号' })
+  @Column({ type: 'varchar', name: 'username', length: 64, default: '', comment: '用户账号' })
   public username: string;
 
   @Column({ type: 'varchar', name: 'ip', length: 45, default: '', comment: '登录IP地址' })
