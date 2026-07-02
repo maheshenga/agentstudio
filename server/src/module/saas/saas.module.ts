@@ -5,6 +5,7 @@ import { SaasPlanFeatureEntity } from './entities/saas-plan-feature.entity';
 import { SaasPlanQuotaEntity } from './entities/saas-plan-quota.entity';
 import { SaasOrderEntity } from './entities/saas-order.entity';
 import { SaasPlanEntity } from './entities/saas-plan.entity';
+import { SaasResourcePackEntity } from './entities/saas-resource-pack.entity';
 import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
 import { SaasTenantResourceEntity } from './entities/saas-tenant-resource.entity';
 import { SaasTrialEntity } from './entities/saas-trial.entity';
@@ -18,6 +19,7 @@ import { SaasPaymentService } from './services/saas-payment.service';
 import { SaasPlatformService } from './services/saas-platform.service';
 import { SaasProvisioningService } from './services/saas-provisioning.service';
 import { SaasQuotaService } from './services/saas-quota.service';
+import { SaasResourcePackService } from './services/saas-resource-pack.service';
 
 @Module({
   imports: [
@@ -26,6 +28,7 @@ import { SaasQuotaService } from './services/saas-quota.service';
       SaasOrderEntity,
       SaasPlanQuotaEntity,
       SaasPlanFeatureEntity,
+      SaasResourcePackEntity,
       SaasSubscriptionEntity,
       SaasTenantResourceEntity,
       SaasTrialEntity,
@@ -38,6 +41,7 @@ import { SaasQuotaService } from './services/saas-quota.service';
     SaasPaymentService,
     SaasPlatformService,
     SaasQuotaService,
+    SaasResourcePackService,
     SaasProvisioningService,
   ],
   exports: [
@@ -46,6 +50,7 @@ import { SaasQuotaService } from './services/saas-quota.service';
     SaasPaymentService,
     SaasPlatformService,
     SaasQuotaService,
+    SaasResourcePackService,
     SaasProvisioningService,
   ],
 })
