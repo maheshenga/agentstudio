@@ -87,6 +87,39 @@ export interface SaasResourcePackListParams {
   resource_type?: string
 }
 
+export type SaasPaymentOrderType = 'plan' | 'resource_pack'
+
+export interface CreateResourcePackOrderParams {
+  resource_pack_code: string
+  payment_method?: string
+}
+
+export interface SaasResourcePackOrderRecord {
+  order_no: string
+  tenant_id?: number
+  resource_pack_code: string
+  resource_pack_name: string
+  resource_type: string
+  quota_amount: number
+  amount_cents: number
+  currency: string
+  payment_method?: string
+  status: string
+  alipay_trade_no?: string
+  paid_at?: string | Date
+  delivered_at?: string | Date
+  create_time?: string | Date
+}
+
+export interface SaasResourcePackOrderListParams {
+  page?: number
+  limit?: number
+  tenant_id?: number | string
+  resource_pack_code?: string
+  resource_type?: string
+  status?: string
+}
+
 export interface TenantUsageQuotaRecord {
   resource_type: string
   quota: number
@@ -191,20 +224,27 @@ export function fetchTenantOrder(orderNo: string) {
   })
 }
 
-export function devConfirmTenantPayment(orderNo: string) {
-  return request.post<SaasOrderRecord>({
+export function devConfirmTenantPayment(orderNo: string, orderType?: 'plan'): Promise<SaasOrderRecord>
+export function devConfirmTenantPayment(
+  orderNo: string,
+  orderType: 'resource_pack'
+): Promise<SaasResourcePackOrderRecord>
+export function devConfirmTenantPayment(orderNo: string, orderType: SaasPaymentOrderType = 'plan') {
+  return request.post<SaasOrderRecord | SaasResourcePackOrderRecord>({
     url: '/api/saas/payment/dev-confirm',
     data: {
-      order_no: orderNo
+      order_no: orderNo,
+      order_type: orderType
     }
   })
 }
 
-export function createAlipayPayment(orderNo: string) {
+export function createAlipayPayment(orderNo: string, orderType: SaasPaymentOrderType = 'plan') {
   return request.post<AlipayPaymentResult>({
     url: '/api/saas/payment/alipay/create',
     data: {
-      order_no: orderNo
+      order_no: orderNo,
+      order_type: orderType
     }
   })
 }
@@ -246,5 +286,25 @@ export function fetchPlatformResourcePacks(params: SaasResourcePackListParams) {
 export function fetchTenantResourcePacks() {
   return request.get<SaasResourcePackRecord[]>({
     url: '/api/saas/tenant/resource-packs'
+  })
+}
+
+export function createTenantResourcePackOrder(params: CreateResourcePackOrderParams) {
+  return request.post<SaasResourcePackOrderRecord>({
+    url: '/api/saas/tenant/resource-pack-orders',
+    data: params
+  })
+}
+
+export function fetchTenantResourcePackOrder(orderNo: string) {
+  return request.get<SaasResourcePackOrderRecord>({
+    url: `/api/saas/tenant/resource-pack-orders/${orderNo}`
+  })
+}
+
+export function fetchPlatformResourcePackOrders(params: SaasResourcePackOrderListParams) {
+  return request.get<SaasPlatformPageResult<SaasResourcePackOrderRecord>>({
+    url: '/api/saas/platform/resource-pack-orders',
+    params
   })
 }

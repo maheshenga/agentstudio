@@ -3,7 +3,7 @@
     <section class="tenant-resource-pack-page__header">
       <div>
         <h1 class="tenant-resource-pack-page__title">资源包</h1>
-        <p class="tenant-resource-pack-page__subtitle">按需查看可购买的额外资源包。</p>
+        <p class="tenant-resource-pack-page__subtitle">按需购买额外资源额度，支付成功后自动发放到当前租户。</p>
       </div>
       <ElButton :loading="loading" @click="loadResourcePacks">刷新</ElButton>
     </section>
@@ -28,29 +28,83 @@
             <p class="tenant-resource-pack-page__pack-type">{{ formatResourceType(pack.resource_type) }}</p>
             <h2 class="tenant-resource-pack-page__pack-name">{{ pack.name }}</h2>
           </div>
-          <ElTag effect="light">即将开放</ElTag>
+          <ElTag effect="light">{{ pack.status === 1 ? '可购买' : '已停用' }}</ElTag>
         </div>
 
         <div class="tenant-resource-pack-page__quota">{{ formatQuota(pack) }}</div>
         <div class="tenant-resource-pack-page__price">{{ formatPrice(pack.price_cents, pack.currency) }}</div>
         <p class="tenant-resource-pack-page__remark">{{ pack.remark || '资源包说明待补充' }}</p>
-        <ElButton type="primary" disabled>即将开放</ElButton>
+        <ElButton
+          type="primary"
+          :loading="creatingPackCode === pack.code"
+          :disabled="pack.status !== 1 || Boolean(currentOrder && currentOrder.status !== 'paid')"
+          @click="createOrder(pack)"
+        >
+          购买
+        </ElButton>
       </article>
+    </section>
+
+    <section v-if="currentOrder" class="tenant-resource-pack-page__order">
+      <div>
+        <h2 class="tenant-resource-pack-page__section-title">当前资源包订单</h2>
+        <p class="tenant-resource-pack-page__order-meta">
+          {{ currentOrder.order_no }} · {{ currentOrder.resource_pack_code }} ·
+          {{ formatPrice(currentOrder.amount_cents, currentOrder.currency) }}
+        </p>
+        <ElTag :type="currentOrder.status === 'paid' ? 'success' : 'warning'" effect="light">
+          {{ currentOrder.status === 'paid' ? '已支付' : '待支付' }}
+        </ElTag>
+      </div>
+      <div class="tenant-resource-pack-page__order-actions">
+        <ElButton
+          type="primary"
+          :disabled="currentOrder.status === 'paid'"
+          :loading="creatingAlipayPayment"
+          @click="startAlipayPayment"
+        >
+          去支付宝支付
+        </ElButton>
+        <ElButton
+          type="success"
+          :disabled="currentOrder.status === 'paid'"
+          :loading="confirmingPayment"
+          @click="confirmDevPayment"
+        >
+          本地模拟支付成功
+        </ElButton>
+        <span v-if="pollingPayment" class="tenant-resource-pack-page__polling">正在同步支付结果...</span>
+      </div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
+  import { ElMessage } from 'element-plus'
   import {
+    createAlipayPayment,
+    createTenantResourcePackOrder,
+    devConfirmTenantPayment,
+    fetchTenantResourcePackOrder,
     fetchTenantResourcePacks,
+    type SaasResourcePackOrderRecord,
     type SaasResourcePackRecord
   } from '@/api/saas'
 
   defineOptions({ name: 'SaasTenantResourcePackPage' })
 
   const records = ref<SaasResourcePackRecord[]>([])
+  const currentOrder = ref<SaasResourcePackOrderRecord | null>(null)
   const loading = ref(false)
+  const creatingPackCode = ref('')
+  const creatingAlipayPayment = ref(false)
+  const confirmingPayment = ref(false)
+  const pollingPayment = ref(false)
   const errorMessage = ref('')
+  let paymentPollingTimer: number | undefined
+  let paymentPollingStartedAt = 0
+  const PAYMENT_POLL_INTERVAL_MS = 5000
+  const PAYMENT_POLL_TIMEOUT_MS = 120000
 
   const resourceLabels: Record<string, string> = {
     ai_calls: 'AI 调用次数',
@@ -71,6 +125,95 @@
       errorMessage.value = '加载资源包失败'
     } finally {
       loading.value = false
+    }
+  }
+
+  async function createOrder(pack: SaasResourcePackRecord) {
+    creatingPackCode.value = pack.code
+    try {
+      currentOrder.value = await createTenantResourcePackOrder({
+        resource_pack_code: pack.code,
+        payment_method: 'alipay'
+      })
+      ElMessage.success('资源包订单已创建')
+    } catch (error) {
+      console.error('[SaasTenantResourcePackPage] create order failed:', error)
+    } finally {
+      creatingPackCode.value = ''
+    }
+  }
+
+  async function startAlipayPayment() {
+    if (!currentOrder.value) return
+    creatingAlipayPayment.value = true
+    try {
+      const result = await createAlipayPayment(currentOrder.value.order_no, 'resource_pack')
+      if (result.configured && result.pay_url) {
+        window.open(result.pay_url, '_blank', 'noopener,noreferrer')
+        startPaymentPolling()
+        ElMessage.success('支付宝支付页面已打开')
+        return
+      }
+      ElMessage.warning(result.message || '支付宝沙箱配置未完成')
+    } catch (error) {
+      console.error('[SaasTenantResourcePackPage] create Alipay payment failed:', error)
+    } finally {
+      creatingAlipayPayment.value = false
+    }
+  }
+
+  async function confirmDevPayment() {
+    if (!currentOrder.value) return
+    confirmingPayment.value = true
+    try {
+      stopPaymentPolling()
+      currentOrder.value = (await devConfirmTenantPayment(
+        currentOrder.value.order_no,
+        'resource_pack'
+      )) as SaasResourcePackOrderRecord
+      ElMessage.success('资源包支付成功，额度已发放')
+      await loadResourcePacks()
+    } catch (error) {
+      console.error('[SaasTenantResourcePackPage] confirm dev payment failed:', error)
+    } finally {
+      confirmingPayment.value = false
+    }
+  }
+
+  function startPaymentPolling() {
+    if (!currentOrder.value || currentOrder.value.status === 'paid' || paymentPollingTimer) return
+    pollingPayment.value = true
+    paymentPollingStartedAt = Date.now()
+    paymentPollingTimer = window.setInterval(() => {
+      pollPaymentStatus()
+    }, PAYMENT_POLL_INTERVAL_MS)
+  }
+
+  function stopPaymentPolling() {
+    if (paymentPollingTimer) {
+      window.clearInterval(paymentPollingTimer)
+      paymentPollingTimer = undefined
+    }
+    pollingPayment.value = false
+    paymentPollingStartedAt = 0
+  }
+
+  async function pollPaymentStatus() {
+    const orderNo = currentOrder.value?.order_no
+    if (!orderNo || Date.now() - paymentPollingStartedAt > PAYMENT_POLL_TIMEOUT_MS) {
+      stopPaymentPolling()
+      return
+    }
+
+    try {
+      const order = await fetchTenantResourcePackOrder(orderNo)
+      currentOrder.value = order
+      if (order.status === 'paid') {
+        stopPaymentPolling()
+        ElMessage.success('资源包支付成功，额度已发放')
+      }
+    } catch (error) {
+      console.error('[SaasTenantResourcePackPage] poll payment status failed:', error)
     }
   }
 
@@ -99,6 +242,10 @@
   onMounted(() => {
     loadResourcePacks()
   })
+
+  onBeforeUnmount(() => {
+    stopPaymentPolling()
+  })
 </script>
 
 <style scoped>
@@ -108,7 +255,8 @@
     gap: 20px;
   }
 
-  .tenant-resource-pack-page__header {
+  .tenant-resource-pack-page__header,
+  .tenant-resource-pack-page__order {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
@@ -116,7 +264,8 @@
   }
 
   .tenant-resource-pack-page__title,
-  .tenant-resource-pack-page__pack-name {
+  .tenant-resource-pack-page__pack-name,
+  .tenant-resource-pack-page__section-title {
     margin: 0;
     line-height: 1.4;
     letter-spacing: 0;
@@ -127,9 +276,16 @@
     font-weight: 600;
   }
 
+  .tenant-resource-pack-page__section-title {
+    font-size: 16px;
+    font-weight: 600;
+  }
+
   .tenant-resource-pack-page__subtitle,
   .tenant-resource-pack-page__pack-type,
-  .tenant-resource-pack-page__remark {
+  .tenant-resource-pack-page__remark,
+  .tenant-resource-pack-page__order-meta,
+  .tenant-resource-pack-page__polling {
     color: var(--el-text-color-secondary);
     font-size: 13px;
     line-height: 1.5;
@@ -137,7 +293,8 @@
 
   .tenant-resource-pack-page__subtitle,
   .tenant-resource-pack-page__pack-type,
-  .tenant-resource-pack-page__remark {
+  .tenant-resource-pack-page__remark,
+  .tenant-resource-pack-page__order-meta {
     margin: 6px 0 0;
   }
 
@@ -154,15 +311,19 @@
     gap: 16px;
   }
 
+  .tenant-resource-pack-page__pack,
+  .tenant-resource-pack-page__order {
+    border: 1px solid var(--el-border-color);
+    border-radius: 8px;
+    background: var(--el-bg-color);
+    padding: 18px;
+  }
+
   .tenant-resource-pack-page__pack {
     display: grid;
     align-content: start;
     gap: 16px;
     min-height: 250px;
-    border: 1px solid var(--el-border-color);
-    border-radius: 8px;
-    background: var(--el-bg-color);
-    padding: 18px;
   }
 
   .tenant-resource-pack-page__pack-header {
@@ -194,9 +355,21 @@
     min-height: 40px;
   }
 
+  .tenant-resource-pack-page__order-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
   @media (max-width: 768px) {
-    .tenant-resource-pack-page__header {
+    .tenant-resource-pack-page__header,
+    .tenant-resource-pack-page__order {
       display: grid;
+    }
+
+    .tenant-resource-pack-page__order-actions {
+      justify-content: flex-start;
     }
   }
 </style>
