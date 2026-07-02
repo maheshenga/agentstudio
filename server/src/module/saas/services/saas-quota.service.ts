@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 
 import { SaasPlanQuotaEntity } from '../entities/saas-plan-quota.entity';
 import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
+import { SAAS_QUOTA_AI_CALLS, SAAS_QUOTA_TOKENS } from '../constants';
 
 @Injectable()
 export class SaasQuotaService {
@@ -69,5 +70,72 @@ export class SaasQuotaService {
       used: Number(item.usedQuota),
       remaining: Math.max(Number(item.totalQuota) - Number(item.usedQuota), 0),
     }));
+  }
+
+  async assertTenantQuotaAvailable(
+    tenantId: number,
+    resourceType: string,
+    amount: number,
+    message = '资源额度不足',
+  ): Promise<void> {
+    const normalizedAmount = Math.max(Number(amount || 0), 0);
+    if (normalizedAmount <= 0) {
+      return;
+    }
+    if (!tenantId) {
+      throw new BadRequestException('缺少租户上下文');
+    }
+
+    const resource = await this.saasTenantResourceRepo.findOne({
+      where: {
+        tenantId,
+        resourceType,
+        status: 1,
+      },
+    });
+
+    if (!resource) {
+      throw new BadRequestException(message);
+    }
+
+    const totalQuota = Number(resource.totalQuota);
+    if (totalQuota <= 0) {
+      return;
+    }
+
+    const usedQuota = Number(resource.usedQuota);
+    if (totalQuota - usedQuota < normalizedAmount) {
+      throw new BadRequestException(message);
+    }
+  }
+
+  async consumeTenantQuota(tenantId: number, resourceType: string, amount: number): Promise<void> {
+    const normalizedAmount = Math.max(Number(amount || 0), 0);
+    if (normalizedAmount <= 0) {
+      return;
+    }
+    if (!tenantId) {
+      throw new BadRequestException('缺少租户上下文');
+    }
+
+    await this.saasTenantResourceRepo.increment(
+      {
+        tenantId,
+        resourceType,
+        status: 1,
+      },
+      'usedQuota',
+      normalizedAmount,
+    );
+  }
+
+  async consumeAiUsage(tenantId: number, usage: { totalTokens?: number }): Promise<void> {
+    const totalTokens = Math.max(Number(usage.totalTokens || 0), 0);
+
+    await this.assertTenantQuotaAvailable(tenantId, SAAS_QUOTA_AI_CALLS, 1, 'AI 调用次数额度不足');
+    await this.assertTenantQuotaAvailable(tenantId, SAAS_QUOTA_TOKENS, totalTokens, 'Token 额度不足');
+
+    await this.consumeTenantQuota(tenantId, SAAS_QUOTA_AI_CALLS, 1);
+    await this.consumeTenantQuota(tenantId, SAAS_QUOTA_TOKENS, totalTokens);
   }
 }
