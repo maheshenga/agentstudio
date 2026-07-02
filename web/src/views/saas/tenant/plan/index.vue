@@ -109,6 +109,7 @@
     createTenantUpgradeOrder,
     devConfirmTenantPayment,
     fetchAlipayConfigStatus,
+    fetchTenantOrder,
     fetchTenantPlans,
     fetchTenantSubscription,
     type AlipayConfigStatus,
@@ -118,6 +119,8 @@
   } from '@/api/saas'
 
   defineOptions({ name: 'SaasTenantPlanPage' })
+
+  const LAST_UPGRADE_ORDER_KEY = 'saas:last-upgrade-order-no'
 
   const subscriptionInfo = ref<TenantSubscriptionSummary | null>(null)
   const alipayConfigStatus = ref<AlipayConfigStatus | null>(null)
@@ -277,6 +280,7 @@
       subscriptionInfo.value = normalizePayload<TenantSubscriptionSummary>(subscriptionPayload)
       plans.value = normalizePayload<SaasPlanOption[]>(planPayload) || []
       alipayConfigStatus.value = normalizePayload<AlipayConfigStatus>(alipayConfigPayload)
+      await restoreLastOrder()
     } catch (error) {
       console.error('[SaasTenantPlanPage] load page data failed:', error)
       errorMessage.value = '加载套餐信息失败'
@@ -297,6 +301,7 @@
         billing_cycle: billingCycle.value,
         payment_method: 'alipay'
       })
+      rememberOrder(currentOrder.value)
       ElMessage.success('升级订单已创建')
     } catch (error) {
       console.error('[SaasTenantPlanPage] create order failed:', error)
@@ -312,6 +317,7 @@
 
     try {
       currentOrder.value = await devConfirmTenantPayment(currentOrder.value.order_no)
+      forgetRememberedOrder(currentOrder.value)
       ElMessage.success('本地模拟支付成功，套餐已更新')
       await loadPageData()
     } catch (error) {
@@ -329,6 +335,7 @@
     try {
       const result = await createAlipayPayment(currentOrder.value.order_no)
       if (result.configured && result.pay_url) {
+        rememberOrder(currentOrder.value)
         window.open(result.pay_url, '_blank', 'noopener,noreferrer')
         ElMessage.success('支付宝支付页面已打开')
         return
@@ -339,6 +346,31 @@
       console.error('[SaasTenantPlanPage] create alipay payment failed:', error)
     } finally {
       creatingAlipayPayment.value = false
+    }
+  }
+
+  async function restoreLastOrder() {
+    const orderNo = currentOrder.value?.order_no || sessionStorage.getItem(LAST_UPGRADE_ORDER_KEY)
+    if (!orderNo) return
+
+    try {
+      const order = await fetchTenantOrder(orderNo)
+      currentOrder.value = order
+      forgetRememberedOrder(order)
+    } catch (error) {
+      sessionStorage.removeItem(LAST_UPGRADE_ORDER_KEY)
+      console.error('[SaasTenantPlanPage] restore last order failed:', error)
+    }
+  }
+
+  function rememberOrder(order: SaasOrderRecord | null) {
+    if (!order?.order_no || order.status === 'paid') return
+    sessionStorage.setItem(LAST_UPGRADE_ORDER_KEY, order.order_no)
+  }
+
+  function forgetRememberedOrder(order: SaasOrderRecord | null) {
+    if (order?.status === 'paid') {
+      sessionStorage.removeItem(LAST_UPGRADE_ORDER_KEY)
     }
   }
 
