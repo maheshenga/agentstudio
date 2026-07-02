@@ -2,8 +2,8 @@
   <div class="art-full-height p-5 tenant-plan-page">
     <section class="tenant-plan-page__header">
       <div>
-        <h1 class="tenant-plan-page__title">租户套餐概览</h1>
-        <p class="tenant-plan-page__subtitle">查看当前订阅，选择套餐并完成本地模拟支付。</p>
+        <h1 class="tenant-plan-page__title">租户套餐</h1>
+        <p class="tenant-plan-page__subtitle">查看当前订阅，选择可用套餐并完成支付。</p>
       </div>
       <ElButton :loading="loading" @click="loadPageData">刷新</ElButton>
     </section>
@@ -29,7 +29,7 @@
 
       <section class="tenant-plan-page__plans">
         <div class="tenant-plan-page__toolbar">
-          <h2 class="tenant-plan-page__section-title">升级套餐</h2>
+          <h2 class="tenant-plan-page__section-title">可用套餐</h2>
           <ElRadioGroup v-model="billingCycle" size="small">
             <ElRadioButton value="monthly">月付</ElRadioButton>
             <ElRadioButton value="yearly">年付</ElRadioButton>
@@ -46,17 +46,21 @@
               <div class="tenant-plan-page__plan-title-row">
                 <h3>{{ plan.name }}</h3>
                 <ElTag v-if="plan.code === currentPlanCode" type="success" effect="light">当前</ElTag>
+                <ElTag v-else-if="plan.code === 'free'" type="info" effect="light">默认</ElTag>
               </div>
               <p class="tenant-plan-page__plan-code">{{ plan.code }}</p>
               <p class="tenant-plan-page__plan-price">{{ formatPlanPrice(plan) }}</p>
+              <ul v-if="plan.quotas?.length" class="tenant-plan-page__quota-list">
+                <li v-for="quota in plan.quotas" :key="quota.quota_type">{{ formatQuotaItem(quota) }}</li>
+              </ul>
             </div>
             <ElButton
               type="primary"
-              :disabled="plan.code === currentPlanCode || getPlanAmount(plan) <= 0"
+              :disabled="isPlanOrderDisabled(plan)"
               :loading="creatingPlanCode === plan.code"
               @click="createOrder(plan)"
             >
-              {{ plan.code === currentPlanCode ? '当前套餐' : '创建升级订单' }}
+              {{ getPlanButtonText(plan) }}
             </ElButton>
           </article>
         </div>
@@ -80,23 +84,12 @@
             <span v-if="pollingPayment">正在同步支付结果...</span>
             <span v-if="!alipayConfigStatus.configured">{{ alipayMissingKeysText }}</span>
           </div>
-          <ElButton
-            type="primary"
-            :disabled="currentOrder.status === 'paid'"
-            :loading="creatingAlipayPayment"
-            @click="startAlipayPayment"
-          >
+          <ElButton type="primary" :disabled="currentOrder.status === 'paid'" :loading="creatingAlipayPayment" @click="startAlipayPayment">
             去支付宝支付
           </ElButton>
-          <ElButton
-            type="success"
-            :disabled="currentOrder.status === 'paid'"
-            :loading="confirmingPayment"
-            @click="confirmDevPayment"
-          >
+          <ElButton type="success" :disabled="currentOrder.status === 'paid'" :loading="confirmingPayment" @click="confirmDevPayment">
             本地模拟支付成功
           </ElButton>
-          <p class="tenant-plan-page__payment-note">支付宝沙箱/正式支付将在接入密钥后启用。</p>
         </div>
       </section>
     </template>
@@ -116,6 +109,7 @@
     type AlipayConfigStatus,
     type SaasOrderRecord,
     type SaasPlanOption,
+    type SaasPlanQuotaRecord,
     type TenantSubscriptionSummary
   } from '@/api/saas'
 
@@ -139,43 +133,14 @@
   let paymentPollingTimer: number | undefined
   let paymentPollingStartedAt = 0
 
-  const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  })
+  const dateFormatter = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
 
-  const currentPlanCode = computed(() =>
-    formatText(pickValue(subscriptionInfo.value, ['current_plan', 'currentPlan']))
-  )
-
-  const currentPlanText = computed(() =>
-    formatText(
-      pickValue(subscriptionInfo.value, ['current_plan', 'currentPlan', 'plan_name', 'planName'])
-    )
-  )
-
-  const trialEndTimeText = computed(() =>
-    formatDateTime(
-      pickValue(subscriptionInfo.value, ['trial_end_time', 'trialEndTime', 'trial_end_at', 'trialEndAt'])
-    )
-  )
-
+  const currentPlanCode = computed(() => formatText(pickValue(subscriptionInfo.value, ['current_plan', 'currentPlan'])))
+  const currentPlanText = computed(() => formatText(pickValue(subscriptionInfo.value, ['plan_name', 'planName', 'current_plan', 'currentPlan'])))
+  const trialEndTimeText = computed(() => formatDateTime(pickValue(subscriptionInfo.value, ['trial_end_time', 'trialEndTime', 'trial_end_at', 'trialEndAt'])))
   const subscriptionStatus = computed(() => {
-    const rawStatus = pickValue(subscriptionInfo.value, [
-      'subscription_status',
-      'subscriptionStatus',
-      'status'
-    ])
-
-    if (rawStatus === undefined) {
-      return { text: '-', type: 'info' as const }
-    }
-
+    const rawStatus = pickValue(subscriptionInfo.value, ['subscription_status', 'subscriptionStatus', 'status'])
+    if (rawStatus === undefined) return { text: '-', type: 'info' as const }
     const normalized = String(rawStatus).trim().toLowerCase()
     const statusMap: Record<string, { text: string; type: 'success' | 'warning' | 'info' | 'danger' }> = {
       active: { text: '正常', type: 'success' },
@@ -191,18 +156,8 @@
       '2': { text: '试用中', type: 'warning' },
       '0': { text: '未开通', type: 'info' }
     }
-
-    return statusMap[normalized] ?? {
-      text: formatText(rawStatus),
-      type:
-        normalized.includes('fail') || normalized.includes('cancel') || normalized.includes('disable')
-          ? 'danger'
-          : normalized.includes('trial') || normalized.includes('pending')
-            ? 'warning'
-            : 'info'
-    }
+    return statusMap[normalized] ?? { text: formatText(rawStatus), type: 'info' }
   })
-
   const subscriptionStatusText = computed(() => subscriptionStatus.value.text)
   const subscriptionTagType = computed(() => subscriptionStatus.value.type)
   const alipayMissingKeysText = computed(() => {
@@ -212,52 +167,31 @@
 
   function pickValue(source: Record<string, any> | null, keys: string[]) {
     if (!source) return undefined
-
     for (const key of keys) {
       const value = source[key]
-      if (value !== undefined && value !== null && value !== '') {
-        return value
-      }
+      if (value !== undefined && value !== null && value !== '') return value
     }
-
     return undefined
   }
 
   function normalizePayload<T>(payload: any): T | null {
     if (!payload) return null
-    if (typeof payload === 'object' && 'data' in payload && payload.data) {
-      return payload.data
-    }
-
+    if (typeof payload === 'object' && 'data' in payload && payload.data) return payload.data
     return payload
   }
 
   function formatText(value: unknown) {
-    if (value === undefined || value === null || value === '') {
-      return '-'
-    }
-
-    return String(value)
+    return value === undefined || value === null || value === '' ? '-' : String(value)
   }
 
   function formatDateTime(value: unknown) {
-    if (value === undefined || value === null || value === '') {
-      return '-'
-    }
-
-    const asDate =
-      value instanceof Date
-        ? value
-        : new Date(typeof value === 'number' ? value : String(value))
-
+    if (value === undefined || value === null || value === '') return '-'
+    const asDate = value instanceof Date ? value : new Date(typeof value === 'number' ? value : String(value))
     return Number.isNaN(asDate.getTime()) ? String(value) : dateFormatter.format(asDate)
   }
 
   function formatMoney(amountCents: number) {
-    return new Intl.NumberFormat('zh-CN', {
-      style: 'currency',
-      currency: 'CNY'
-    }).format((Number(amountCents) || 0) / 100)
+    return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format((Number(amountCents) || 0) / 100)
   }
 
   function getPlanAmount(plan: SaasPlanOption) {
@@ -266,23 +200,32 @@
 
   function formatPlanPrice(plan: SaasPlanOption) {
     const amount = getPlanAmount(plan)
-    if (amount <= 0) {
-      return '免费'
-    }
-
+    if (amount <= 0) return '免费'
     return `${formatMoney(amount)} / ${billingCycle.value === 'yearly' ? '年' : '月'}`
+  }
+
+  function formatQuotaItem(item: SaasPlanQuotaRecord) {
+    const amount = new Intl.NumberFormat('zh-CN').format(Number(item.total_quota) || 0)
+    const labels: Record<string, string> = { users: '用户', storage_mb: '存储 MB', ai_calls: 'AI 调用', rag_documents: '知识库文档', tokens: 'Token' }
+    return `${labels[item.quota_type] || item.quota_type}: ${amount}`
+  }
+
+  function isPlanOrderDisabled(plan: SaasPlanOption) {
+    return plan.code === currentPlanCode.value || plan.code === 'free' || getPlanAmount(plan) <= 0
+  }
+
+  function getPlanButtonText(plan: SaasPlanOption) {
+    if (plan.code === currentPlanCode.value) return '当前套餐'
+    if (plan.code === 'free') return '默认套餐'
+    if (getPlanAmount(plan) <= 0) return '不可购买'
+    return '创建升级订单'
   }
 
   async function loadPageData() {
     loading.value = true
     errorMessage.value = ''
-
     try {
-      const [subscriptionPayload, planPayload, alipayConfigPayload] = await Promise.all([
-        fetchTenantSubscription(),
-        fetchTenantPlans(),
-        fetchAlipayConfigStatus()
-      ])
+      const [subscriptionPayload, planPayload, alipayConfigPayload] = await Promise.all([fetchTenantSubscription(), fetchTenantPlans(), fetchAlipayConfigStatus()])
       subscriptionInfo.value = normalizePayload<TenantSubscriptionSummary>(subscriptionPayload)
       plans.value = normalizePayload<SaasPlanOption[]>(planPayload) || []
       alipayConfigStatus.value = normalizePayload<AlipayConfigStatus>(alipayConfigPayload)
@@ -299,14 +242,10 @@
   }
 
   async function createOrder(plan: SaasPlanOption) {
+    if (isPlanOrderDisabled(plan)) return
     creatingPlanCode.value = plan.code
-
     try {
-      currentOrder.value = await createTenantUpgradeOrder({
-        plan_code: plan.code,
-        billing_cycle: billingCycle.value,
-        payment_method: 'alipay'
-      })
+      currentOrder.value = await createTenantUpgradeOrder({ plan_code: plan.code, billing_cycle: billingCycle.value, payment_method: 'alipay' })
       rememberOrder(currentOrder.value)
       ElMessage.success('升级订单已创建')
     } catch (error) {
@@ -318,9 +257,7 @@
 
   async function confirmDevPayment() {
     if (!currentOrder.value) return
-
     confirmingPayment.value = true
-
     try {
       stopPaymentPolling()
       currentOrder.value = await devConfirmTenantPayment(currentOrder.value.order_no)
@@ -336,9 +273,7 @@
 
   async function startAlipayPayment() {
     if (!currentOrder.value) return
-
     creatingAlipayPayment.value = true
-
     try {
       const result = await createAlipayPayment(currentOrder.value.order_no)
       if (result.configured && result.pay_url) {
@@ -348,8 +283,7 @@
         ElMessage.success('支付宝支付页面已打开')
         return
       }
-
-      ElMessage.warning(result.message || '支付宝沙箱配置未完成')
+      ElMessage.warning(result.message || '支付宝配置未完成')
     } catch (error) {
       console.error('[SaasTenantPlanPage] create alipay payment failed:', error)
     } finally {
@@ -360,14 +294,11 @@
   async function restoreLastOrder() {
     const orderNo = currentOrder.value?.order_no || sessionStorage.getItem(LAST_UPGRADE_ORDER_KEY)
     if (!orderNo) return
-
     try {
       const order = await fetchTenantOrder(orderNo)
       currentOrder.value = order
       forgetRememberedOrder(order)
-      if (order.status !== 'paid' && alipayConfigStatus.value?.configured) {
-        startPaymentPolling()
-      }
+      if (order.status !== 'paid' && alipayConfigStatus.value?.configured) startPaymentPolling()
     } catch (error) {
       sessionStorage.removeItem(LAST_UPGRADE_ORDER_KEY)
       console.error('[SaasTenantPlanPage] restore last order failed:', error)
@@ -380,19 +311,14 @@
   }
 
   function forgetRememberedOrder(order: SaasOrderRecord | null) {
-    if (order?.status === 'paid') {
-      sessionStorage.removeItem(LAST_UPGRADE_ORDER_KEY)
-    }
+    if (order?.status === 'paid') sessionStorage.removeItem(LAST_UPGRADE_ORDER_KEY)
   }
 
   function startPaymentPolling() {
     if (!currentOrder.value || currentOrder.value.status === 'paid' || paymentPollingTimer) return
-
     pollingPayment.value = true
     paymentPollingStartedAt = Date.now()
-    paymentPollingTimer = window.setInterval(() => {
-      pollPaymentStatus()
-    }, PAYMENT_POLL_INTERVAL_MS)
+    paymentPollingTimer = window.setInterval(() => pollPaymentStatus(), PAYMENT_POLL_INTERVAL_MS)
   }
 
   function stopPaymentPolling() {
@@ -406,20 +332,11 @@
 
   async function pollPaymentStatus() {
     const orderNo = currentOrder.value?.order_no
-    if (!orderNo) {
-      stopPaymentPolling()
-      return
-    }
-
-    if (Date.now() - paymentPollingStartedAt > PAYMENT_POLL_TIMEOUT_MS) {
-      stopPaymentPolling()
-      return
-    }
-
+    if (!orderNo) return stopPaymentPolling()
+    if (Date.now() - paymentPollingStartedAt > PAYMENT_POLL_TIMEOUT_MS) return stopPaymentPolling()
     try {
       const order = await fetchTenantOrder(orderNo)
       currentOrder.value = order
-
       if (order.status === 'paid') {
         stopPaymentPolling()
         forgetRememberedOrder(order)
@@ -431,13 +348,8 @@
     }
   }
 
-  onMounted(() => {
-    loadPageData()
-  })
-
-  onBeforeUnmount(() => {
-    stopPaymentPolling()
-  })
+  onMounted(() => loadPageData())
+  onBeforeUnmount(() => stopPaymentPolling())
 </script>
 
 <style scoped>
@@ -471,18 +383,11 @@
 
   .tenant-plan-page__subtitle,
   .tenant-plan-page__plan-code,
-  .tenant-plan-page__order-meta,
-  .tenant-plan-page__payment-note {
+  .tenant-plan-page__order-meta {
+    margin: 6px 0 0;
     color: var(--el-text-color-secondary);
     font-size: 13px;
     line-height: 1.5;
-  }
-
-  .tenant-plan-page__subtitle,
-  .tenant-plan-page__plan-code,
-  .tenant-plan-page__order-meta,
-  .tenant-plan-page__payment-note {
-    margin: 6px 0 0;
   }
 
   .tenant-plan-page__summary,
@@ -494,7 +399,8 @@
     padding: 20px;
   }
 
-  .tenant-plan-page__plans {
+  .tenant-plan-page__plans,
+  .tenant-plan-page__plan-main {
     display: grid;
     gap: 16px;
   }
@@ -506,23 +412,17 @@
 
   .tenant-plan-page__grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 16px;
   }
 
   .tenant-plan-page__plan-card {
     display: grid;
     gap: 18px;
-    min-height: 190px;
+    min-height: 230px;
     border: 1px solid var(--el-border-color);
     border-radius: 8px;
     padding: 18px;
-  }
-
-  .tenant-plan-page__plan-main {
-    display: grid;
-    align-content: start;
-    gap: 8px;
   }
 
   .tenant-plan-page__plan-title-row {
@@ -539,10 +439,20 @@
 
   .tenant-plan-page__plan-price {
     margin: 4px 0 0;
-    font-size: 26px;
+    font-size: 24px;
     font-weight: 700;
     line-height: 1.25;
     letter-spacing: 0;
+  }
+
+  .tenant-plan-page__quota-list {
+    display: grid;
+    gap: 6px;
+    margin: 4px 0 0;
+    padding-left: 18px;
+    color: var(--el-text-color-regular);
+    font-size: 13px;
+    line-height: 1.5;
   }
 
   .tenant-plan-page__state {
@@ -574,11 +484,9 @@
       display: grid;
     }
 
-    .tenant-plan-page__order-actions {
-      justify-items: start;
-    }
-
+    .tenant-plan-page__order-actions,
     .tenant-plan-page__payment-status {
+      justify-items: start;
       justify-content: flex-start;
       text-align: left;
     }
