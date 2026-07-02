@@ -1,15 +1,16 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createVerify } from 'crypto';
+import { createSign, createVerify } from 'crypto';
 
 import { SAAS_ORDER_PENDING, SAAS_PAYMENT_ALIPAY } from '../constants';
 import { SaasOrderService } from './saas-order.service';
 
 const ALIPAY_MISSING_CONFIG_MESSAGE =
   'Alipay sandbox config is missing. Set ALIPAY_APP_ID, ALIPAY_PRIVATE_KEY, ALIPAY_PUBLIC_KEY, ALIPAY_NOTIFY_URL and ALIPAY_RETURN_URL.';
-const ALIPAY_PLACEHOLDER_READY_MESSAGE =
-  'Alipay sandbox payment URL is ready. SDK signing will replace this placeholder before production.';
+const ALIPAY_PAGE_PAY_READY_MESSAGE = 'Alipay page payment URL is ready.';
 const ALIPAY_DEFAULT_GATEWAY = 'https://openapi-sandbox.dl.alipaydev.com/gateway.do';
+const ALIPAY_PAGE_PAY_METHOD = 'alipay.trade.page.pay';
+const ALIPAY_PAGE_PAY_PRODUCT_CODE = 'FAST_INSTANT_TRADE_PAY';
 
 export interface SaasAlipayPaymentResult {
   configured: boolean;
@@ -60,8 +61,12 @@ export class SaasPaymentService {
       configured: true,
       provider: SAAS_PAYMENT_ALIPAY,
       order_no: order.orderNo,
-      pay_url: this.buildPlaceholderPayUrl(config, order.orderNo),
-      message: ALIPAY_PLACEHOLDER_READY_MESSAGE,
+      pay_url: this.buildSignedPagePayUrl(config, {
+        orderNo: order.orderNo,
+        amountCents: order.amountCents,
+        planCode: order.planCode,
+      }),
+      message: ALIPAY_PAGE_PAY_READY_MESSAGE,
     };
   }
 
@@ -108,16 +113,39 @@ export class SaasPaymentService {
     );
   }
 
-  private buildPlaceholderPayUrl(config: AlipayConfig, orderNo: string): string {
+  private buildSignedPagePayUrl(
+    config: AlipayConfig,
+    order: {
+      orderNo: string;
+      amountCents: number;
+      planCode: string;
+    },
+  ): string {
+    const params: Record<string, string> = {
+      app_id: config.appId,
+      method: ALIPAY_PAGE_PAY_METHOD,
+      format: 'JSON',
+      charset: 'utf-8',
+      sign_type: 'RSA2',
+      timestamp: this.formatAlipayTimestamp(new Date()),
+      version: '1.0',
+      notify_url: config.notifyUrl,
+      return_url: config.returnUrl,
+      biz_content: JSON.stringify({
+        out_trade_no: order.orderNo,
+        total_amount: this.formatAmountYuan(order.amountCents),
+        subject: `SaaS plan ${order.planCode}`,
+        product_code: ALIPAY_PAGE_PAY_PRODUCT_CODE,
+      }),
+    };
+    params.sign = createSign('RSA-SHA256')
+      .update(this.buildAlipaySignContent(params), 'utf8')
+      .sign(this.normalizePrivateKey(config.privateKey), 'base64');
+
     const url = new URL(config.gatewayUrl);
-    url.searchParams.set('app_id', config.appId);
-    url.searchParams.set('method', 'alipay.trade.page.pay');
-    url.searchParams.set('charset', 'utf-8');
-    url.searchParams.set('sign_type', 'RSA2');
-    url.searchParams.set('product_code', 'FAST_INSTANT_TRADE_PAY');
-    url.searchParams.set('out_trade_no', orderNo);
-    url.searchParams.set('notify_url', config.notifyUrl);
-    url.searchParams.set('return_url', config.returnUrl);
+    Object.entries(params).forEach(([key, value]) => {
+      url.searchParams.set(key, value);
+    });
     return url.toString();
   }
 
@@ -138,5 +166,37 @@ export class SaasPaymentService {
     const compact = trimmed.replace(/\s+/g, '');
     const lines = compact.match(/.{1,64}/g) || [];
     return ['-----BEGIN PUBLIC KEY-----', ...lines, '-----END PUBLIC KEY-----'].join('\n');
+  }
+
+  private normalizePrivateKey(privateKey: string): string {
+    const trimmed = privateKey.trim().replace(/\\n/g, '\n');
+    if (trimmed.includes('BEGIN PRIVATE KEY')) {
+      return trimmed;
+    }
+
+    const compact = trimmed.replace(/\s+/g, '');
+    const lines = compact.match(/.{1,64}/g) || [];
+    return ['-----BEGIN PRIVATE KEY-----', ...lines, '-----END PRIVATE KEY-----'].join('\n');
+  }
+
+  private formatAmountYuan(amountCents: number): string {
+    return ((Number(amountCents) || 0) / 100).toFixed(2);
+  }
+
+  private formatAlipayTimestamp(date: Date): string {
+    const pad = (value: number) => String(value).padStart(2, '0');
+    return [
+      date.getFullYear(),
+      '-',
+      pad(date.getMonth() + 1),
+      '-',
+      pad(date.getDate()),
+      ' ',
+      pad(date.getHours()),
+      ':',
+      pad(date.getMinutes()),
+      ':',
+      pad(date.getSeconds()),
+    ].join('');
   }
 }

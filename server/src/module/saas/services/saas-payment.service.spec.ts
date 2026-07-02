@@ -1,6 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createSign, generateKeyPairSync } from 'crypto';
+import { createSign, createVerify, generateKeyPairSync } from 'crypto';
 
 import { SAAS_ORDER_PAID, SAAS_ORDER_PENDING } from '../constants';
 import { SaasOrderService } from './saas-order.service';
@@ -48,18 +48,23 @@ describe('SaasPaymentService', () => {
     });
   });
 
-  it('returns a deterministic sandbox payment URL when Alipay config is complete', async () => {
+  it('returns a signed Alipay page payment URL when config is complete', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+    });
     saasOrderService.findTenantOrder.mockResolvedValue({
       orderNo: 'SO20260702000000001000002',
       tenantId: 12,
       status: SAAS_ORDER_PENDING,
+      planCode: 'pro',
+      amountCents: 99000,
     });
     configService.get.mockImplementation((key: string) => {
       const values: Record<string, string | boolean> = {
         'payment.alipay.enabled': true,
         'payment.alipay.appId': '2026070200000001',
-        'payment.alipay.privateKey': 'private-key',
-        'payment.alipay.publicKey': 'public-key',
+        'payment.alipay.privateKey': privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+        'payment.alipay.publicKey': publicKey.export({ type: 'spki', format: 'pem' }).toString(),
         'payment.alipay.notifyUrl': 'http://127.0.0.1:8181/api/saas/payment/alipay/notify',
         'payment.alipay.returnUrl': 'http://127.0.0.1:5731/#/tenant-saas/plan',
         'payment.alipay.gatewayUrl': 'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
@@ -72,10 +77,30 @@ describe('SaasPaymentService', () => {
     expect(result.configured).toBe(true);
     expect(result.provider).toBe('alipay');
     expect(result.order_no).toBe('SO20260702000000001000002');
-    expect(result.pay_url).toContain('https://openapi-sandbox.dl.alipaydev.com/gateway.do?');
-    expect(result.pay_url).toContain('app_id=2026070200000001');
-    expect(result.pay_url).toContain('out_trade_no=SO20260702000000001000002');
-    expect(result.message).toBe('Alipay sandbox payment URL is ready. SDK signing will replace this placeholder before production.');
+    expect(result.message).toBe('Alipay page payment URL is ready.');
+
+    const payUrl = new URL(result.pay_url || '');
+    const params = Object.fromEntries(payUrl.searchParams.entries());
+    const sign = params.sign;
+    expect(payUrl.origin + payUrl.pathname).toBe('https://openapi-sandbox.dl.alipaydev.com/gateway.do');
+    expect(params.app_id).toBe('2026070200000001');
+    expect(params.method).toBe('alipay.trade.page.pay');
+    expect(params.sign_type).toBe('RSA2');
+    expect(params.notify_url).toBe('http://127.0.0.1:8181/api/saas/payment/alipay/notify');
+    expect(params.return_url).toBe('http://127.0.0.1:5731/#/tenant-saas/plan');
+
+    const bizContent = JSON.parse(params.biz_content);
+    expect(bizContent).toEqual({
+      out_trade_no: 'SO20260702000000001000002',
+      total_amount: '990.00',
+      subject: 'SaaS plan pro',
+      product_code: 'FAST_INSTANT_TRADE_PAY',
+    });
+    expect(
+      createVerify('RSA-SHA256')
+        .update(buildAlipaySignContent(params), 'utf8')
+        .verify(publicKey, sign, 'base64'),
+    ).toBe(true);
   });
 
   it('rejects payment initiation for missing orders', async () => {
