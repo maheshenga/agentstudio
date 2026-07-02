@@ -217,4 +217,63 @@ describe('SaasResourcePackOrderService', () => {
       take: 10,
     });
   });
+
+  it('lists tenant resource pack orders scoped to the current tenant', async () => {
+    orderRepo.findAndCount.mockResolvedValue([
+      [{ orderNo: 'RPO20260703120000001000001', tenantId: 12, resourcePackCode: 'tokens_1m', status: 'pending' }],
+      1,
+    ]);
+
+    await expect(
+      service.listTenantOrders(12, {
+        page: '1',
+        limit: '20',
+        status: 'pending',
+        resource_pack_code: 'tokens_1m',
+      }),
+    ).resolves.toMatchObject({ total: 1, page: 1, limit: 20 });
+
+    expect(orderRepo.findAndCount).toHaveBeenCalledWith({
+      where: {
+        tenantId: 12,
+        resourcePackCode: 'tokens_1m',
+        status: 'pending',
+      },
+      order: { createTime: 'DESC', id: 'DESC' },
+      skip: 0,
+      take: 20,
+    });
+  });
+
+  it('filters platform resource pack orders by order number', async () => {
+    orderRepo.findAndCount.mockResolvedValue([
+      [{ orderNo: 'RPO20260703120000001000001', tenantId: 12 }],
+      1,
+    ]);
+
+    await service.listPlatformOrders({ order_no: 'RPO20260703120000001000001' });
+
+    expect(orderRepo.findAndCount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { orderNo: 'RPO20260703120000001000001' },
+      }),
+    );
+  });
+
+  it('finds a platform resource pack order by order number', async () => {
+    orderRepo.findOne.mockResolvedValue({
+      orderNo: 'RPO20260703120000001000001',
+      tenantId: 12,
+      resourcePackCode: 'tokens_1m',
+    });
+
+    await expect(service.findPlatformOrder('RPO20260703120000001000001')).resolves.toMatchObject({
+      order_no: 'RPO20260703120000001000001',
+      tenant_id: 12,
+    });
+
+    expect(orderRepo.findOne).toHaveBeenCalledWith({
+      where: { orderNo: 'RPO20260703120000001000001' },
+    });
+  });
 });

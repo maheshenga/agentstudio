@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -13,7 +13,7 @@ import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
 import { SaasTrialEntity } from './entities/saas-trial.entity';
 import { SaasOrderService } from './services/saas-order.service';
 import { SaasQuotaService } from './services/saas-quota.service';
-import { SaasResourcePackOrderService } from './services/saas-resource-pack-order.service';
+import { SaasResourcePackOrderListQuery, SaasResourcePackOrderService } from './services/saas-resource-pack-order.service';
 import { SaasResourcePackService } from './services/saas-resource-pack.service';
 
 @ApiTags('SaaS Tenant')
@@ -98,6 +98,17 @@ export class SaasTenantController {
         await this.saasResourcePackOrderService.createTenantOrder(tenantId, body),
       ),
     );
+  }
+
+  @Get('resource-pack-orders')
+  @ApiOperation({ summary: 'List current tenant SaaS resource pack orders' })
+  async resourcePackOrders(@Query() query: SaasResourcePackOrderListQuery) {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    return ResultData.ok(await this.saasResourcePackOrderService.listTenantOrders(tenantId, query));
   }
 
   @Get('resource-pack-orders/:order_no')

@@ -41,6 +41,7 @@ describe('SaasTenantController', () => {
   const saasResourcePackOrderService = {
     createTenantOrder: jest.fn(),
     findTenantOrder: jest.fn(),
+    listTenantOrders: jest.fn(),
     toResponse: jest.fn((order) => ({
       order_no: order.orderNo,
       resource_pack_code: order.resourcePackCode,
@@ -296,6 +297,26 @@ describe('SaasTenantController', () => {
       order_no: 'RPO20260703120000001000001',
       resource_pack_code: 'tokens_1m',
       status: 'paid',
+    });
+  });
+
+  it('lists tenant resource pack orders in tenant context', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
+    saasResourcePackOrderService.listTenantOrders.mockResolvedValue({
+      list: [{ order_no: 'RPO20260703120000001000001' }],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+
+    const result = await controller.resourcePackOrders({ status: 'pending' });
+
+    expect(saasResourcePackOrderService.listTenantOrders).toHaveBeenCalledWith(88, { status: 'pending' });
+    expect(result.data).toEqual({
+      list: [{ order_no: 'RPO20260703120000001000001' }],
+      total: 1,
+      page: 1,
+      limit: 20,
     });
   });
 });

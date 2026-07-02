@@ -116,6 +116,10 @@ export class SaasPlatformService {
     return this.resourcePackOrderService.listPlatformOrders(query);
   }
 
+  findResourcePackOrder(orderNo: string) {
+    return this.resourcePackOrderService.findPlatformOrder(orderNo);
+  }
+
   private resolvePagination(query: SaasPlatformListQuery) {
     const page = Math.max(1, Number(query.page || 1));
     const limit = Math.min(100, Math.max(1, Number(query.limit || 20)));

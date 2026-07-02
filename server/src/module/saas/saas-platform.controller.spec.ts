@@ -15,6 +15,7 @@ describe('SaasPlatformController', () => {
     listSubscriptions: jest.fn(),
     listResourcePacks: jest.fn(),
     listResourcePackOrders: jest.fn(),
+    findResourcePackOrder: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -111,5 +112,14 @@ describe('SaasPlatformController', () => {
       page: 1,
       limit: 20,
     });
+  });
+
+  it('returns platform SaaS resource pack order detail outside tenant scope', async () => {
+    platformService.findResourcePackOrder.mockResolvedValue({ order_no: 'RPO1' });
+
+    const result = await controller.getResourcePackOrder('RPO1', { userId: 1 } as any);
+
+    expect(platformService.findResourcePackOrder).toHaveBeenCalledWith('RPO1');
+    expect(result.data).toEqual({ order_no: 'RPO1' });
   });
 });

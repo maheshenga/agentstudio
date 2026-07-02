@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -94,6 +94,21 @@ export class SaasPlatformController {
         ignoreTenant: true,
       },
       () => this.platformService.listResourcePackOrders(query).then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Get('resource-pack-orders/:order_no')
+  @ApiOperation({ summary: 'Get SaaS resource pack order detail' })
+  @RequirePermission('saas:resource-pack-order:list')
+  getResourcePackOrder(@Param('order_no') orderNo: string, @User() user: UserDto) {
+    return TenantContext.run(
+      {
+        tenantId: undefined,
+        userId: user?.userId,
+        ignoreAudit: false,
+        ignoreTenant: true,
+      },
+      () => this.platformService.findResourcePackOrder(orderNo).then((data) => ResultData.ok(data)),
     );
   }
 }

@@ -12,6 +12,7 @@ export interface SaasResourcePackOrderListQuery {
   page?: string | number;
   limit?: string | number;
   tenant_id?: string | number;
+  order_no?: string;
   resource_pack_code?: string;
   resource_type?: string;
   status?: string;
@@ -65,6 +66,26 @@ export class SaasResourcePackOrderService {
     });
   }
 
+  async listTenantOrders(tenantId: number, query: SaasResourcePackOrderListQuery = {}) {
+    const { page, limit, skip } = this.resolvePagination(query);
+    const where: FindOptionsWhere<SaasResourcePackOrderEntity> = { tenantId };
+    if (query.resource_pack_code) {
+      where.resourcePackCode = query.resource_pack_code;
+    }
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    const [list, total] = await this.resourcePackOrderRepo.findAndCount({
+      where,
+      order: { createTime: 'DESC', id: 'DESC' },
+      skip,
+      take: limit,
+    });
+
+    return { list: list.map((order) => this.toResponse(order)), total, page, limit };
+  }
+
   async confirmDevPayment(tenantId: number, orderNo: string): Promise<SaasResourcePackOrderEntity> {
     return this.confirmPaidOrder({
       where: { tenantId, orderNo },
@@ -86,6 +107,9 @@ export class SaasResourcePackOrderService {
     if (tenantId !== undefined) {
       where.tenantId = tenantId;
     }
+    if (query.order_no) {
+      where.orderNo = query.order_no;
+    }
     if (query.resource_pack_code) {
       where.resourcePackCode = query.resource_pack_code;
     }
@@ -104,6 +128,11 @@ export class SaasResourcePackOrderService {
     });
 
     return { list: list.map((order) => this.toResponse(order)), total, page, limit };
+  }
+
+  async findPlatformOrder(orderNo: string) {
+    const order = await this.resourcePackOrderRepo.findOne({ where: { orderNo } });
+    return order ? this.toResponse(order) : null;
   }
 
   toResponse(order: Partial<SaasResourcePackOrderEntity>) {

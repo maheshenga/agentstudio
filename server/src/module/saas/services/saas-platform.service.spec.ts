@@ -21,6 +21,7 @@ describe('SaasPlatformService', () => {
   };
   const resourcePackOrderService = {
     listPlatformOrders: jest.fn(),
+    findPlatformOrder: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -210,5 +211,12 @@ describe('SaasPlatformService', () => {
       limit: 20,
     });
     expect(resourcePackOrderService.listPlatformOrders).toHaveBeenCalledWith({ status: 'paid' });
+  });
+
+  it('delegates platform resource pack order detail lookup', async () => {
+    resourcePackOrderService.findPlatformOrder.mockResolvedValue({ order_no: 'RPO1' });
+
+    await expect(service.findResourcePackOrder('RPO1')).resolves.toEqual({ order_no: 'RPO1' });
+    expect(resourcePackOrderService.findPlatformOrder).toHaveBeenCalledWith('RPO1');
   });
 });
