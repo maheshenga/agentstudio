@@ -45,29 +45,21 @@ export class SaasPaymentController {
   @Post('alipay/notify')
   @ApiOperation({ summary: 'Handle Alipay notify endpoint' })
   async alipayNotify(@Body() body: Record<string, any>) {
-    const tradeStatus = String(body.trade_status || '');
-    if (!ALIPAY_PAID_TRADE_STATUSES.has(tradeStatus)) {
-      return ResultData.ok({
-        received: true,
-        provider: 'alipay',
-        processed: false,
-        trade_status: tradeStatus,
-      });
+    if (!this.saasPaymentService.verifyAlipayNotify(body)) {
+      return 'fail';
     }
 
-    const order = await this.saasOrderService.confirmAlipayPayment(
-      String(body.out_trade_no || ''),
-      String(body.trade_no || ''),
-    );
+    const tradeStatus = String(body.trade_status || '');
+    if (!ALIPAY_PAID_TRADE_STATUSES.has(tradeStatus)) {
+      return 'success';
+    }
 
-    return ResultData.ok({
-      received: true,
-      provider: 'alipay',
-      processed: true,
-      order_no: order.orderNo,
-      status: order.status,
-      alipay_trade_no: order.alipayTradeNo,
-    });
+    try {
+      await this.saasOrderService.confirmAlipayPayment(String(body.out_trade_no || ''), String(body.trade_no || ''));
+      return 'success';
+    } catch {
+      return 'fail';
+    }
   }
 
   private toOrderResponse(order: Partial<SaasOrderEntity>) {

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { createVerify } from 'crypto';
 
 import { SAAS_ORDER_PENDING, SAAS_PAYMENT_ALIPAY } from '../constants';
 import { SaasOrderService } from './saas-order.service';
@@ -64,6 +65,25 @@ export class SaasPaymentService {
     };
   }
 
+  verifyAlipayNotify(body: Record<string, any>): boolean {
+    const sign = String(body.sign || '');
+    const publicKey = this.configService.get<string>('payment.alipay.publicKey') || '';
+    if (!sign || !publicKey) {
+      return false;
+    }
+
+    const signType = String(body.sign_type || 'RSA2').toUpperCase();
+    const algorithm = signType === 'RSA' ? 'RSA-SHA1' : 'RSA-SHA256';
+    const signContent = this.buildAlipaySignContent(body);
+    const normalizedPublicKey = this.normalizePublicKey(publicKey);
+
+    try {
+      return createVerify(algorithm).update(signContent, 'utf8').verify(normalizedPublicKey, sign, 'base64');
+    } catch {
+      return false;
+    }
+  }
+
   private getAlipayConfig(): AlipayConfig {
     return {
       enabled: this.configService.get<boolean>('payment.alipay.enabled') === true,
@@ -99,5 +119,24 @@ export class SaasPaymentService {
     url.searchParams.set('notify_url', config.notifyUrl);
     url.searchParams.set('return_url', config.returnUrl);
     return url.toString();
+  }
+
+  private buildAlipaySignContent(body: Record<string, any>): string {
+    return Object.keys(body)
+      .filter((key) => key !== 'sign' && key !== 'sign_type' && body[key] !== undefined && body[key] !== null && body[key] !== '')
+      .sort()
+      .map((key) => `${key}=${body[key]}`)
+      .join('&');
+  }
+
+  private normalizePublicKey(publicKey: string): string {
+    const trimmed = publicKey.trim().replace(/\\n/g, '\n');
+    if (trimmed.includes('BEGIN PUBLIC KEY')) {
+      return trimmed;
+    }
+
+    const compact = trimmed.replace(/\s+/g, '');
+    const lines = compact.match(/.{1,64}/g) || [];
+    return ['-----BEGIN PUBLIC KEY-----', ...lines, '-----END PUBLIC KEY-----'].join('\n');
   }
 }

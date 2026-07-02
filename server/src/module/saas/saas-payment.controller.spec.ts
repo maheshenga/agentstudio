@@ -14,6 +14,7 @@ describe('SaasPaymentController', () => {
   };
   const saasPaymentService = {
     createAlipayPayment: jest.fn(),
+    verifyAlipayNotify: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -69,6 +70,7 @@ describe('SaasPaymentController', () => {
   });
 
   it('confirms an order when Alipay notifies trade success', async () => {
+    saasPaymentService.verifyAlipayNotify.mockReturnValue(true);
     saasOrderService.confirmAlipayPayment.mockResolvedValue({
       orderNo: 'SO20260702000000001000001',
       status: 'paid',
@@ -81,21 +83,21 @@ describe('SaasPaymentController', () => {
       trade_status: 'TRADE_SUCCESS',
     });
 
+    expect(result).toBe('success');
+    expect(saasPaymentService.verifyAlipayNotify).toHaveBeenCalledWith({
+      out_trade_no: 'SO20260702000000001000001',
+      trade_no: '2026070222000000000001',
+      trade_status: 'TRADE_SUCCESS',
+    });
     expect(saasOrderService.confirmAlipayPayment).toHaveBeenCalledWith(
       'SO20260702000000001000001',
       '2026070222000000000001',
     );
-    expect(result.data).toEqual({
-      received: true,
-      provider: 'alipay',
-      processed: true,
-      order_no: 'SO20260702000000001000001',
-      status: 'paid',
-      alipay_trade_no: '2026070222000000000001',
-    });
   });
 
   it('ignores non-success Alipay notifications without mutating orders', async () => {
+    saasPaymentService.verifyAlipayNotify.mockReturnValue(true);
+
     const result = await controller.alipayNotify({
       out_trade_no: 'SO20260702000000001000001',
       trade_no: '2026070222000000000001',
@@ -103,12 +105,20 @@ describe('SaasPaymentController', () => {
     });
 
     expect(saasOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
-    expect(result.data).toEqual({
-      received: true,
-      provider: 'alipay',
-      processed: false,
-      trade_status: 'WAIT_BUYER_PAY',
+    expect(result).toBe('success');
+  });
+
+  it('rejects Alipay notifications that fail signature verification', async () => {
+    saasPaymentService.verifyAlipayNotify.mockReturnValue(false);
+
+    const result = await controller.alipayNotify({
+      out_trade_no: 'SO20260702000000001000001',
+      trade_no: '2026070222000000000001',
+      trade_status: 'TRADE_SUCCESS',
     });
+
+    expect(saasOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
+    expect(result).toBe('fail');
   });
 
   it('creates an Alipay payment in tenant context', async () => {

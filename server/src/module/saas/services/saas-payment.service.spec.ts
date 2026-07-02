@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { createSign, generateKeyPairSync } from 'crypto';
 
 import { SAAS_ORDER_PAID, SAAS_ORDER_PENDING } from '../constants';
 import { SaasOrderService } from './saas-order.service';
@@ -94,4 +95,48 @@ describe('SaasPaymentService', () => {
       BadRequestException,
     );
   });
+
+  it('verifies a valid RSA2 Alipay notify signature', () => {
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+    });
+    const body = {
+      app_id: '2026070200000001',
+      out_trade_no: 'SO20260702000000001000001',
+      trade_no: '2026070222000000000001',
+      trade_status: 'TRADE_SUCCESS',
+      total_amount: '990.00',
+      sign_type: 'RSA2',
+    };
+    const signContent = buildAlipaySignContent(body);
+    const sign = createSign('RSA-SHA256').update(signContent, 'utf8').sign(privateKey, 'base64');
+
+    configService.get.mockImplementation((key: string) => {
+      if (key === 'payment.alipay.publicKey') {
+        return publicKey.export({ type: 'spki', format: 'pem' }).toString();
+      }
+      return '';
+    });
+
+    expect(service.verifyAlipayNotify({ ...body, sign })).toBe(true);
+  });
+
+  it('rejects Alipay notify payloads without a usable signature', () => {
+    configService.get.mockReturnValue('');
+
+    expect(
+      service.verifyAlipayNotify({
+        out_trade_no: 'SO20260702000000001000001',
+        trade_status: 'TRADE_SUCCESS',
+      }),
+    ).toBe(false);
+  });
 });
+
+function buildAlipaySignContent(body: Record<string, string>) {
+  return Object.keys(body)
+    .filter((key) => key !== 'sign' && key !== 'sign_type' && body[key] !== undefined && body[key] !== '')
+    .sort()
+    .map((key) => `${key}=${body[key]}`)
+    .join('&');
+}
