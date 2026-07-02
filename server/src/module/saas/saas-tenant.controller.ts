@@ -1,13 +1,16 @@
-import { Controller, Get } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { ResultData } from '../../common/utils/result';
 import { getTenantId } from '../../common/utils/tenant.util';
+import { CreateUpgradeOrderDto } from './dto/create-upgrade-order.dto';
+import { SaasOrderEntity } from './entities/saas-order.entity';
 import { SaasPlanEntity } from './entities/saas-plan.entity';
 import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
 import { SaasTrialEntity } from './entities/saas-trial.entity';
+import { SaasOrderService } from './services/saas-order.service';
 import { SaasQuotaService } from './services/saas-quota.service';
 
 @ApiTags('SaaS Tenant')
@@ -22,7 +25,38 @@ export class SaasTenantController {
     @InjectRepository(SaasTrialEntity)
     private readonly saasTrialRepo: Repository<SaasTrialEntity>,
     private readonly saasQuotaService: SaasQuotaService,
+    private readonly saasOrderService: SaasOrderService,
   ) {}
+
+  @Get('plans')
+  @ApiOperation({ summary: 'Get active SaaS plans for tenant upgrades' })
+  async plans() {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    const plans = await this.saasPlanRepo.find({
+      where: {
+        status: 1,
+      },
+      order: {
+        sort: 'ASC',
+        id: 'ASC',
+      },
+    });
+
+    return ResultData.ok(
+      plans.map((plan) => ({
+        id: plan.id,
+        code: plan.code,
+        name: plan.name,
+        billing_cycle: plan.billingCycle,
+        price_monthly: Number(plan.priceMonthly) || 0,
+        price_yearly: Number(plan.priceYearly) || 0,
+      })),
+    );
+  }
 
   @Get('usage')
   @ApiOperation({ summary: 'Get current tenant SaaS usage' })
@@ -86,5 +120,40 @@ export class SaasTenantController {
       trial_end_time: trial?.endTime ?? null,
       is_trial_active: Boolean(trial && trial.status === 'trialing' && (!trial.endTime || trial.endTime.getTime() >= Date.now())),
     });
+  }
+
+  @Post('orders')
+  @ApiOperation({ summary: 'Create a tenant SaaS upgrade order' })
+  async createOrder(@Body() body: CreateUpgradeOrderDto) {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    return ResultData.ok(this.toOrderResponse(await this.saasOrderService.createUpgradeOrder(tenantId, body)));
+  }
+
+  @Get('orders/:order_no')
+  @ApiOperation({ summary: 'Get a tenant SaaS order' })
+  async order(@Param('order_no') orderNo: string) {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    const order = await this.saasOrderService.findTenantOrder(tenantId, orderNo);
+    return ResultData.ok(order ? this.toOrderResponse(order) : null);
+  }
+
+  private toOrderResponse(order: Partial<SaasOrderEntity>) {
+    return {
+      order_no: order.orderNo,
+      plan_code: order.planCode,
+      amount_cents: order.amountCents,
+      status: order.status,
+      payment_method: order.paymentMethod,
+      alipay_trade_no: order.alipayTradeNo,
+      paid_at: order.paidAt,
+    };
   }
 }

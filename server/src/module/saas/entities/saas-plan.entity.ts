@@ -14,6 +14,12 @@ export class SaasPlanEntity {
   @Column({ type: 'varchar', name: 'billing_cycle', length: 20, default: 'monthly' })
   billingCycle: string;
 
+  @Column({ type: 'int', name: 'price_monthly', default: 0 })
+  priceMonthly: number;
+
+  @Column({ type: 'int', name: 'price_yearly', default: 0 })
+  priceYearly: number;
+
   @Column({ type: 'tinyint', name: 'status', default: 1 })
   status: number;
 

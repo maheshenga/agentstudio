@@ -1,69 +1,114 @@
 <template>
-  <div class="art-full-height p-5">
-    <ElCard shadow="never" class="tenant-plan-page">
-      <template #header>
-        <div class="tenant-plan-page__header">
-          <div>
-            <h1 class="tenant-plan-page__title">租户套餐概览</h1>
-            <p class="tenant-plan-page__subtitle">查看当前套餐、试用到期时间和订阅状态。</p>
-          </div>
-          <ElButton :loading="loading" @click="loadSubscription">刷新</ElButton>
-        </div>
+  <div class="art-full-height p-5 tenant-plan-page">
+    <section class="tenant-plan-page__header">
+      <div>
+        <h1 class="tenant-plan-page__title">租户套餐概览</h1>
+        <p class="tenant-plan-page__subtitle">查看当前订阅，选择套餐并完成本地模拟支付。</p>
+      </div>
+      <ElButton :loading="loading" @click="loadPageData">刷新</ElButton>
+    </section>
+
+    <ElSkeleton v-if="loading && !subscriptionInfo" animated :rows="6" />
+
+    <ElResult v-else-if="errorMessage" icon="error" :title="errorMessage" sub-title="请稍后重试。">
+      <template #extra>
+        <ElButton type="primary" :loading="loading" @click="loadPageData">重试</ElButton>
       </template>
+    </ElResult>
 
-      <div v-if="loading" class="tenant-plan-page__state">
-        <ElSkeleton animated :rows="4" />
-      </div>
-
-      <ElResult
-        v-else-if="errorMessage"
-        icon="error"
-        :title="errorMessage"
-        sub-title="请稍后重试。"
-      >
-        <template #extra>
-          <ElButton type="primary" :loading="loading" @click="loadSubscription">重试</ElButton>
-        </template>
-      </ElResult>
-
-      <div v-else-if="!subscriptionInfo" class="tenant-plan-page__state">
-        <ElEmpty description="暂无订阅信息" />
-        <ElButton type="primary" :loading="loading" @click="loadSubscription">刷新</ElButton>
-      </div>
-
-      <div v-else class="tenant-plan-page__content">
+    <template v-else>
+      <section v-if="subscriptionInfo" class="tenant-plan-page__summary">
         <ElDescriptions :column="1" border>
-          <ElDescriptionsItem label="当前套餐">
-            {{ currentPlanText }}
-          </ElDescriptionsItem>
-          <ElDescriptionsItem label="试用结束时间">
-            {{ trialEndTimeText }}
-          </ElDescriptionsItem>
+          <ElDescriptionsItem label="当前套餐">{{ currentPlanText }}</ElDescriptionsItem>
+          <ElDescriptionsItem label="试用结束时间">{{ trialEndTimeText }}</ElDescriptionsItem>
           <ElDescriptionsItem label="订阅状态">
-            <ElTag :type="subscriptionTagType" effect="light">
-              {{ subscriptionStatusText }}
-            </ElTag>
+            <ElTag :type="subscriptionTagType" effect="light">{{ subscriptionStatusText }}</ElTag>
           </ElDescriptionsItem>
         </ElDescriptions>
+      </section>
 
-        <div class="tenant-plan-page__actions">
-          <ElButton type="primary" disabled>
-            {{ disabledUpgradeText }}
-          </ElButton>
+      <section class="tenant-plan-page__plans">
+        <div class="tenant-plan-page__toolbar">
+          <h2 class="tenant-plan-page__section-title">升级套餐</h2>
+          <ElRadioGroup v-model="billingCycle" size="small">
+            <ElRadioButton value="monthly">月付</ElRadioButton>
+            <ElRadioButton value="yearly">年付</ElRadioButton>
+          </ElRadioGroup>
         </div>
-      </div>
-    </ElCard>
+
+        <div v-if="!plans.length" class="tenant-plan-page__state">
+          <ElEmpty description="暂无可用套餐" />
+        </div>
+
+        <div v-else class="tenant-plan-page__grid">
+          <article v-for="plan in plans" :key="plan.code" class="tenant-plan-page__plan-card">
+            <div class="tenant-plan-page__plan-main">
+              <div class="tenant-plan-page__plan-title-row">
+                <h3>{{ plan.name }}</h3>
+                <ElTag v-if="plan.code === currentPlanCode" type="success" effect="light">当前</ElTag>
+              </div>
+              <p class="tenant-plan-page__plan-code">{{ plan.code }}</p>
+              <p class="tenant-plan-page__plan-price">{{ formatPlanPrice(plan) }}</p>
+            </div>
+            <ElButton
+              type="primary"
+              :disabled="plan.code === currentPlanCode || getPlanAmount(plan) <= 0"
+              :loading="creatingPlanCode === plan.code"
+              @click="createOrder(plan)"
+            >
+              {{ plan.code === currentPlanCode ? '当前套餐' : '创建升级订单' }}
+            </ElButton>
+          </article>
+        </div>
+      </section>
+
+      <section v-if="currentOrder" class="tenant-plan-page__order">
+        <div>
+          <h2 class="tenant-plan-page__section-title">待处理订单</h2>
+          <p class="tenant-plan-page__order-meta">
+            {{ currentOrder.order_no }} · {{ currentOrder.plan_code }} · {{ formatMoney(currentOrder.amount_cents) }}
+          </p>
+          <ElTag :type="currentOrder.status === 'paid' ? 'success' : 'warning'" effect="light">
+            {{ currentOrder.status === 'paid' ? '已支付' : '待支付' }}
+          </ElTag>
+        </div>
+        <div class="tenant-plan-page__order-actions">
+          <ElButton
+            type="success"
+            :disabled="currentOrder.status === 'paid'"
+            :loading="confirmingPayment"
+            @click="confirmDevPayment"
+          >
+            本地模拟支付成功
+          </ElButton>
+          <p class="tenant-plan-page__payment-note">支付宝沙箱/正式支付将在接入密钥后启用。</p>
+        </div>
+      </section>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-  import { fetchTenantSubscription, type TenantSubscriptionSummary } from '@/api/saas'
+  import { ElMessage } from 'element-plus'
+  import {
+    createTenantUpgradeOrder,
+    devConfirmTenantPayment,
+    fetchTenantPlans,
+    fetchTenantSubscription,
+    type SaasOrderRecord,
+    type SaasPlanOption,
+    type TenantSubscriptionSummary
+  } from '@/api/saas'
 
   defineOptions({ name: 'SaasTenantPlanPage' })
 
-  const disabledUpgradeText = '支付功能将在第二期开放'
   const subscriptionInfo = ref<TenantSubscriptionSummary | null>(null)
+  const plans = ref<SaasPlanOption[]>([])
+  const currentOrder = ref<SaasOrderRecord | null>(null)
+  const billingCycle = ref<'monthly' | 'yearly'>('yearly')
   const loading = ref(false)
+  const creatingPlanCode = ref('')
+  const confirmingPayment = ref(false)
   const errorMessage = ref('')
 
   const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
@@ -76,60 +121,21 @@
     hour12: false
   })
 
-  const pickValue = (source: Record<string, any> | null, keys: string[]) => {
-    if (!source) return undefined
+  const currentPlanCode = computed(() =>
+    formatText(pickValue(subscriptionInfo.value, ['current_plan', 'currentPlan']))
+  )
 
-    for (const key of keys) {
-      const value = source[key]
-      if (value !== undefined && value !== null && value !== '') {
-        return value
-      }
-    }
+  const currentPlanText = computed(() =>
+    formatText(
+      pickValue(subscriptionInfo.value, ['current_plan', 'currentPlan', 'plan_name', 'planName'])
+    )
+  )
 
-    return undefined
-  }
-
-  const normalizePayload = (payload: any) => {
-    if (!payload) return null
-    if (typeof payload === 'object' && 'data' in payload && payload.data) {
-      return payload.data
-    }
-
-    return payload
-  }
-
-  const formatText = (value: unknown) => {
-    if (value === undefined || value === null || value === '') {
-      return '-'
-    }
-
-    return String(value)
-  }
-
-  const formatDateTime = (value: unknown) => {
-    if (value === undefined || value === null || value === '') {
-      return '-'
-    }
-
-    const asDate =
-      value instanceof Date
-        ? value
-        : new Date(typeof value === 'number' ? value : String(value))
-
-    if (!Number.isNaN(asDate.getTime())) {
-      return dateFormatter.format(asDate)
-    }
-
-    const numericValue = Number(value)
-    if (Number.isFinite(numericValue)) {
-      const numericDate = new Date(numericValue)
-      if (!Number.isNaN(numericDate.getTime())) {
-        return dateFormatter.format(numericDate)
-      }
-    }
-
-    return String(value)
-  }
+  const trialEndTimeText = computed(() =>
+    formatDateTime(
+      pickValue(subscriptionInfo.value, ['trial_end_time', 'trialEndTime', 'trial_end_at', 'trialEndAt'])
+    )
+  )
 
   const subscriptionStatus = computed(() => {
     const rawStatus = pickValue(subscriptionInfo.value, [
@@ -145,15 +151,14 @@
     const normalized = String(rawStatus).trim().toLowerCase()
     const statusMap: Record<string, { text: string; type: 'success' | 'warning' | 'info' | 'danger' }> = {
       active: { text: '正常', type: 'success' },
-      enabled: { text: '正常', type: 'success' },
+      trialing: { text: '试用中', type: 'warning' },
       trial: { text: '试用中', type: 'warning' },
       expired: { text: '已过期', type: 'info' },
       cancelled: { text: '已取消', type: 'danger' },
       canceled: { text: '已取消', type: 'danger' },
-      paused: { text: '已暂停', type: 'warning' },
       pending: { text: '待生效', type: 'warning' },
       inactive: { text: '未开通', type: 'info' },
-      disabled: { text: '已停用', type: 'danger' },
+      frozen: { text: '已冻结', type: 'danger' },
       '1': { text: '正常', type: 'success' },
       '2': { text: '试用中', type: 'warning' },
       '0': { text: '未开通', type: 'info' }
@@ -170,82 +175,255 @@
     }
   })
 
-  const currentPlanText = computed(() =>
-    formatText(
-      pickValue(subscriptionInfo.value, ['current_plan', 'currentPlan', 'plan_name', 'planName'])
-    )
-  )
-
-  const trialEndTimeText = computed(() =>
-    formatDateTime(
-      pickValue(subscriptionInfo.value, ['trial_end_time', 'trialEndTime', 'trial_end_at', 'trialEndAt'])
-    )
-  )
-
   const subscriptionStatusText = computed(() => subscriptionStatus.value.text)
   const subscriptionTagType = computed(() => subscriptionStatus.value.type)
 
-  const loadSubscription = async () => {
+  function pickValue(source: Record<string, any> | null, keys: string[]) {
+    if (!source) return undefined
+
+    for (const key of keys) {
+      const value = source[key]
+      if (value !== undefined && value !== null && value !== '') {
+        return value
+      }
+    }
+
+    return undefined
+  }
+
+  function normalizePayload<T>(payload: any): T | null {
+    if (!payload) return null
+    if (typeof payload === 'object' && 'data' in payload && payload.data) {
+      return payload.data
+    }
+
+    return payload
+  }
+
+  function formatText(value: unknown) {
+    if (value === undefined || value === null || value === '') {
+      return '-'
+    }
+
+    return String(value)
+  }
+
+  function formatDateTime(value: unknown) {
+    if (value === undefined || value === null || value === '') {
+      return '-'
+    }
+
+    const asDate =
+      value instanceof Date
+        ? value
+        : new Date(typeof value === 'number' ? value : String(value))
+
+    return Number.isNaN(asDate.getTime()) ? String(value) : dateFormatter.format(asDate)
+  }
+
+  function formatMoney(amountCents: number) {
+    return new Intl.NumberFormat('zh-CN', {
+      style: 'currency',
+      currency: 'CNY'
+    }).format((Number(amountCents) || 0) / 100)
+  }
+
+  function getPlanAmount(plan: SaasPlanOption) {
+    return Number(billingCycle.value === 'yearly' ? plan.price_yearly : plan.price_monthly) || 0
+  }
+
+  function formatPlanPrice(plan: SaasPlanOption) {
+    const amount = getPlanAmount(plan)
+    if (amount <= 0) {
+      return '免费'
+    }
+
+    return `${formatMoney(amount)} / ${billingCycle.value === 'yearly' ? '年' : '月'}`
+  }
+
+  async function loadPageData() {
     loading.value = true
     errorMessage.value = ''
 
     try {
-      const payload = await fetchTenantSubscription()
-      subscriptionInfo.value = normalizePayload(payload)
+      const [subscriptionPayload, planPayload] = await Promise.all([
+        fetchTenantSubscription(),
+        fetchTenantPlans()
+      ])
+      subscriptionInfo.value = normalizePayload<TenantSubscriptionSummary>(subscriptionPayload)
+      plans.value = normalizePayload<SaasPlanOption[]>(planPayload) || []
     } catch (error) {
-      console.error('[SaasTenantPlanPage] load subscription failed:', error)
-      errorMessage.value = '加载订阅信息失败'
+      console.error('[SaasTenantPlanPage] load page data failed:', error)
+      errorMessage.value = '加载套餐信息失败'
       subscriptionInfo.value = null
+      plans.value = []
     } finally {
       loading.value = false
     }
   }
 
+  async function createOrder(plan: SaasPlanOption) {
+    creatingPlanCode.value = plan.code
+
+    try {
+      currentOrder.value = await createTenantUpgradeOrder({
+        plan_code: plan.code,
+        billing_cycle: billingCycle.value,
+        payment_method: 'alipay'
+      })
+      ElMessage.success('升级订单已创建')
+    } catch (error) {
+      console.error('[SaasTenantPlanPage] create order failed:', error)
+    } finally {
+      creatingPlanCode.value = ''
+    }
+  }
+
+  async function confirmDevPayment() {
+    if (!currentOrder.value) return
+
+    confirmingPayment.value = true
+
+    try {
+      currentOrder.value = await devConfirmTenantPayment(currentOrder.value.order_no)
+      ElMessage.success('本地模拟支付成功，套餐已更新')
+      await loadPageData()
+    } catch (error) {
+      console.error('[SaasTenantPlanPage] confirm payment failed:', error)
+    } finally {
+      confirmingPayment.value = false
+    }
+  }
+
   onMounted(() => {
-    loadSubscription()
+    loadPageData()
   })
 </script>
 
 <style scoped>
   .tenant-plan-page {
-    min-height: 100%;
+    display: grid;
+    align-content: start;
+    gap: 20px;
   }
 
-  .tenant-plan-page__header {
+  .tenant-plan-page__header,
+  .tenant-plan-page__toolbar,
+  .tenant-plan-page__order {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 16px;
   }
 
-  .tenant-plan-page__title {
+  .tenant-plan-page__title,
+  .tenant-plan-page__section-title,
+  .tenant-plan-page__plan-title-row h3 {
     margin: 0;
-    font-size: 18px;
-    font-weight: 600;
     line-height: 1.4;
+    letter-spacing: 0;
   }
 
-  .tenant-plan-page__subtitle {
-    margin: 6px 0 0;
+  .tenant-plan-page__title {
+    font-size: 20px;
+    font-weight: 600;
+  }
+
+  .tenant-plan-page__subtitle,
+  .tenant-plan-page__plan-code,
+  .tenant-plan-page__order-meta,
+  .tenant-plan-page__payment-note {
     color: var(--el-text-color-secondary);
     font-size: 13px;
     line-height: 1.5;
   }
 
-  .tenant-plan-page__state {
+  .tenant-plan-page__subtitle,
+  .tenant-plan-page__plan-code,
+  .tenant-plan-page__order-meta,
+  .tenant-plan-page__payment-note {
+    margin: 6px 0 0;
+  }
+
+  .tenant-plan-page__summary,
+  .tenant-plan-page__plans,
+  .tenant-plan-page__order {
+    border: 1px solid var(--el-border-color-light);
+    border-radius: 8px;
+    background: var(--el-bg-color);
+    padding: 20px;
+  }
+
+  .tenant-plan-page__plans {
     display: grid;
     gap: 16px;
-    justify-items: start;
+  }
+
+  .tenant-plan-page__section-title {
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .tenant-plan-page__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+  }
+
+  .tenant-plan-page__plan-card {
+    display: grid;
+    gap: 18px;
+    min-height: 190px;
+    border: 1px solid var(--el-border-color);
+    border-radius: 8px;
+    padding: 18px;
+  }
+
+  .tenant-plan-page__plan-main {
+    display: grid;
+    align-content: start;
+    gap: 8px;
+  }
+
+  .tenant-plan-page__plan-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .tenant-plan-page__plan-title-row h3 {
+    font-size: 17px;
+    font-weight: 600;
+  }
+
+  .tenant-plan-page__plan-price {
+    margin: 4px 0 0;
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: 0;
+  }
+
+  .tenant-plan-page__state {
     padding: 24px 0;
   }
 
-  .tenant-plan-page__content {
+  .tenant-plan-page__order-actions {
     display: grid;
-    gap: 20px;
+    justify-items: end;
+    gap: 8px;
   }
 
-  .tenant-plan-page__actions {
-    display: flex;
-    justify-content: flex-end;
+  @media (max-width: 768px) {
+    .tenant-plan-page__header,
+    .tenant-plan-page__toolbar,
+    .tenant-plan-page__order {
+      display: grid;
+    }
+
+    .tenant-plan-page__order-actions {
+      justify-items: start;
+    }
   }
 </style>

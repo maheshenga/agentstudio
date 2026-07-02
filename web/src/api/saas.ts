@@ -47,6 +47,31 @@ export interface TenantSubscriptionSummary {
   [key: string]: any
 }
 
+export interface SaasPlanOption {
+  id: number
+  code: string
+  name: string
+  billing_cycle: string
+  price_monthly: number
+  price_yearly: number
+}
+
+export interface SaasOrderRecord {
+  order_no: string
+  plan_code: string
+  amount_cents: number
+  status: string
+  payment_method?: string
+  alipay_trade_no?: string
+  paid_at?: string | Date
+}
+
+export interface CreateSaasOrderParams {
+  plan_code: string
+  billing_cycle?: 'monthly' | 'yearly'
+  payment_method?: string
+}
+
 export function signupTenant(params: SaasSignupParams) {
   return request.post<SaasSignupResult>({
     url: '/api/saas/signup',
@@ -63,6 +88,34 @@ export function fetchTenantUsage() {
 export function fetchTenantSubscription() {
   return request.get<TenantSubscriptionSummary>({
     url: '/api/saas/tenant/subscription'
+  })
+}
+
+export function fetchTenantPlans() {
+  return request.get<SaasPlanOption[]>({
+    url: '/api/saas/tenant/plans'
+  })
+}
+
+export function createTenantUpgradeOrder(params: CreateSaasOrderParams) {
+  return request.post<SaasOrderRecord>({
+    url: '/api/saas/tenant/orders',
+    data: params
+  })
+}
+
+export function fetchTenantOrder(orderNo: string) {
+  return request.get<SaasOrderRecord>({
+    url: `/api/saas/tenant/orders/${orderNo}`
+  })
+}
+
+export function devConfirmTenantPayment(orderNo: string) {
+  return request.post<SaasOrderRecord>({
+    url: '/api/saas/payment/dev-confirm',
+    data: {
+      order_no: orderNo
+    }
   })
 }
 

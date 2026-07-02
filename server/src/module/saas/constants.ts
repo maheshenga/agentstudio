@@ -14,3 +14,9 @@ export const SAAS_QUOTA_RAG_DOCUMENTS = 'rag_documents';
 export const SAAS_QUOTA_TOKENS = 'tokens';
 
 export const SAAS_DEFAULT_TRIAL_DAYS = 14;
+
+export const SAAS_ORDER_PENDING = 'pending';
+export const SAAS_ORDER_PAID = 'paid';
+export const SAAS_ORDER_CLOSED = 'closed';
+
+export const SAAS_PAYMENT_ALIPAY = 'alipay';

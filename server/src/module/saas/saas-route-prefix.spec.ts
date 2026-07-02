@@ -2,6 +2,7 @@ import { PATH_METADATA } from '@nestjs/common/constants';
 
 import { SaasPlatformController } from './saas-platform.controller';
 import { SaasPublicController } from './saas-public.controller';
+import { SaasPaymentController } from './saas-payment.controller';
 import { SaasTenantController } from './saas-tenant.controller';
 
 describe('SaaS route prefixes', () => {
@@ -9,5 +10,6 @@ describe('SaaS route prefixes', () => {
     expect(Reflect.getMetadata(PATH_METADATA, SaasPublicController)).toBe('api/saas');
     expect(Reflect.getMetadata(PATH_METADATA, SaasPlatformController)).toBe('api/saas/platform');
     expect(Reflect.getMetadata(PATH_METADATA, SaasTenantController)).toBe('api/saas/tenant');
+    expect(Reflect.getMetadata(PATH_METADATA, SaasPaymentController)).toBe('api/saas/payment');
   });
 });
