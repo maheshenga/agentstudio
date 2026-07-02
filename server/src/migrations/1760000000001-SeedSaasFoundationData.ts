@@ -148,10 +148,18 @@ const PLATFORM_PERMISSIONS: PermissionSeed[] = [
   {
     parentCode: 'SaasSubscription',
     name: '数据列表',
-    slug: 'saas:subscription:index',
+    slug: 'saas:subscription:list',
     method: 'GET',
     sort: 10,
     remark: 'Seeded SaaS subscription list permission',
+  },
+  {
+    parentCode: 'SaasSubscription',
+    name: 'Order list',
+    slug: 'saas:order:list',
+    method: 'GET',
+    sort: 20,
+    remark: 'Seeded SaaS order list permission',
   },
   {
     parentCode: 'SaasUsage',
@@ -286,6 +294,8 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
         'saas:plan:index',
         'saas:plan:update',
         'saas:subscription:index',
+        'saas:subscription:list',
+        'saas:order:list',
         'saas:usage:index'
       )
       AND \`delete_time\` IS NULL
