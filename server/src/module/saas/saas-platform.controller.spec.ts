@@ -13,6 +13,7 @@ describe('SaasPlatformController', () => {
   const platformService = {
     listOrders: jest.fn(),
     listSubscriptions: jest.fn(),
+    listResourcePacks: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -67,6 +68,25 @@ describe('SaasPlatformController', () => {
     expect(platformService.listSubscriptions).toHaveBeenCalledWith({ status: 'active' });
     expect(result.data).toEqual({
       list: [{ tenant_id: 12, status: 'active' }],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+  });
+
+  it('lists platform SaaS resource packs outside tenant scope', async () => {
+    platformService.listResourcePacks.mockResolvedValue({
+      list: [{ code: 'tokens_1m' }],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+
+    const result = await controller.listResourcePacks({ resource_type: 'tokens' }, { userId: 1 } as any);
+
+    expect(platformService.listResourcePacks).toHaveBeenCalledWith({ resource_type: 'tokens' });
+    expect(result.data).toEqual({
+      list: [{ code: 'tokens_1m' }],
       total: 1,
       page: 1,
       limit: 20,

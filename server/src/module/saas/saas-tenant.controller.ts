@@ -12,6 +12,7 @@ import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
 import { SaasTrialEntity } from './entities/saas-trial.entity';
 import { SaasOrderService } from './services/saas-order.service';
 import { SaasQuotaService } from './services/saas-quota.service';
+import { SaasResourcePackService } from './services/saas-resource-pack.service';
 
 @ApiTags('SaaS Tenant')
 @ApiBearerAuth('Authorization')
@@ -26,6 +27,7 @@ export class SaasTenantController {
     private readonly saasTrialRepo: Repository<SaasTrialEntity>,
     private readonly saasQuotaService: SaasQuotaService,
     private readonly saasOrderService: SaasOrderService,
+    private readonly saasResourcePackService: SaasResourcePackService,
   ) {}
 
   @Get('plans')
@@ -67,6 +69,17 @@ export class SaasTenantController {
     }
 
     return ResultData.ok(await this.saasQuotaService.getTenantUsageSummary(tenantId));
+  }
+
+  @Get('resource-packs')
+  @ApiOperation({ summary: 'Get active SaaS resource packs for current tenant' })
+  async resourcePacks() {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    return ResultData.ok(await this.saasResourcePackService.listTenantResourcePacks());
   }
 
   @Get('subscription')

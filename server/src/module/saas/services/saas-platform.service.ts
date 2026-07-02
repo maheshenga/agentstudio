@@ -4,6 +4,7 @@ import { FindOptionsWhere, Repository } from 'typeorm';
 
 import { SaasOrderEntity } from '../entities/saas-order.entity';
 import { SaasSubscriptionEntity } from '../entities/saas-subscription.entity';
+import { SaasResourcePackListQuery, SaasResourcePackService } from './saas-resource-pack.service';
 
 export interface SaasPlatformListQuery {
   page?: string | number;
@@ -19,6 +20,7 @@ export class SaasPlatformService {
     private readonly orderRepo: Repository<SaasOrderEntity>,
     @InjectRepository(SaasSubscriptionEntity)
     private readonly subscriptionRepo: Repository<SaasSubscriptionEntity>,
+    private readonly resourcePackService: SaasResourcePackService,
   ) {}
 
   async listOrders(query: SaasPlatformListQuery = {}) {
@@ -102,6 +104,10 @@ export class SaasPlatformService {
       page,
       limit,
     };
+  }
+
+  listResourcePacks(query: SaasResourcePackListQuery = {}) {
+    return this.resourcePackService.listPlatformResourcePacks(query);
   }
 
   private resolvePagination(query: SaasPlatformListQuery) {

@@ -8,6 +8,7 @@ import { SaasTrialEntity } from './entities/saas-trial.entity';
 import { SaasTenantController } from './saas-tenant.controller';
 import { SaasOrderService } from './services/saas-order.service';
 import { SaasQuotaService } from './services/saas-quota.service';
+import { SaasResourcePackService } from './services/saas-resource-pack.service';
 
 describe('SaasTenantController', () => {
   let controller: SaasTenantController;
@@ -32,6 +33,9 @@ describe('SaasTenantController', () => {
   const saasOrderService = {
     createUpgradeOrder: jest.fn(),
     findTenantOrder: jest.fn(),
+  };
+  const saasResourcePackService = {
+    listTenantResourcePacks: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -59,6 +63,10 @@ describe('SaasTenantController', () => {
         {
           provide: SaasOrderService,
           useValue: saasOrderService,
+        },
+        {
+          provide: SaasResourcePackService,
+          useValue: saasResourcePackService,
         },
       ],
     }).compile();
@@ -223,5 +231,15 @@ describe('SaasTenantController', () => {
       alipay_trade_no: 'DEV-SO20260702000000001000001',
       paid_at: new Date('2026-07-02T00:00:00.000Z'),
     });
+  });
+
+  it('returns active tenant resource packs in tenant context', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
+    saasResourcePackService.listTenantResourcePacks.mockResolvedValue([{ code: 'ai_calls_1k' }]);
+
+    const result = await controller.resourcePacks();
+
+    expect(saasResourcePackService.listTenantResourcePacks).toHaveBeenCalled();
+    expect(result.data).toEqual([{ code: 'ai_calls_1k' }]);
   });
 });

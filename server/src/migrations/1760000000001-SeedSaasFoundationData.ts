@@ -14,6 +14,16 @@ type QuotaSeed = {
   remark: string;
 };
 
+type ResourcePackSeed = {
+  code: string;
+  name: string;
+  resourceType: string;
+  quotaAmount: number;
+  priceCents: number;
+  sort: number;
+  remark: string;
+};
+
 type MenuSeed = {
   name: string;
   code: string;
@@ -56,6 +66,45 @@ const PLAN_QUOTAS: QuotaSeed[] = [
   { planCode: 'enterprise', quotaType: 'ai_calls', totalQuota: 50000, remark: 'Seeded enterprise plan AI call quota' },
   { planCode: 'enterprise', quotaType: 'rag_documents', totalQuota: 5000, remark: 'Seeded enterprise plan RAG document quota' },
   { planCode: 'enterprise', quotaType: 'tokens', totalQuota: 50000000, remark: 'Seeded enterprise plan token quota' },
+];
+
+const RESOURCE_PACK_SEEDS: ResourcePackSeed[] = [
+  {
+    code: 'ai_calls_1k',
+    name: 'AI Calls 1,000',
+    resourceType: 'ai_calls',
+    quotaAmount: 1000,
+    priceCents: 9900,
+    sort: 10,
+    remark: 'Adds 1,000 AI calls',
+  },
+  {
+    code: 'tokens_1m',
+    name: 'Tokens 1,000,000',
+    resourceType: 'tokens',
+    quotaAmount: 1000000,
+    priceCents: 19900,
+    sort: 20,
+    remark: 'Adds 1,000,000 tokens',
+  },
+  {
+    code: 'storage_10gb',
+    name: 'Storage 10GB',
+    resourceType: 'storage_mb',
+    quotaAmount: 10240,
+    priceCents: 29900,
+    sort: 30,
+    remark: 'Adds 10GB storage',
+  },
+  {
+    code: 'rag_docs_1k',
+    name: 'RAG Documents 1,000',
+    resourceType: 'rag_documents',
+    quotaAmount: 1000,
+    priceCents: 39900,
+    sort: 40,
+    remark: 'Adds 1,000 RAG documents',
+  },
 ];
 
 const PLATFORM_ROOT_MENU: MenuSeed = {
@@ -109,6 +158,16 @@ const PLATFORM_MENUS: MenuSeed[] = [
     icon: 'ri:bar-chart-box-line',
     sort: 40,
     remark: 'Seeded SaaS usage overview menu',
+  },
+  {
+    name: 'Resource Packs',
+    code: 'SaasResourcePack',
+    type: 2,
+    path: 'resource-packs',
+    component: '/saas/platform/resource-pack',
+    icon: 'ri:stack-line',
+    sort: 50,
+    remark: 'Seeded SaaS resource pack management menu',
   },
 ];
 
@@ -169,6 +228,14 @@ const PLATFORM_PERMISSIONS: PermissionSeed[] = [
     sort: 10,
     remark: 'Seeded SaaS usage list permission',
   },
+  {
+    parentCode: 'SaasResourcePack',
+    name: 'List',
+    slug: 'saas:resource-pack:index',
+    method: 'GET',
+    sort: 10,
+    remark: 'Seeded SaaS resource pack list permission',
+  },
 ];
 
 const TENANT_ROOT_MENU: MenuSeed = {
@@ -202,6 +269,16 @@ const TENANT_MENUS: MenuSeed[] = [
     icon: 'ri:pie-chart-2-line',
     sort: 20,
     remark: 'Seeded tenant quota menu',
+  },
+  {
+    name: 'Resource Packs',
+    code: 'TenantResourcePack',
+    type: 2,
+    path: 'resource-packs',
+    component: '/saas/tenant/resource-pack',
+    icon: 'ri:stack-line',
+    sort: 30,
+    remark: 'Seeded tenant resource pack menu',
   },
 ];
 
@@ -238,6 +315,14 @@ const TENANT_PERMISSIONS: PermissionSeed[] = [
     sort: 20,
     remark: 'Seeded tenant resource pack purchase permission',
   },
+  {
+    parentCode: 'TenantResourcePack',
+    name: 'View',
+    slug: 'tenant:resource-pack:view',
+    method: 'GET',
+    sort: 10,
+    remark: 'Seeded tenant resource pack view permission',
+  },
 ];
 
 export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
@@ -250,6 +335,10 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
 
     for (const quota of PLAN_QUOTAS) {
       await this.insertPlanQuota(queryRunner, quota);
+    }
+
+    for (const pack of RESOURCE_PACK_SEEDS) {
+      await this.insertResourcePack(queryRunner, pack);
     }
 
     await this.insertRootMenuUnderSystem(queryRunner, PLATFORM_ROOT_MENU);
@@ -270,6 +359,11 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
+      DELETE FROM \`saas_resource_pack\`
+      WHERE \`code\` IN ('ai_calls_1k', 'tokens_1m', 'storage_10gb', 'rag_docs_1k')
+    `);
+
     await queryRunner.query(`
       DELETE FROM \`saas_plan_quota\`
       WHERE \`plan_id\` IN (
@@ -296,7 +390,8 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
         'saas:subscription:index',
         'saas:subscription:list',
         'saas:order:list',
-        'saas:usage:index'
+        'saas:usage:index',
+        'saas:resource-pack:index'
       )
       AND \`delete_time\` IS NULL
     `);
@@ -309,7 +404,8 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
         'tenant:billing:view',
         'tenant:billing:upgrade',
         'tenant:quota:view',
-        'tenant:resource:buy'
+        'tenant:resource:buy',
+        'tenant:resource-pack:view'
       )
       AND \`delete_time\` IS NULL
     `);
@@ -318,7 +414,7 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
     const platformMenuIds = await this.fetchMenuIds(queryRunner, `
       SELECT \`id\`
       FROM \`sa_system_menu\`
-      WHERE \`code\` IN ('SaasTenant', 'SaasPlan', 'SaasSubscription', 'SaasUsage')
+      WHERE \`code\` IN ('SaasTenant', 'SaasPlan', 'SaasSubscription', 'SaasUsage', 'SaasResourcePack')
       AND \`delete_time\` IS NULL
     `);
     await this.deleteMenusByIds(queryRunner, platformMenuIds);
@@ -326,7 +422,7 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
     const tenantMenuIds = await this.fetchMenuIds(queryRunner, `
       SELECT \`id\`
       FROM \`sa_system_menu\`
-      WHERE \`code\` IN ('TenantBilling', 'TenantQuota')
+      WHERE \`code\` IN ('TenantBilling', 'TenantQuota', 'TenantResourcePack')
       AND \`delete_time\` IS NULL
     `);
     await this.deleteMenusByIds(queryRunner, tenantMenuIds);
@@ -390,6 +486,37 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
           \`update_time\` = NOW()
       `,
       [quota.quotaType, quota.totalQuota, quota.remark, quota.planCode],
+    );
+  }
+
+  private async insertResourcePack(queryRunner: QueryRunner, pack: ResourcePackSeed): Promise<void> {
+    await queryRunner.query(
+      `
+        INSERT INTO \`saas_resource_pack\` (
+          \`code\`,
+          \`name\`,
+          \`resource_type\`,
+          \`quota_amount\`,
+          \`price_cents\`,
+          \`currency\`,
+          \`status\`,
+          \`sort\`,
+          \`remark\`
+        )
+        VALUES (?, ?, ?, ?, ?, 'CNY', 1, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          \`name\` = VALUES(\`name\`),
+          \`resource_type\` = VALUES(\`resource_type\`),
+          \`quota_amount\` = VALUES(\`quota_amount\`),
+          \`price_cents\` = VALUES(\`price_cents\`),
+          \`currency\` = VALUES(\`currency\`),
+          \`status\` = VALUES(\`status\`),
+          \`sort\` = VALUES(\`sort\`),
+          \`remark\` = VALUES(\`remark\`),
+          \`delete_time\` = NULL,
+          \`update_time\` = NOW()
+      `,
+      [pack.code, pack.name, pack.resourceType, pack.quotaAmount, pack.priceCents, pack.sort, pack.remark],
     );
   }
 

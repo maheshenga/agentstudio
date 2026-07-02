@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { SaasOrderEntity } from '../entities/saas-order.entity';
 import { SaasSubscriptionEntity } from '../entities/saas-subscription.entity';
 import { SaasPlatformService } from './saas-platform.service';
+import { SaasResourcePackService } from './saas-resource-pack.service';
 
 describe('SaasPlatformService', () => {
   let service: SaasPlatformService;
@@ -13,6 +14,9 @@ describe('SaasPlatformService', () => {
   };
   const subscriptionRepo = {
     findAndCount: jest.fn(),
+  };
+  const resourcePackService = {
+    listPlatformResourcePacks: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -28,6 +32,10 @@ describe('SaasPlatformService', () => {
         {
           provide: getRepositoryToken(SaasSubscriptionEntity),
           useValue: subscriptionRepo,
+        },
+        {
+          provide: SaasResourcePackService,
+          useValue: resourcePackService,
         },
       ],
     }).compile();
@@ -160,5 +168,22 @@ describe('SaasPlatformService', () => {
       page: 1,
       limit: 10,
     });
+  });
+
+  it('delegates resource pack listing to the resource pack catalog service', async () => {
+    resourcePackService.listPlatformResourcePacks.mockResolvedValue({
+      list: [{ code: 'tokens_1m' }],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+
+    await expect(service.listResourcePacks({ resource_type: 'tokens' })).resolves.toEqual({
+      list: [{ code: 'tokens_1m' }],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+    expect(resourcePackService.listPlatformResourcePacks).toHaveBeenCalledWith({ resource_type: 'tokens' });
   });
 });

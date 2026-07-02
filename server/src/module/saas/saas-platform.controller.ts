@@ -10,6 +10,7 @@ import { TenantProvisionDto } from './dto/tenant-provision.dto';
 import { SaasPlatformService } from './services/saas-platform.service';
 import type { SaasPlatformListQuery } from './services/saas-platform.service';
 import { SaasProvisioningService } from './services/saas-provisioning.service';
+import type { SaasResourcePackListQuery } from './services/saas-resource-pack.service';
 
 @ApiTags('SaaS Platform')
 @ApiBearerAuth('Authorization')
@@ -62,6 +63,21 @@ export class SaasPlatformController {
         ignoreTenant: true,
       },
       () => this.platformService.listSubscriptions(query).then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Get('resource-packs')
+  @ApiOperation({ summary: 'List SaaS resource packs' })
+  @RequirePermission('saas:resource-pack:index')
+  listResourcePacks(@Query() query: SaasResourcePackListQuery, @User() user: UserDto) {
+    return TenantContext.run(
+      {
+        tenantId: undefined,
+        userId: user?.userId,
+        ignoreAudit: false,
+        ignoreTenant: true,
+      },
+      () => this.platformService.listResourcePacks(query).then((data) => ResultData.ok(data)),
     );
   }
 }
