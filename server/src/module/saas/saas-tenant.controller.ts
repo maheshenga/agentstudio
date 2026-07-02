@@ -12,6 +12,7 @@ import { SaasPlanEntity } from './entities/saas-plan.entity';
 import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
 import { SaasTrialEntity } from './entities/saas-trial.entity';
 import { SaasOrderService } from './services/saas-order.service';
+import { SaasPlanService } from './services/saas-plan.service';
 import { SaasQuotaService } from './services/saas-quota.service';
 import { SaasResourcePackOrderService } from './services/saas-resource-pack-order.service';
 import type { SaasResourcePackOrderListQuery } from './services/saas-resource-pack-order.service';
@@ -30,6 +31,7 @@ export class SaasTenantController {
     private readonly saasTrialRepo: Repository<SaasTrialEntity>,
     private readonly saasQuotaService: SaasQuotaService,
     private readonly saasOrderService: SaasOrderService,
+    private readonly saasPlanService: SaasPlanService,
     private readonly saasResourcePackService: SaasResourcePackService,
     private readonly saasResourcePackOrderService: SaasResourcePackOrderService,
   ) {}
@@ -42,26 +44,7 @@ export class SaasTenantController {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
-    const plans = await this.saasPlanRepo.find({
-      where: {
-        status: 1,
-      },
-      order: {
-        sort: 'ASC',
-        id: 'ASC',
-      },
-    });
-
-    return ResultData.ok(
-      plans.map((plan) => ({
-        id: plan.id,
-        code: plan.code,
-        name: plan.name,
-        billing_cycle: plan.billingCycle,
-        price_monthly: Number(plan.priceMonthly) || 0,
-        price_yearly: Number(plan.priceYearly) || 0,
-      })),
-    );
+    return ResultData.ok(await this.saasPlanService.listTenantPlans());
   }
 
   @Get('usage')

@@ -7,6 +7,7 @@ import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
 import { SaasTrialEntity } from './entities/saas-trial.entity';
 import { SaasTenantController } from './saas-tenant.controller';
 import { SaasOrderService } from './services/saas-order.service';
+import { SaasPlanService } from './services/saas-plan.service';
 import { SaasQuotaService } from './services/saas-quota.service';
 import { SaasResourcePackOrderService } from './services/saas-resource-pack-order.service';
 import { SaasResourcePackService } from './services/saas-resource-pack.service';
@@ -34,6 +35,10 @@ describe('SaasTenantController', () => {
   const saasOrderService = {
     createUpgradeOrder: jest.fn(),
     findTenantOrder: jest.fn(),
+  };
+
+  const saasPlanService = {
+    listTenantPlans: jest.fn(),
   };
   const saasResourcePackService = {
     listTenantResourcePacks: jest.fn(),
@@ -74,6 +79,10 @@ describe('SaasTenantController', () => {
         {
           provide: SaasOrderService,
           useValue: saasOrderService,
+        },
+        {
+          provide: SaasPlanService,
+          useValue: saasPlanService,
         },
         {
           provide: SaasResourcePackService,
@@ -138,47 +147,9 @@ describe('SaasTenantController', () => {
     });
   });
 
-  it('returns active tenant upgrade plans with backend prices', async () => {
+  it('returns enabled tenant plans with quota summaries from plan service', async () => {
     jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
-    saasPlanRepo.find.mockResolvedValue([
-      {
-        id: 1,
-        code: 'free',
-        name: 'Free',
-        billingCycle: 'monthly',
-        priceMonthly: 0,
-        priceYearly: 0,
-      },
-      {
-        id: 2,
-        code: 'pro',
-        name: 'Pro',
-        billingCycle: 'monthly',
-        priceMonthly: 9900,
-        priceYearly: 99000,
-      },
-    ]);
-
-    const result = await controller.plans();
-
-    expect(saasPlanRepo.find).toHaveBeenCalledWith({
-      where: {
-        status: 1,
-      },
-      order: {
-        sort: 'ASC',
-        id: 'ASC',
-      },
-    });
-    expect(result.data).toEqual([
-      {
-        id: 1,
-        code: 'free',
-        name: 'Free',
-        billing_cycle: 'monthly',
-        price_monthly: 0,
-        price_yearly: 0,
-      },
+    saasPlanService.listTenantPlans.mockResolvedValue([
       {
         id: 2,
         code: 'pro',
@@ -186,6 +157,23 @@ describe('SaasTenantController', () => {
         billing_cycle: 'monthly',
         price_monthly: 9900,
         price_yearly: 99000,
+        quotas: [{ quota_type: 'tokens', total_quota: 1000000, status: 1 }],
+      },
+    ]);
+
+    const result = await controller.plans();
+
+    expect(saasPlanService.listTenantPlans).toHaveBeenCalled();
+    expect(saasPlanRepo.find).not.toHaveBeenCalled();
+    expect(result.data).toEqual([
+      {
+        id: 2,
+        code: 'pro',
+        name: 'Pro',
+        billing_cycle: 'monthly',
+        price_monthly: 9900,
+        price_yearly: 99000,
+        quotas: [{ quota_type: 'tokens', total_quota: 1000000, status: 1 }],
       },
     ]);
   });

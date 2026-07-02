@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -119,6 +120,28 @@ describe('SaasOrderService', () => {
     expect(order.orderNo).toMatch(/^SO\d{17}\d{6}$/);
     expect(order.status).toBe('pending');
   });
+  it('rejects free plan upgrade orders', async () => {
+    planRepo.findOne.mockResolvedValue({
+      id: 1,
+      code: 'free',
+      name: 'Free',
+      priceMonthly: 0,
+      priceYearly: 0,
+      billingCycle: 'monthly',
+      status: 1,
+    });
+
+    await expect(
+      service.createUpgradeOrder(12, {
+        plan_code: 'free',
+        billing_cycle: 'monthly',
+        payment_method: 'alipay',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(orderRepo.create).not.toHaveBeenCalled();
+    expect(orderRepo.save).not.toHaveBeenCalled();
+  });
 
   it('marks an order paid and upgrades subscription and quotas in one transaction', async () => {
     const paidAt = new Date('2026-07-02T00:00:00.000Z');
@@ -214,6 +237,53 @@ describe('SaasOrderService', () => {
     jest.useRealTimers();
   });
 
+  it('starts a new same-plan cycle immediately after payment', async () => {
+    const paidAt = new Date('2026-07-03T12:00:00.000Z');
+    jest.useFakeTimers().setSystemTime(paidAt);
+
+    txOrderRepo.findOne.mockResolvedValue({
+      id: 90,
+      orderNo: 'SO20260703120000001000001',
+      tenantId: 12,
+      planId: 2,
+      planCode: 'pro',
+      billingCycle: 'monthly',
+      amountCents: 9900,
+      status: 'pending',
+      paymentMethod: 'alipay',
+    });
+    txOrderRepo.save.mockImplementation(async (payload) => payload);
+    txSubscriptionRepo.save.mockImplementation(async (payload) => ({ id: 101, ...payload }));
+
+    const order = await service.confirmDevPayment(12, 'SO20260703120000001000001');
+
+    expect(txSubscriptionRepo.update).toHaveBeenCalledWith(
+      {
+        tenantId: 12,
+        status: 'active',
+      },
+      {
+        status: 'expired',
+        endTime: paidAt,
+      },
+    );
+    expect(txSubscriptionRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 12,
+        planId: 2,
+        billingCycle: 'monthly',
+        status: 'active',
+        startTime: paidAt,
+        endTime: expect.any(Date),
+        remark: 'Activated by order SO20260703120000001000001',
+      }),
+    );
+    const savedSubscription = txSubscriptionRepo.save.mock.calls[0][0];
+    expect(savedSubscription.endTime.getMonth()).toBe(new Date('2026-08-03T12:00:00.000Z').getMonth());
+    expect(order.status).toBe('paid');
+
+    jest.useRealTimers();
+  });
   it('returns an already paid order for duplicate Alipay notifications without reopening subscription', async () => {
     const paidAt = new Date('2026-07-02T01:00:00.000Z');
     txOrderRepo.findOne.mockResolvedValue({

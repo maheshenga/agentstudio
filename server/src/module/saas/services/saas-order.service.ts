@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 
-import { SAAS_ORDER_PAID, SAAS_ORDER_PENDING, SAAS_PAYMENT_ALIPAY, SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_EXPIRED } from '../constants';
+import { SAAS_ORDER_PAID, SAAS_ORDER_PENDING, SAAS_PAYMENT_ALIPAY, SAAS_PLAN_FREE, SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_EXPIRED } from '../constants';
 import { CreateUpgradeOrderDto } from '../dto/create-upgrade-order.dto';
 import { SaasOrderEntity } from '../entities/saas-order.entity';
 import { SaasPlanEntity } from '../entities/saas-plan.entity';
@@ -30,6 +30,9 @@ export class SaasOrderService {
 
     if (!plan) {
       throw new NotFoundException(`Plan ${dto.plan_code} is not configured`);
+    }
+    if (plan.code === SAAS_PLAN_FREE) {
+      throw new BadRequestException('Free plan cannot be purchased as an upgrade order');
     }
 
     const billingCycle = dto.billing_cycle ?? plan.billingCycle ?? 'monthly';
