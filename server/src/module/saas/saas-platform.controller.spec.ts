@@ -1,8 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
-import { SaasPlatformController } from './saas-platform.controller';
 import { UpdateAlipayConfigDto } from './dto/update-alipay-config.dto';
+import { SaasPlatformController } from './saas-platform.controller';
 import { SaasPaymentConfigService } from './services/saas-payment-config.service';
+import { SaasPlanService } from './services/saas-plan.service';
 import { SaasPlatformService } from './services/saas-platform.service';
 import { SaasProvisioningService } from './services/saas-provisioning.service';
 
@@ -15,6 +16,8 @@ describe('SaasPlatformController', () => {
   const platformService = {
     listOrders: jest.fn(),
     listSubscriptions: jest.fn(),
+    findOrder: jest.fn(),
+    findSubscription: jest.fn(),
     listResourcePacks: jest.fn(),
     listResourcePackOrders: jest.fn(),
     findResourcePackOrder: jest.fn(),
@@ -23,6 +26,14 @@ describe('SaasPlatformController', () => {
     getAlipayConfigStatus: jest.fn(),
     updateAlipayConfig: jest.fn(),
   };
+  const planService = {
+    listPlatformPlans: jest.fn(),
+    createPlatformPlan: jest.fn(),
+    findPlatformPlan: jest.fn(),
+    updatePlatformPlan: jest.fn(),
+    updatePlatformPlanStatus: jest.fn(),
+    updatePlatformPlanQuotas: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -30,18 +41,10 @@ describe('SaasPlatformController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [SaasPlatformController],
       providers: [
-        {
-          provide: SaasProvisioningService,
-          useValue: provisioning,
-        },
-        {
-          provide: SaasPlatformService,
-          useValue: platformService,
-        },
-        {
-          provide: SaasPaymentConfigService,
-          useValue: paymentConfigService,
-        },
+        { provide: SaasProvisioningService, useValue: provisioning },
+        { provide: SaasPlatformService, useValue: platformService },
+        { provide: SaasPaymentConfigService, useValue: paymentConfigService },
+        { provide: SaasPlanService, useValue: planService },
       ],
     }).compile();
 
@@ -49,79 +52,76 @@ describe('SaasPlatformController', () => {
   });
 
   it('lists platform SaaS orders outside tenant scope', async () => {
-    platformService.listOrders.mockResolvedValue({
-      list: [{ order_no: 'SO20260702000000001000001' }],
-      total: 1,
-      page: 1,
-      limit: 20,
-    });
+    platformService.listOrders.mockResolvedValue({ list: [{ order_no: 'SO20260702000000001000001' }], total: 1, page: 1, limit: 20 });
 
     const result = await controller.listOrders({ page: '1' }, { userId: 1 } as any);
 
     expect(platformService.listOrders).toHaveBeenCalledWith({ page: '1' });
-    expect(result.data).toEqual({
-      list: [{ order_no: 'SO20260702000000001000001' }],
-      total: 1,
-      page: 1,
-      limit: 20,
-    });
+    expect(result.data).toEqual({ list: [{ order_no: 'SO20260702000000001000001' }], total: 1, page: 1, limit: 20 });
   });
 
   it('lists platform SaaS subscriptions outside tenant scope', async () => {
-    platformService.listSubscriptions.mockResolvedValue({
-      list: [{ tenant_id: 12, status: 'active' }],
-      total: 1,
-      page: 1,
-      limit: 20,
-    });
+    platformService.listSubscriptions.mockResolvedValue({ list: [{ tenant_id: 12, status: 'active' }], total: 1, page: 1, limit: 20 });
 
     const result = await controller.listSubscriptions({ status: 'active' }, { userId: 1 } as any);
 
     expect(platformService.listSubscriptions).toHaveBeenCalledWith({ status: 'active' });
-    expect(result.data).toEqual({
-      list: [{ tenant_id: 12, status: 'active' }],
-      total: 1,
-      page: 1,
-      limit: 20,
-    });
+    expect(result.data).toEqual({ list: [{ tenant_id: 12, status: 'active' }], total: 1, page: 1, limit: 20 });
+  });
+
+  it('lists platform SaaS plans outside tenant scope', async () => {
+    planService.listPlatformPlans.mockResolvedValue({ list: [{ code: 'pro' }], total: 1, page: 1, limit: 20 });
+
+    const result = await controller.listPlans({ status: '1' }, { userId: 1 } as any);
+
+    expect(planService.listPlatformPlans).toHaveBeenCalledWith({ status: '1' });
+    expect(result.data.list).toEqual([{ code: 'pro' }]);
+  });
+
+  it('creates a platform SaaS plan outside tenant scope', async () => {
+    planService.createPlatformPlan.mockResolvedValue({ code: 'team' });
+
+    const result = await controller.createPlan({ code: 'team', name: 'Team' } as any, { userId: 1 } as any);
+
+    expect(planService.createPlatformPlan).toHaveBeenCalledWith({ code: 'team', name: 'Team' });
+    expect(result.data).toEqual({ code: 'team' });
+  });
+
+  it('updates platform SaaS plan quotas outside tenant scope', async () => {
+    planService.updatePlatformPlanQuotas.mockResolvedValue({ code: 'pro', quotas: [] });
+
+    const body = { quotas: [{ quota_type: 'tokens', total_quota: 1000 }] };
+    const result = await controller.updatePlanQuotas('pro', body as any, { userId: 1 } as any);
+
+    expect(planService.updatePlatformPlanQuotas).toHaveBeenCalledWith('pro', body);
+    expect(result.data).toEqual({ code: 'pro', quotas: [] });
+  });
+
+  it('returns platform SaaS order detail outside tenant scope', async () => {
+    platformService.findOrder.mockResolvedValue({ order_no: 'SO1' });
+
+    const result = await controller.getOrder('SO1', { userId: 1 } as any);
+
+    expect(platformService.findOrder).toHaveBeenCalledWith('SO1');
+    expect(result.data).toEqual({ order_no: 'SO1' });
   });
 
   it('lists platform SaaS resource packs outside tenant scope', async () => {
-    platformService.listResourcePacks.mockResolvedValue({
-      list: [{ code: 'tokens_1m' }],
-      total: 1,
-      page: 1,
-      limit: 20,
-    });
+    platformService.listResourcePacks.mockResolvedValue({ list: [{ code: 'tokens_1m' }], total: 1, page: 1, limit: 20 });
 
     const result = await controller.listResourcePacks({ resource_type: 'tokens' }, { userId: 1 } as any);
 
     expect(platformService.listResourcePacks).toHaveBeenCalledWith({ resource_type: 'tokens' });
-    expect(result.data).toEqual({
-      list: [{ code: 'tokens_1m' }],
-      total: 1,
-      page: 1,
-      limit: 20,
-    });
+    expect(result.data).toEqual({ list: [{ code: 'tokens_1m' }], total: 1, page: 1, limit: 20 });
   });
 
   it('lists platform SaaS resource pack orders outside tenant scope', async () => {
-    platformService.listResourcePackOrders.mockResolvedValue({
-      list: [{ order_no: 'RPO20260703120000001000001' }],
-      total: 1,
-      page: 1,
-      limit: 20,
-    });
+    platformService.listResourcePackOrders.mockResolvedValue({ list: [{ order_no: 'RPO20260703120000001000001' }], total: 1, page: 1, limit: 20 });
 
     const result = await controller.listResourcePackOrders({ status: 'paid' }, { userId: 1 } as any);
 
     expect(platformService.listResourcePackOrders).toHaveBeenCalledWith({ status: 'paid' });
-    expect(result.data).toEqual({
-      list: [{ order_no: 'RPO20260703120000001000001' }],
-      total: 1,
-      page: 1,
-      limit: 20,
-    });
+    expect(result.data).toEqual({ list: [{ order_no: 'RPO20260703120000001000001' }], total: 1, page: 1, limit: 20 });
   });
 
   it('returns platform SaaS resource pack order detail outside tenant scope', async () => {
