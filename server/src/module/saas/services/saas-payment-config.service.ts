@@ -58,7 +58,11 @@ export class SaasPaymentConfigService {
       });
 
     config.enabled = dto.enabled ? 1 : 0;
-    config.appId = dto.app_id ?? '';
+    if (dto.app_id !== undefined && dto.app_id.trim() !== '') {
+      config.appId = dto.app_id;
+    } else {
+      config.appId = config.appId || '';
+    }
     if (dto.private_key !== undefined && dto.private_key.trim() !== '') {
       config.privateKey = dto.private_key;
     } else {

@@ -88,6 +88,32 @@ describe('SaasPaymentConfigService', () => {
     );
   });
 
+  it('keeps existing app id when update payload leaves app id blank', async () => {
+    repo.findOne.mockResolvedValue({
+      id: 1,
+      provider: 'alipay',
+      scope: 'platform',
+      enabled: 1,
+      appId: 'old-app-id',
+      privateKey: 'old-private',
+      publicKey: 'old-public',
+      gatewayUrl: 'old-gateway',
+      notifyUrl: 'old-notify',
+      returnUrl: 'old-return',
+    });
+    repo.save.mockImplementation(async (value) => value);
+
+    await service.updateAlipayConfig({
+      enabled: true,
+      app_id: '',
+      gateway_url: 'new-gateway',
+      notify_url: 'new-notify',
+      return_url: 'new-return',
+    });
+
+    expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ appId: 'old-app-id' }));
+  });
+
   it('resolves null when no database config row exists', async () => {
     repo.findOne.mockResolvedValue(null);
 
