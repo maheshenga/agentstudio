@@ -24,6 +24,49 @@ export interface SaasTenantProvisionParams {
   with_trial?: boolean
 }
 
+export interface SaasPlatformListParams {
+  page?: number
+  limit?: number
+  status?: string
+  tenant_id?: number | string
+}
+
+export interface SaasPlatformPageResult<T> {
+  list: T[]
+  total: number
+  page: number
+  limit: number
+}
+
+export interface SaasPlatformOrderRecord {
+  id: number
+  order_no: string
+  tenant_id: number
+  plan_id: number
+  plan_code: string
+  billing_cycle: string
+  amount_cents: number
+  currency: string
+  payment_method: string
+  status: string
+  alipay_trade_no?: string
+  paid_at?: string | Date
+  create_time?: string | Date
+}
+
+export interface SaasPlatformSubscriptionRecord {
+  id: number
+  tenant_id: number
+  plan_id: number
+  billing_cycle: string
+  status: string
+  start_time?: string | Date
+  end_time?: string | Date
+  cancel_at_period_end?: number
+  remark?: string
+  create_time?: string | Date
+}
+
 export interface TenantUsageQuotaRecord {
   resource_type: string
   quota: number
@@ -156,5 +199,19 @@ export function createSaasTenantFromPlatform(params: SaasTenantProvisionParams) 
   return request.post<SaasSignupResult>({
     url: '/api/saas/platform/tenants',
     data: params
+  })
+}
+
+export function fetchPlatformOrders(params: SaasPlatformListParams) {
+  return request.get<SaasPlatformPageResult<SaasPlatformOrderRecord>>({
+    url: '/api/saas/platform/orders',
+    params
+  })
+}
+
+export function fetchPlatformSubscriptions(params: SaasPlatformListParams) {
+  return request.get<SaasPlatformPageResult<SaasPlatformSubscriptionRecord>>({
+    url: '/api/saas/platform/subscriptions',
+    params
   })
 }
