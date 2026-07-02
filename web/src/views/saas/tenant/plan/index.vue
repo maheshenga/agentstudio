@@ -73,6 +73,12 @@
           </ElTag>
         </div>
         <div class="tenant-plan-page__order-actions">
+          <div v-if="alipayConfigStatus" class="tenant-plan-page__payment-status">
+            <ElTag :type="alipayConfigStatus.configured ? 'success' : 'warning'" effect="light">
+              {{ alipayConfigStatus.configured ? '支付宝已配置' : '支付宝未配置' }}
+            </ElTag>
+            <span v-if="!alipayConfigStatus.configured">{{ alipayMissingKeysText }}</span>
+          </div>
           <ElButton
             type="primary"
             :disabled="currentOrder.status === 'paid'"
@@ -102,8 +108,10 @@
     createAlipayPayment,
     createTenantUpgradeOrder,
     devConfirmTenantPayment,
+    fetchAlipayConfigStatus,
     fetchTenantPlans,
     fetchTenantSubscription,
+    type AlipayConfigStatus,
     type SaasOrderRecord,
     type SaasPlanOption,
     type TenantSubscriptionSummary
@@ -112,6 +120,7 @@
   defineOptions({ name: 'SaasTenantPlanPage' })
 
   const subscriptionInfo = ref<TenantSubscriptionSummary | null>(null)
+  const alipayConfigStatus = ref<AlipayConfigStatus | null>(null)
   const plans = ref<SaasPlanOption[]>([])
   const currentOrder = ref<SaasOrderRecord | null>(null)
   const billingCycle = ref<'monthly' | 'yearly'>('yearly')
@@ -187,6 +196,10 @@
 
   const subscriptionStatusText = computed(() => subscriptionStatus.value.text)
   const subscriptionTagType = computed(() => subscriptionStatus.value.type)
+  const alipayMissingKeysText = computed(() => {
+    const missingKeys = alipayConfigStatus.value?.missing_keys || []
+    return missingKeys.length ? `缺少：${missingKeys.join('、')}` : ''
+  })
 
   function pickValue(source: Record<string, any> | null, keys: string[]) {
     if (!source) return undefined
@@ -256,16 +269,19 @@
     errorMessage.value = ''
 
     try {
-      const [subscriptionPayload, planPayload] = await Promise.all([
+      const [subscriptionPayload, planPayload, alipayConfigPayload] = await Promise.all([
         fetchTenantSubscription(),
-        fetchTenantPlans()
+        fetchTenantPlans(),
+        fetchAlipayConfigStatus()
       ])
       subscriptionInfo.value = normalizePayload<TenantSubscriptionSummary>(subscriptionPayload)
       plans.value = normalizePayload<SaasPlanOption[]>(planPayload) || []
+      alipayConfigStatus.value = normalizePayload<AlipayConfigStatus>(alipayConfigPayload)
     } catch (error) {
       console.error('[SaasTenantPlanPage] load page data failed:', error)
       errorMessage.value = '加载套餐信息失败'
       subscriptionInfo.value = null
+      alipayConfigStatus.value = null
       plans.value = []
     } finally {
       loading.value = false
@@ -446,6 +462,18 @@
     gap: 8px;
   }
 
+  .tenant-plan-page__payment-status {
+    display: flex;
+    max-width: 360px;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+    text-align: right;
+  }
+
   @media (max-width: 768px) {
     .tenant-plan-page__header,
     .tenant-plan-page__toolbar,
@@ -455,6 +483,11 @@
 
     .tenant-plan-page__order-actions {
       justify-items: start;
+    }
+
+    .tenant-plan-page__payment-status {
+      justify-content: flex-start;
+      text-align: left;
     }
   }
 </style>

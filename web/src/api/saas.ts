@@ -74,6 +74,16 @@ export interface AlipayPaymentResult {
   message: string
 }
 
+export interface AlipayConfigStatus {
+  enabled: boolean
+  configured: boolean
+  missing_keys: string[]
+  app_id_masked: string
+  gateway_url: string
+  notify_url_configured: boolean
+  return_url_configured: boolean
+}
+
 export interface CreateSaasOrderParams {
   plan_code: string
   billing_cycle?: 'monthly' | 'yearly'
@@ -133,6 +143,12 @@ export function createAlipayPayment(orderNo: string) {
     data: {
       order_no: orderNo
     }
+  })
+}
+
+export function fetchAlipayConfigStatus() {
+  return request.get<AlipayConfigStatus>({
+    url: '/api/saas/payment/alipay/config-status'
   })
 }
 
