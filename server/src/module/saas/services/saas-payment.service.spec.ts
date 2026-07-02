@@ -4,6 +4,7 @@ import { createSign, createVerify, generateKeyPairSync } from 'crypto';
 
 import { SAAS_ORDER_PAID, SAAS_ORDER_PENDING } from '../constants';
 import { SaasOrderService } from './saas-order.service';
+import { SaasPaymentConfigService } from './saas-payment-config.service';
 import { SaasPaymentService } from './saas-payment.service';
 import { SaasResourcePackOrderService } from './saas-resource-pack-order.service';
 
@@ -17,6 +18,10 @@ describe('SaasPaymentService', () => {
   const configService = {
     get: jest.fn(),
   };
+  const paymentConfigService = {
+    resolveAlipayConfig: jest.fn(),
+    getAlipayConfigStatus: jest.fn(),
+  };
 
   let service: SaasPaymentService;
 
@@ -26,7 +31,9 @@ describe('SaasPaymentService', () => {
       saasOrderService as unknown as SaasOrderService,
       resourcePackOrderService as unknown as SaasResourcePackOrderService,
       configService as unknown as ConfigService,
+      paymentConfigService as unknown as SaasPaymentConfigService,
     );
+    paymentConfigService.resolveAlipayConfig.mockResolvedValue(null);
   });
 
   it('returns an unconfigured Alipay result when sandbox keys are missing', async () => {
@@ -150,6 +157,34 @@ describe('SaasPaymentService', () => {
     ).toBe(true);
   });
 
+  it('uses database Alipay config before environment config', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+    });
+    paymentConfigService.resolveAlipayConfig.mockResolvedValue({
+      enabled: true,
+      appId: '2026070200000001',
+      privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+      publicKey: publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+      notifyUrl: 'http://db-notify/api/saas/payment/alipay/notify',
+      returnUrl: 'http://db-return/#/tenant-saas/plan',
+      gatewayUrl: 'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+      source: 'database',
+    });
+    saasOrderService.findTenantOrder.mockResolvedValue({
+      orderNo: 'SO20260702000000001000002',
+      tenantId: 12,
+      amountCents: 19900,
+      planCode: 'pro',
+      status: SAAS_ORDER_PENDING,
+    });
+
+    const result = await service.createAlipayPayment(12, 'SO20260702000000001000002');
+    const payUrl = new URL(result.pay_url || '');
+
+    expect(payUrl.searchParams.get('notify_url')).toBe('http://db-notify/api/saas/payment/alipay/notify');
+  });
+
   it('rejects payment initiation for missing orders', async () => {
     saasOrderService.findTenantOrder.mockResolvedValue(null);
 
@@ -168,7 +203,7 @@ describe('SaasPaymentService', () => {
     );
   });
 
-  it('verifies a valid RSA2 Alipay notify signature', () => {
+  it('verifies a valid RSA2 Alipay notify signature', async () => {
     const { privateKey, publicKey } = generateKeyPairSync('rsa', {
       modulusLength: 2048,
     });
@@ -190,21 +225,21 @@ describe('SaasPaymentService', () => {
       return '';
     });
 
-    expect(service.verifyAlipayNotify({ ...body, sign })).toBe(true);
+    await expect(service.verifyAlipayNotify({ ...body, sign })).resolves.toBe(true);
   });
 
-  it('rejects Alipay notify payloads without a usable signature', () => {
+  it('rejects Alipay notify payloads without a usable signature', async () => {
     configService.get.mockReturnValue('');
 
-    expect(
+    await expect(
       service.verifyAlipayNotify({
         out_trade_no: 'SO20260702000000001000001',
         trade_status: 'TRADE_SUCCESS',
       }),
-    ).toBe(false);
+    ).resolves.toBe(false);
   });
 
-  it('reports missing Alipay config without exposing secret values', () => {
+  it('reports missing Alipay config without exposing secret values', async () => {
     configService.get.mockImplementation((key: string) => {
       if (key === 'payment.alipay.gatewayUrl') {
         return 'https://openapi-sandbox.dl.alipaydev.com/gateway.do';
@@ -212,7 +247,7 @@ describe('SaasPaymentService', () => {
       return '';
     });
 
-    expect(service.getAlipayConfigStatus()).toEqual({
+    await expect(service.getAlipayConfigStatus()).resolves.toEqual({
       enabled: false,
       configured: false,
       missing_keys: [
@@ -230,7 +265,7 @@ describe('SaasPaymentService', () => {
     });
   });
 
-  it('reports complete Alipay config with masked app id', () => {
+  it('reports complete Alipay config with masked app id', async () => {
     configService.get.mockImplementation((key: string) => {
       const values: Record<string, string | boolean> = {
         'payment.alipay.enabled': true,
@@ -244,7 +279,7 @@ describe('SaasPaymentService', () => {
       return values[key];
     });
 
-    expect(service.getAlipayConfigStatus()).toEqual({
+    await expect(service.getAlipayConfigStatus()).resolves.toEqual({
       enabled: true,
       configured: true,
       missing_keys: [],

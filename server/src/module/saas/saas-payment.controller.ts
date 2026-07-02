@@ -60,14 +60,14 @@ export class SaasPaymentController {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
-    return ResultData.ok(this.saasPaymentService.getAlipayConfigStatus());
+    return ResultData.ok(await this.saasPaymentService.getAlipayConfigStatus());
   }
 
   @Public()
   @Post('alipay/notify')
   @ApiOperation({ summary: 'Handle Alipay notify endpoint' })
   async alipayNotify(@Body() body: Record<string, any>) {
-    if (!this.saasPaymentService.verifyAlipayNotify(body)) {
+    if (!(await this.saasPaymentService.verifyAlipayNotify(body))) {
       return 'fail';
     }
 

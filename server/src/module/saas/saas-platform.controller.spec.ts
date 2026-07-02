@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { SaasPlatformController } from './saas-platform.controller';
+import { UpdateAlipayConfigDto } from './dto/update-alipay-config.dto';
+import { SaasPaymentConfigService } from './services/saas-payment-config.service';
 import { SaasPlatformService } from './services/saas-platform.service';
 import { SaasProvisioningService } from './services/saas-provisioning.service';
 
@@ -17,6 +19,10 @@ describe('SaasPlatformController', () => {
     listResourcePackOrders: jest.fn(),
     findResourcePackOrder: jest.fn(),
   };
+  const paymentConfigService = {
+    getAlipayConfigStatus: jest.fn(),
+    updateAlipayConfig: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -31,6 +37,10 @@ describe('SaasPlatformController', () => {
         {
           provide: SaasPlatformService,
           useValue: platformService,
+        },
+        {
+          provide: SaasPaymentConfigService,
+          useValue: paymentConfigService,
         },
       ],
     }).compile();
@@ -121,5 +131,24 @@ describe('SaasPlatformController', () => {
 
     expect(platformService.findResourcePackOrder).toHaveBeenCalledWith('RPO1');
     expect(result.data).toEqual({ order_no: 'RPO1' });
+  });
+
+  it('returns platform Alipay config status outside tenant scope', async () => {
+    paymentConfigService.getAlipayConfigStatus.mockResolvedValue({ provider: 'alipay', configured: false });
+
+    const result = await controller.getAlipayConfig({ userId: 1 } as any);
+
+    expect(paymentConfigService.getAlipayConfigStatus).toHaveBeenCalled();
+    expect(result.data).toEqual({ provider: 'alipay', configured: false });
+  });
+
+  it('updates platform Alipay config outside tenant scope', async () => {
+    const body: UpdateAlipayConfigDto = { enabled: true, app_id: '2026070200000001' };
+    paymentConfigService.updateAlipayConfig.mockResolvedValue({ provider: 'alipay', configured: true });
+
+    const result = await controller.updateAlipayConfig(body, { userId: 1 } as any);
+
+    expect(paymentConfigService.updateAlipayConfig).toHaveBeenCalledWith(body);
+    expect(result.data).toEqual({ provider: 'alipay', configured: true });
   });
 });

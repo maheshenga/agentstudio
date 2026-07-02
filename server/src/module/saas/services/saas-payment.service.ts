@@ -4,6 +4,7 @@ import { createSign, createVerify } from 'crypto';
 
 import { SAAS_ORDER_PENDING, SAAS_PAYMENT_ALIPAY } from '../constants';
 import { SaasOrderService } from './saas-order.service';
+import { SaasPaymentConfigService } from './saas-payment-config.service';
 import { SaasResourcePackOrderService } from './saas-resource-pack-order.service';
 
 const ALIPAY_MISSING_CONFIG_MESSAGE =
@@ -55,6 +56,7 @@ export class SaasPaymentService {
     private readonly saasOrderService: SaasOrderService,
     private readonly saasResourcePackOrderService: SaasResourcePackOrderService,
     private readonly configService: ConfigService,
+    private readonly paymentConfigService: SaasPaymentConfigService,
   ) {}
 
   async createAlipayPayment(
@@ -63,7 +65,7 @@ export class SaasPaymentService {
     orderType: SaasPaymentOrderType = 'plan',
   ): Promise<SaasAlipayPaymentResult> {
     const order = await this.resolvePayableOrder(tenantId, orderNo, orderType);
-    const config = this.getAlipayConfig();
+    const config = await this.resolveAlipayConfig();
     if (!this.isAlipayConfigured(config)) {
       return {
         configured: false,
@@ -83,9 +85,10 @@ export class SaasPaymentService {
     };
   }
 
-  verifyAlipayNotify(body: Record<string, any>): boolean {
+  async verifyAlipayNotify(body: Record<string, any>): Promise<boolean> {
     const sign = String(body.sign || '');
-    const publicKey = this.configService.get<string>('payment.alipay.publicKey') || '';
+    const config = await this.resolveAlipayConfig();
+    const publicKey = config.publicKey;
     if (!sign || !publicKey) {
       return false;
     }
@@ -102,8 +105,22 @@ export class SaasPaymentService {
     }
   }
 
-  getAlipayConfigStatus(): SaasAlipayConfigStatus {
-    const config = this.getAlipayConfig();
+  async getAlipayConfigStatus(): Promise<SaasAlipayConfigStatus> {
+    const dbConfig = await this.paymentConfigService.resolveAlipayConfig();
+    if (dbConfig) {
+      const missingKeys = this.getMissingAlipayConfigKeys(dbConfig);
+      return {
+        enabled: dbConfig.enabled,
+        configured: missingKeys.length === 0,
+        missing_keys: missingKeys,
+        app_id_masked: this.maskConfigValue(dbConfig.appId),
+        gateway_url: dbConfig.gatewayUrl,
+        notify_url_configured: Boolean(dbConfig.notifyUrl),
+        return_url_configured: Boolean(dbConfig.returnUrl),
+      };
+    }
+
+    const config = this.getEnvironmentAlipayConfig();
     const missingKeys = this.getMissingAlipayConfigKeys(config);
 
     return {
@@ -117,7 +134,24 @@ export class SaasPaymentService {
     };
   }
 
-  private getAlipayConfig(): AlipayConfig {
+  private async resolveAlipayConfig(): Promise<AlipayConfig> {
+    const dbConfig = await this.paymentConfigService.resolveAlipayConfig();
+    if (dbConfig) {
+      return {
+        enabled: dbConfig.enabled,
+        appId: dbConfig.appId,
+        privateKey: dbConfig.privateKey,
+        publicKey: dbConfig.publicKey,
+        notifyUrl: dbConfig.notifyUrl,
+        returnUrl: dbConfig.returnUrl,
+        gatewayUrl: dbConfig.gatewayUrl,
+      };
+    }
+
+    return this.getEnvironmentAlipayConfig();
+  }
+
+  private getEnvironmentAlipayConfig(): AlipayConfig {
     return {
       enabled: this.configService.get<boolean>('payment.alipay.enabled') === true,
       appId: this.configService.get<string>('payment.alipay.appId') || '',

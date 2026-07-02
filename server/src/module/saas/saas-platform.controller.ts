@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -7,6 +7,8 @@ import { TenantContext } from '../../common/tenant/tenant.context';
 import { User } from '../system/user/user.decorator';
 import type { UserDto } from '../system/user/user.decorator';
 import { TenantProvisionDto } from './dto/tenant-provision.dto';
+import { UpdateAlipayConfigDto } from './dto/update-alipay-config.dto';
+import { SaasPaymentConfigService } from './services/saas-payment-config.service';
 import { SaasPlatformService } from './services/saas-platform.service';
 import type { SaasPlatformListQuery } from './services/saas-platform.service';
 import { SaasProvisioningService } from './services/saas-provisioning.service';
@@ -20,6 +22,7 @@ export class SaasPlatformController {
   constructor(
     private readonly provisioning: SaasProvisioningService,
     private readonly platformService: SaasPlatformService,
+    private readonly paymentConfigService: SaasPaymentConfigService,
   ) {}
 
   @Post('tenants')
@@ -109,6 +112,36 @@ export class SaasPlatformController {
         ignoreTenant: true,
       },
       () => this.platformService.findResourcePackOrder(orderNo).then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Get('payment/alipay/config')
+  @ApiOperation({ summary: 'Get platform Alipay config status' })
+  @RequirePermission('saas:payment-config:view')
+  getAlipayConfig(@User() user: UserDto) {
+    return TenantContext.run(
+      {
+        tenantId: undefined,
+        userId: user?.userId,
+        ignoreAudit: false,
+        ignoreTenant: true,
+      },
+      () => this.paymentConfigService.getAlipayConfigStatus().then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Put('payment/alipay/config')
+  @ApiOperation({ summary: 'Update platform Alipay config' })
+  @RequirePermission('saas:payment-config:update')
+  updateAlipayConfig(@Body() body: UpdateAlipayConfigDto, @User() user: UserDto) {
+    return TenantContext.run(
+      {
+        tenantId: undefined,
+        userId: user?.userId,
+        ignoreAudit: false,
+        ignoreTenant: true,
+      },
+      () => this.paymentConfigService.updateAlipayConfig(body).then((data) => ResultData.ok(data)),
     );
   }
 }
