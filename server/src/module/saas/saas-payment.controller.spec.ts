@@ -3,12 +3,16 @@ import { Test, TestingModule } from '@nestjs/testing';
 import * as tenantUtils from '../../common/utils/tenant.util';
 import { SaasPaymentController } from './saas-payment.controller';
 import { SaasOrderService } from './services/saas-order.service';
+import { SaasPaymentService } from './services/saas-payment.service';
 
 describe('SaasPaymentController', () => {
   let controller: SaasPaymentController;
 
   const saasOrderService = {
     confirmDevPayment: jest.fn(),
+  };
+  const saasPaymentService = {
+    createAlipayPayment: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -20,6 +24,10 @@ describe('SaasPaymentController', () => {
         {
           provide: SaasOrderService,
           useValue: saasOrderService,
+        },
+        {
+          provide: SaasPaymentService,
+          useValue: saasPaymentService,
         },
       ],
     }).compile();
@@ -69,6 +77,30 @@ describe('SaasPaymentController', () => {
     expect(result.data).toEqual({
       received: true,
       provider: 'alipay',
+    });
+  });
+
+  it('creates an Alipay payment in tenant context', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(12);
+    saasPaymentService.createAlipayPayment.mockResolvedValue({
+      configured: false,
+      provider: 'alipay',
+      order_no: 'SO20260702000000001000001',
+      pay_url: null,
+      message: 'Alipay sandbox config is missing.',
+    });
+
+    const result = await controller.createAlipayPayment({
+      order_no: 'SO20260702000000001000001',
+    });
+
+    expect(saasPaymentService.createAlipayPayment).toHaveBeenCalledWith(12, 'SO20260702000000001000001');
+    expect(result.data).toEqual({
+      configured: false,
+      provider: 'alipay',
+      order_no: 'SO20260702000000001000001',
+      pay_url: null,
+      message: 'Alipay sandbox config is missing.',
     });
   });
 });

@@ -66,6 +66,14 @@ export interface SaasOrderRecord {
   paid_at?: string | Date
 }
 
+export interface AlipayPaymentResult {
+  configured: boolean
+  provider: 'alipay'
+  order_no: string
+  pay_url: string | null
+  message: string
+}
+
 export interface CreateSaasOrderParams {
   plan_code: string
   billing_cycle?: 'monthly' | 'yearly'
@@ -113,6 +121,15 @@ export function fetchTenantOrder(orderNo: string) {
 export function devConfirmTenantPayment(orderNo: string) {
   return request.post<SaasOrderRecord>({
     url: '/api/saas/payment/dev-confirm',
+    data: {
+      order_no: orderNo
+    }
+  })
+}
+
+export function createAlipayPayment(orderNo: string) {
+  return request.post<AlipayPaymentResult>({
+    url: '/api/saas/payment/alipay/create',
     data: {
       order_no: orderNo
     }

@@ -74,6 +74,14 @@
         </div>
         <div class="tenant-plan-page__order-actions">
           <ElButton
+            type="primary"
+            :disabled="currentOrder.status === 'paid'"
+            :loading="creatingAlipayPayment"
+            @click="startAlipayPayment"
+          >
+            去支付宝支付
+          </ElButton>
+          <ElButton
             type="success"
             :disabled="currentOrder.status === 'paid'"
             :loading="confirmingPayment"
@@ -91,6 +99,7 @@
 <script setup lang="ts">
   import { ElMessage } from 'element-plus'
   import {
+    createAlipayPayment,
     createTenantUpgradeOrder,
     devConfirmTenantPayment,
     fetchTenantPlans,
@@ -108,6 +117,7 @@
   const billingCycle = ref<'monthly' | 'yearly'>('yearly')
   const loading = ref(false)
   const creatingPlanCode = ref('')
+  const creatingAlipayPayment = ref(false)
   const confirmingPayment = ref(false)
   const errorMessage = ref('')
 
@@ -292,6 +302,27 @@
       console.error('[SaasTenantPlanPage] confirm payment failed:', error)
     } finally {
       confirmingPayment.value = false
+    }
+  }
+
+  async function startAlipayPayment() {
+    if (!currentOrder.value) return
+
+    creatingAlipayPayment.value = true
+
+    try {
+      const result = await createAlipayPayment(currentOrder.value.order_no)
+      if (result.configured && result.pay_url) {
+        window.open(result.pay_url, '_blank', 'noopener,noreferrer')
+        ElMessage.success('支付宝支付页面已打开')
+        return
+      }
+
+      ElMessage.warning(result.message || '支付宝沙箱配置未完成')
+    } catch (error) {
+      console.error('[SaasTenantPlanPage] create alipay payment failed:', error)
+    } finally {
+      creatingAlipayPayment.value = false
     }
   }
 

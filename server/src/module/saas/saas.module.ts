@@ -14,6 +14,7 @@ import { SaasPublicController } from './saas-public.controller';
 import { SaasTenantController } from './saas-tenant.controller';
 import { SaasPlanService } from './services/saas-plan.service';
 import { SaasOrderService } from './services/saas-order.service';
+import { SaasPaymentService } from './services/saas-payment.service';
 import { SaasProvisioningService } from './services/saas-provisioning.service';
 import { SaasQuotaService } from './services/saas-quota.service';
 
@@ -30,7 +31,7 @@ import { SaasQuotaService } from './services/saas-quota.service';
     ]),
   ],
   controllers: [SaasPublicController, SaasPlatformController, SaasTenantController, SaasPaymentController],
-  providers: [SaasPlanService, SaasOrderService, SaasQuotaService, SaasProvisioningService],
-  exports: [SaasPlanService, SaasOrderService, SaasQuotaService, SaasProvisioningService],
+  providers: [SaasPlanService, SaasOrderService, SaasPaymentService, SaasQuotaService, SaasProvisioningService],
+  exports: [SaasPlanService, SaasOrderService, SaasPaymentService, SaasQuotaService, SaasProvisioningService],
 })
 export class SaasModule {}

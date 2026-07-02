@@ -57,6 +57,17 @@ export default () => ({
       .filter(Boolean),
     credentials: process.env.CORS_CREDENTIALS === 'true',
   },
+  payment: {
+    alipay: {
+      enabled: process.env.ALIPAY_ENABLED === 'true',
+      appId: process.env.ALIPAY_APP_ID ?? '',
+      privateKey: process.env.ALIPAY_PRIVATE_KEY ?? '',
+      publicKey: process.env.ALIPAY_PUBLIC_KEY ?? '',
+      notifyUrl: process.env.ALIPAY_NOTIFY_URL ?? '',
+      returnUrl: process.env.ALIPAY_RETURN_URL ?? '',
+      gatewayUrl: process.env.ALIPAY_GATEWAY_URL ?? 'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+    },
+  },
   swagger: {
     enabled: process.env.SWAGGER_ENABLED === 'true',
     username: process.env.SWAGGER_USERNAME ?? '',

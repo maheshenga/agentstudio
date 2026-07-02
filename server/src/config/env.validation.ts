@@ -35,6 +35,14 @@ export const envValidationSchema = Joi.object({
   }),
   CORS_CREDENTIALS: Joi.boolean().truthy('true').falsy('false').default(false),
 
+  ALIPAY_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
+  ALIPAY_APP_ID: Joi.string().allow('').optional(),
+  ALIPAY_PRIVATE_KEY: Joi.string().allow('').optional(),
+  ALIPAY_PUBLIC_KEY: Joi.string().allow('').optional(),
+  ALIPAY_NOTIFY_URL: Joi.string().allow('').optional(),
+  ALIPAY_RETURN_URL: Joi.string().allow('').optional(),
+  ALIPAY_GATEWAY_URL: Joi.string().uri().default('https://openapi-sandbox.dl.alipaydev.com/gateway.do'),
+
   SWAGGER_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
   SWAGGER_USERNAME: Joi.string().allow('').optional(),
   SWAGGER_PASSWORD: Joi.string().allow('').optional(),

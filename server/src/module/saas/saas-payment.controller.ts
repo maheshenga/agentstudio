@@ -6,12 +6,16 @@ import { ResultData } from '../../common/utils/result';
 import { getTenantId } from '../../common/utils/tenant.util';
 import { SaasOrderEntity } from './entities/saas-order.entity';
 import { SaasOrderService } from './services/saas-order.service';
+import { SaasPaymentService } from './services/saas-payment.service';
 
 @ApiTags('SaaS Payment')
 @ApiBearerAuth('Authorization')
 @Controller('api/saas/payment')
 export class SaasPaymentController {
-  constructor(private readonly saasOrderService: SaasOrderService) {}
+  constructor(
+    private readonly saasOrderService: SaasOrderService,
+    private readonly saasPaymentService: SaasPaymentService,
+  ) {}
 
   @Post('dev-confirm')
   @ApiOperation({ summary: 'Development-only SaaS payment confirmation' })
@@ -22,6 +26,17 @@ export class SaasPaymentController {
     }
 
     return ResultData.ok(this.toOrderResponse(await this.saasOrderService.confirmDevPayment(tenantId, body.order_no)));
+  }
+
+  @Post('alipay/create')
+  @ApiOperation({ summary: 'Create Alipay SaaS payment' })
+  async createAlipayPayment(@Body() body: { order_no: string }) {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    return ResultData.ok(await this.saasPaymentService.createAlipayPayment(tenantId, body.order_no));
   }
 
   @Public()
