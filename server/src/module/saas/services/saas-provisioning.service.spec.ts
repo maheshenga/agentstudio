@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 
+import { SysMenuEntity } from '../../system/menu/entities/menu.entity';
+import { SysRoleMenuEntity } from '../../system/role/entities/role-width-menu.entity';
 import { SaasPlanEntity } from '../entities/saas-plan.entity';
 import { SaasSubscriptionEntity } from '../entities/saas-subscription.entity';
 import { SaasTrialEntity } from '../entities/saas-trial.entity';
@@ -27,6 +29,8 @@ describe('SaasProvisioningService', () => {
   const manager = {
     create: jest.fn(),
     save: jest.fn(),
+    find: jest.fn(),
+    insert: jest.fn(),
   };
 
   const dataSource = {
@@ -35,16 +39,35 @@ describe('SaasProvisioningService', () => {
 
   const saasPlanService = {
     getFreePlan: jest.fn(),
+    getPlanByCode: jest.fn(),
   };
 
   const saasQuotaService = {
     initializeTenantQuota: jest.fn(),
   };
 
+  const tenantMenuRecords = [
+    { id: 501, code: 'TenantSaas', slug: null },
+    { id: 502, code: 'TenantBilling', slug: null },
+    { id: 503, code: 'TenantQuota', slug: null },
+    { id: 504, code: null, slug: 'tenant:billing:view' },
+    { id: 505, code: null, slug: 'tenant:billing:upgrade' },
+    { id: 506, code: null, slug: 'tenant:quota:view' },
+    { id: 507, code: null, slug: 'tenant:resource:buy' },
+  ];
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
     manager.create.mockImplementation((_entity, payload) => payload);
+    manager.find.mockImplementation(async (entity) => {
+      if (entity === SysMenuEntity) {
+        return tenantMenuRecords;
+      }
+
+      return [];
+    });
+    manager.insert.mockResolvedValue(undefined);
     manager.save.mockImplementation(async (_entity, payload) => {
       if (payload.username) {
         return { id: 101, ...payload };
@@ -67,11 +90,16 @@ describe('SaasProvisioningService', () => {
     dataSource.transaction.mockImplementation(async (callback) => {
       const resultPromise = callback(manager);
       expect(saasQuotaService.initializeTenantQuota).not.toHaveBeenCalled();
-      const result = await resultPromise;
-      expect(saasQuotaService.initializeTenantQuota).toHaveBeenCalledWith(202, 9, manager);
-      return result;
+      return resultPromise;
     });
     saasPlanService.getFreePlan.mockResolvedValue(freePlan);
+    saasPlanService.getPlanByCode.mockResolvedValue({
+      ...freePlan,
+      id: 19,
+      code: 'pro',
+      name: 'Pro',
+      billingCycle: 'yearly',
+    });
     saasQuotaService.initializeTenantQuota.mockResolvedValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
@@ -95,7 +123,7 @@ describe('SaasProvisioningService', () => {
     service = module.get(SaasProvisioningService);
   });
 
-  it('signs up a tenant owner with tenant, owner role, free subscription, trial, and quota', async () => {
+  it('signs up a tenant owner with tenant, baseline role menus, free subscription, trial, and quota', async () => {
     const result = await service.signup({
       username: 'founder',
       password: 'Secret123!',
@@ -191,21 +219,48 @@ describe('SaasProvisioningService', () => {
     const trialPayload = manager.save.mock.calls.find(([entity]) => entity === SaasTrialEntity)?.[1];
     expect(trialPayload.endTime.getTime() - trialPayload.startTime.getTime()).toBe(14 * 24 * 60 * 60 * 1000);
 
+    const roleMenuRows = manager.insert.mock.calls
+      .filter(([entity]) => entity === SysRoleMenuEntity)
+      .flatMap(([, values]) => values as Array<{ roleId: number; menuId: number }>);
+
+    expect(roleMenuRows).toEqual(
+      expect.arrayContaining([
+        { roleId: 301, menuId: 501 },
+        { roleId: 301, menuId: 502 },
+        { roleId: 301, menuId: 503 },
+        { roleId: 301, menuId: 504 },
+        { roleId: 301, menuId: 505 },
+        { roleId: 301, menuId: 506 },
+        { roleId: 301, menuId: 507 },
+        { roleId: 302, menuId: 505 },
+        { roleId: 302, menuId: 507 },
+        { roleId: 303, menuId: 504 },
+        { roleId: 303, menuId: 506 },
+      ]),
+    );
+    expect(roleMenuRows).not.toEqual(
+      expect.arrayContaining([
+        { roleId: 303, menuId: 505 },
+        { roleId: 303, menuId: 507 },
+      ]),
+    );
+
     expect(saasQuotaService.initializeTenantQuota).toHaveBeenCalledWith(202, 9, manager);
   });
 
-  it('creates a tenant from the platform with an explicit tenant code', async () => {
+  it('creates a tenant from the platform with an explicit tenant code and defaults to the free plan when no plan code is provided', async () => {
     const result = await service.createTenantFromPlatform({
       tenant_name: 'Beta Labs',
       tenant_code: 'beta-labs',
       owner_username: 'beta-owner',
       owner_password: 'AnotherSecret123!',
       owner_realname: 'Beta Owner',
-      plan_code: 'free',
       with_trial: true,
     });
 
     expect(result).toEqual({ userId: 101, tenantId: 202 });
+    expect(saasPlanService.getFreePlan).toHaveBeenCalledTimes(1);
+    expect(saasPlanService.getPlanByCode).not.toHaveBeenCalled();
 
     expect(manager.save).toHaveBeenCalledWith(
       expect.anything(),
@@ -215,5 +270,30 @@ describe('SaasProvisioningService', () => {
         contactName: 'Beta Owner',
       }),
     );
+  });
+
+  it('uses a non-free plan code for platform provisioning and quota initialization', async () => {
+    const result = await service.createTenantFromPlatform({
+      tenant_name: 'Gamma Labs',
+      tenant_code: 'gamma-labs',
+      owner_username: 'gamma-owner',
+      owner_password: 'AnotherSecret123!',
+      owner_realname: 'Gamma Owner',
+      plan_code: 'pro',
+      with_trial: false,
+    });
+
+    expect(result).toEqual({ userId: 101, tenantId: 202 });
+    expect(saasPlanService.getPlanByCode).toHaveBeenCalledWith('pro');
+    expect(manager.save).toHaveBeenCalledWith(
+      SaasSubscriptionEntity,
+      expect.objectContaining({
+        tenantId: 202,
+        planId: 19,
+        billingCycle: 'yearly',
+        status: 'active',
+      }),
+    );
+    expect(saasQuotaService.initializeTenantQuota).toHaveBeenCalledWith(202, 19, manager);
   });
 });

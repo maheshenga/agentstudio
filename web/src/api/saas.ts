@@ -14,6 +14,16 @@ export interface SaasSignupResult {
   tenantId: number
 }
 
+export interface SaasTenantProvisionParams {
+  tenant_name: string
+  tenant_code: string
+  owner_username: string
+  owner_password: string
+  owner_realname?: string
+  plan_code?: string
+  with_trial?: boolean
+}
+
 export interface TenantUsageQuotaRecord {
   resource_type: string
   quota: number
@@ -53,5 +63,12 @@ export function fetchTenantUsage() {
 export function fetchTenantSubscription() {
   return request.get<TenantSubscriptionSummary>({
     url: '/api/saas/tenant/subscription'
+  })
+}
+
+export function createSaasTenantFromPlatform(params: SaasTenantProvisionParams) {
+  return request.post<SaasSignupResult>({
+    url: '/api/saas/platform/tenants',
+    data: params
   })
 }

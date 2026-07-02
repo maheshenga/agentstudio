@@ -1,15 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 
+import { SysMenuEntity } from '../../system/menu/entities/menu.entity';
 import { TenantEntity } from '../../system/tenant/entities/tenant.entity';
 import { SysRoleEntity } from '../../system/role/entities/role.entity';
+import { SysRoleMenuEntity } from '../../system/role/entities/role-width-menu.entity';
 import { UserEntity } from '../../system/user/entities/sys-user.entity';
 import { SysUserRoleEntity } from '../../system/user/entities/user-width-role.entity';
 import { SysUserTenantEntity } from '../../system/user/entities/user-tenant.entity';
 import {
   SAAS_DEFAULT_TRIAL_DAYS,
+  SAAS_PLAN_FREE,
   SAAS_SUBSCRIPTION_ACTIVE,
   SAAS_SUBSCRIPTION_TRIALING,
 } from '../constants';
@@ -21,6 +24,15 @@ import { SaasPlanService } from './saas-plan.service';
 import { SaasQuotaService } from './saas-quota.service';
 
 type ProvisioningResult = { userId: number; tenantId: number };
+
+const TENANT_BASELINE_MENU_CODES = ['TenantSaas', 'TenantBilling', 'TenantQuota'] as const;
+const TENANT_OWNER_ADMIN_PERMISSION_SLUGS = [
+  'tenant:billing:view',
+  'tenant:billing:upgrade',
+  'tenant:quota:view',
+  'tenant:resource:buy',
+] as const;
+const TENANT_MEMBER_PERMISSION_SLUGS = ['tenant:billing:view', 'tenant:quota:view'] as const;
 
 @Injectable()
 export class SaasProvisioningService {
@@ -42,6 +54,7 @@ export class SaasProvisioningService {
       email: dto.email,
       tenantRemark: this.buildSignupRemark(dto),
       withTrial: true,
+      planCode: SAAS_PLAN_FREE,
     });
   }
 
@@ -53,6 +66,7 @@ export class SaasProvisioningService {
       password: dto.owner_password,
       realname: dto.owner_realname,
       withTrial: dto.with_trial ?? true,
+      planCode: dto.plan_code,
     });
   }
 
@@ -66,8 +80,9 @@ export class SaasProvisioningService {
     email?: string;
     tenantRemark?: string;
     withTrial: boolean;
+    planCode?: string;
   }): Promise<ProvisioningResult> {
-    const freePlan = await this.saasPlanService.getFreePlan();
+    const initialPlan = await this.resolveInitialPlan(input.planCode);
     const hashedPassword = bcrypt.hashSync(input.password, bcrypt.genSaltSync(10));
 
     const result = await this.dataSource.transaction<ProvisioningResult>(async (manager) => {
@@ -113,6 +128,7 @@ export class SaasProvisioningService {
 
       const roles = await this.createDefaultRoles(manager, tenant.id);
       const ownerRole = roles[0];
+      await this.assignTenantRoleMenus(manager, roles);
 
       await manager.save(
         SysUserRoleEntity,
@@ -128,8 +144,8 @@ export class SaasProvisioningService {
         SaasSubscriptionEntity,
         manager.create(SaasSubscriptionEntity, {
           tenantId: tenant.id,
-          planId: freePlan.id,
-          billingCycle: freePlan.billingCycle || 'monthly',
+          planId: initialPlan.id,
+          billingCycle: initialPlan.billingCycle || 'monthly',
           status: SAAS_SUBSCRIPTION_ACTIVE,
           startTime: new Date(),
           endTime: null,
@@ -155,7 +171,7 @@ export class SaasProvisioningService {
         );
       }
 
-      await this.saasQuotaService.initializeTenantQuota(tenant.id, freePlan.id, manager);
+      await this.saasQuotaService.initializeTenantQuota(tenant.id, initialPlan.id, manager);
 
       return {
         userId: user.id,
@@ -165,7 +181,7 @@ export class SaasProvisioningService {
     return result;
   }
 
-  private async createDefaultRoles(manager: DataSource['manager'], tenantId: number): Promise<SysRoleEntity[]> {
+  private async createDefaultRoles(manager: EntityManager, tenantId: number): Promise<SysRoleEntity[]> {
     const roleDefinitions = [
       { name: 'Owner', code: `tenant:${tenantId}:owner`, sort: 1 },
       { name: 'Admin', code: `tenant:${tenantId}:admin`, sort: 2 },
@@ -192,6 +208,107 @@ export class SaasProvisioningService {
     }
 
     return roles;
+  }
+
+  private async assignTenantRoleMenus(manager: EntityManager, roles: SysRoleEntity[]): Promise<void> {
+    const menuMap = await this.loadTenantBaselineMenuMap(manager);
+    const ownerRole = roles.find((role) => role.code.endsWith(':owner'));
+    const adminRole = roles.find((role) => role.code.endsWith(':admin'));
+    const memberRole = roles.find((role) => role.code.endsWith(':member'));
+
+    if (!ownerRole || !adminRole || !memberRole) {
+      throw new Error('Tenant baseline roles are incomplete');
+    }
+
+    await this.insertRoleMenus(
+      manager,
+      ownerRole.id,
+      this.collectMenuIds(menuMap, TENANT_BASELINE_MENU_CODES, TENANT_OWNER_ADMIN_PERMISSION_SLUGS),
+    );
+    await this.insertRoleMenus(
+      manager,
+      adminRole.id,
+      this.collectMenuIds(menuMap, TENANT_BASELINE_MENU_CODES, TENANT_OWNER_ADMIN_PERMISSION_SLUGS),
+    );
+    await this.insertRoleMenus(
+      manager,
+      memberRole.id,
+      this.collectMenuIds(menuMap, TENANT_BASELINE_MENU_CODES, TENANT_MEMBER_PERMISSION_SLUGS),
+    );
+  }
+
+  private async loadTenantBaselineMenuMap(manager: EntityManager): Promise<Map<string, number>> {
+    const menus = await manager.find(SysMenuEntity, {
+      where: [
+        {
+          code: In([...TENANT_BASELINE_MENU_CODES]),
+          status: 1,
+          deleteTime: IsNull(),
+        },
+        {
+          slug: In([...TENANT_OWNER_ADMIN_PERMISSION_SLUGS]),
+          status: 1,
+          deleteTime: IsNull(),
+        },
+      ],
+    });
+
+    const menuMap = new Map<string, number>();
+    for (const menu of menus) {
+      if (menu.code) {
+        menuMap.set(`code:${menu.code}`, Number(menu.id));
+      }
+      if (menu.slug) {
+        menuMap.set(`slug:${menu.slug}`, Number(menu.id));
+      }
+    }
+
+    const expectedCount = TENANT_BASELINE_MENU_CODES.length + TENANT_OWNER_ADMIN_PERMISSION_SLUGS.length;
+    if (menuMap.size < expectedCount) {
+      throw new Error('Tenant SaaS menus are not configured');
+    }
+
+    return menuMap;
+  }
+
+  private collectMenuIds(
+    menuMap: Map<string, number>,
+    menuCodes: readonly string[],
+    permissionSlugs: readonly string[],
+  ): number[] {
+    return [...menuCodes.map((code) => this.getRequiredMenuId(menuMap, 'code', code)), ...permissionSlugs.map((slug) => this.getRequiredMenuId(menuMap, 'slug', slug))];
+  }
+
+  private getRequiredMenuId(menuMap: Map<string, number>, keyType: 'code' | 'slug', value: string): number {
+    const menuId = menuMap.get(`${keyType}:${value}`);
+
+    if (!menuId) {
+      throw new Error('Tenant SaaS menus are not configured');
+    }
+
+    return menuId;
+  }
+
+  private async insertRoleMenus(manager: EntityManager, roleId: number, menuIds: number[]): Promise<void> {
+    if (!menuIds.length) {
+      return;
+    }
+
+    await manager.insert(
+      SysRoleMenuEntity,
+      menuIds.map((menuId) => ({
+        roleId,
+        menuId,
+      })),
+    );
+  }
+
+  private async resolveInitialPlan(planCode?: string) {
+    if (!planCode || planCode === SAAS_PLAN_FREE) {
+      return this.saasPlanService.getFreePlan();
+    }
+
+    return this.saasPlanService.getPlanByCode(planCode);
   }
 
   private generateTenantCode(tenantName: string): string {

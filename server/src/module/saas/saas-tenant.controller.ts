@@ -5,7 +5,9 @@ import { Repository } from 'typeorm';
 
 import { ResultData } from '../../common/utils/result';
 import { getTenantId } from '../../common/utils/tenant.util';
+import { SaasPlanEntity } from './entities/saas-plan.entity';
 import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
+import { SaasTrialEntity } from './entities/saas-trial.entity';
 import { SaasQuotaService } from './services/saas-quota.service';
 
 @ApiTags('SaaS Tenant')
@@ -15,6 +17,10 @@ export class SaasTenantController {
   constructor(
     @InjectRepository(SaasSubscriptionEntity)
     private readonly saasSubscriptionRepo: Repository<SaasSubscriptionEntity>,
+    @InjectRepository(SaasPlanEntity)
+    private readonly saasPlanRepo: Repository<SaasPlanEntity>,
+    @InjectRepository(SaasTrialEntity)
+    private readonly saasTrialRepo: Repository<SaasTrialEntity>,
     private readonly saasQuotaService: SaasQuotaService,
   ) {}
 
@@ -46,6 +52,39 @@ export class SaasTenantController {
       },
     });
 
-    return ResultData.ok(subscription);
+    if (!subscription) {
+      return ResultData.ok(null);
+    }
+
+    const [plan, trial] = await Promise.all([
+      this.saasPlanRepo.findOne({
+        where: {
+          id: subscription.planId,
+        },
+      }),
+      this.saasTrialRepo.findOne({
+        where: {
+          tenantId,
+          subscriptionId: subscription.id,
+        },
+        order: {
+          id: 'DESC',
+        },
+      }),
+    ]);
+
+    return ResultData.ok({
+      tenant_id: tenantId,
+      plan_id: subscription.planId,
+      current_plan: plan?.code ?? null,
+      plan_name: plan?.name ?? null,
+      subscription_status: subscription.status,
+      billing_cycle: subscription.billingCycle,
+      start_time: subscription.startTime,
+      end_time: subscription.endTime ?? null,
+      trial_status: trial?.status ?? null,
+      trial_end_time: trial?.endTime ?? null,
+      is_trial_active: Boolean(trial && trial.status === 'trialing' && (!trial.endTime || trial.endTime.getTime() >= Date.now())),
+    });
   }
 }

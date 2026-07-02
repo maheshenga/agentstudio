@@ -165,21 +165,21 @@ const TENANT_ROOT_MENU: MenuSeed = {
 
 const TENANT_MENUS: MenuSeed[] = [
   {
-    name: '账单中心',
+    name: '套餐概览',
     code: 'TenantBilling',
     type: 2,
-    path: 'billing',
-    component: '/saas/tenant/billing',
+    path: 'plan',
+    component: '/saas/tenant/plan',
     icon: 'ri:bank-card-line',
     sort: 10,
     remark: 'Seeded tenant billing menu',
   },
   {
-    name: '资源配额',
+    name: '用量中心',
     code: 'TenantQuota',
     type: 2,
-    path: 'quota',
-    component: '/saas/tenant/quota',
+    path: 'usage',
+    component: '/saas/tenant/usage',
     icon: 'ri:pie-chart-2-line',
     sort: 20,
     remark: 'Seeded tenant quota menu',
