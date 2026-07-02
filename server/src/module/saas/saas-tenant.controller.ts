@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 
 import { ResultData } from '../../common/utils/result';
 import { getTenantId } from '../../common/utils/tenant.util';
+import { CreateResourcePackOrderDto } from './dto/create-resource-pack-order.dto';
 import { CreateUpgradeOrderDto } from './dto/create-upgrade-order.dto';
 import { SaasOrderEntity } from './entities/saas-order.entity';
 import { SaasPlanEntity } from './entities/saas-plan.entity';
@@ -12,6 +13,7 @@ import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
 import { SaasTrialEntity } from './entities/saas-trial.entity';
 import { SaasOrderService } from './services/saas-order.service';
 import { SaasQuotaService } from './services/saas-quota.service';
+import { SaasResourcePackOrderService } from './services/saas-resource-pack-order.service';
 import { SaasResourcePackService } from './services/saas-resource-pack.service';
 
 @ApiTags('SaaS Tenant')
@@ -28,6 +30,7 @@ export class SaasTenantController {
     private readonly saasQuotaService: SaasQuotaService,
     private readonly saasOrderService: SaasOrderService,
     private readonly saasResourcePackService: SaasResourcePackService,
+    private readonly saasResourcePackOrderService: SaasResourcePackOrderService,
   ) {}
 
   @Get('plans')
@@ -80,6 +83,33 @@ export class SaasTenantController {
     }
 
     return ResultData.ok(await this.saasResourcePackService.listTenantResourcePacks());
+  }
+
+  @Post('resource-pack-orders')
+  @ApiOperation({ summary: 'Create a tenant SaaS resource pack order' })
+  async createResourcePackOrder(@Body() body: CreateResourcePackOrderDto) {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    return ResultData.ok(
+      this.saasResourcePackOrderService.toResponse(
+        await this.saasResourcePackOrderService.createTenantOrder(tenantId, body),
+      ),
+    );
+  }
+
+  @Get('resource-pack-orders/:order_no')
+  @ApiOperation({ summary: 'Get a tenant SaaS resource pack order' })
+  async resourcePackOrder(@Param('order_no') orderNo: string) {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    const order = await this.saasResourcePackOrderService.findTenantOrder(tenantId, orderNo);
+    return ResultData.ok(order ? this.saasResourcePackOrderService.toResponse(order) : null);
   }
 
   @Get('subscription')

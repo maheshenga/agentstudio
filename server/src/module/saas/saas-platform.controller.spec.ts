@@ -14,6 +14,7 @@ describe('SaasPlatformController', () => {
     listOrders: jest.fn(),
     listSubscriptions: jest.fn(),
     listResourcePacks: jest.fn(),
+    listResourcePackOrders: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -87,6 +88,25 @@ describe('SaasPlatformController', () => {
     expect(platformService.listResourcePacks).toHaveBeenCalledWith({ resource_type: 'tokens' });
     expect(result.data).toEqual({
       list: [{ code: 'tokens_1m' }],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+  });
+
+  it('lists platform SaaS resource pack orders outside tenant scope', async () => {
+    platformService.listResourcePackOrders.mockResolvedValue({
+      list: [{ order_no: 'RPO20260703120000001000001' }],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+
+    const result = await controller.listResourcePackOrders({ status: 'paid' }, { userId: 1 } as any);
+
+    expect(platformService.listResourcePackOrders).toHaveBeenCalledWith({ status: 'paid' });
+    expect(result.data).toEqual({
+      list: [{ order_no: 'RPO20260703120000001000001' }],
       total: 1,
       page: 1,
       limit: 20,

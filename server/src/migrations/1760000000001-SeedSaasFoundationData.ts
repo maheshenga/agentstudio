@@ -169,6 +169,16 @@ const PLATFORM_MENUS: MenuSeed[] = [
     sort: 50,
     remark: 'Seeded SaaS resource pack management menu',
   },
+  {
+    name: 'Resource Pack Orders',
+    code: 'SaasResourcePackOrder',
+    type: 2,
+    path: 'resource-pack-orders',
+    component: '/saas/platform/resource-pack-order',
+    icon: 'ri:file-list-3-line',
+    sort: 60,
+    remark: 'Seeded SaaS resource pack order menu',
+  },
 ];
 
 const PLATFORM_PERMISSIONS: PermissionSeed[] = [
@@ -235,6 +245,14 @@ const PLATFORM_PERMISSIONS: PermissionSeed[] = [
     method: 'GET',
     sort: 10,
     remark: 'Seeded SaaS resource pack list permission',
+  },
+  {
+    parentCode: 'SaasResourcePackOrder',
+    name: 'List',
+    slug: 'saas:resource-pack-order:list',
+    method: 'GET',
+    sort: 10,
+    remark: 'Seeded SaaS resource pack order list permission',
   },
 ];
 
@@ -323,6 +341,30 @@ const TENANT_PERMISSIONS: PermissionSeed[] = [
     sort: 10,
     remark: 'Seeded tenant resource pack view permission',
   },
+  {
+    parentCode: 'TenantResourcePack',
+    name: 'Create order',
+    slug: 'tenant:resource-pack-order:create',
+    method: 'POST',
+    sort: 20,
+    remark: 'Seeded tenant resource pack order create permission',
+  },
+  {
+    parentCode: 'TenantResourcePack',
+    name: 'View order',
+    slug: 'tenant:resource-pack-order:view',
+    method: 'GET',
+    sort: 30,
+    remark: 'Seeded tenant resource pack order view permission',
+  },
+  {
+    parentCode: 'TenantResourcePack',
+    name: 'Pay order',
+    slug: 'tenant:resource-pack-order:pay',
+    method: 'POST',
+    sort: 40,
+    remark: 'Seeded tenant resource pack order pay permission',
+  },
 ];
 
 export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
@@ -391,7 +433,8 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
         'saas:subscription:list',
         'saas:order:list',
         'saas:usage:index',
-        'saas:resource-pack:index'
+        'saas:resource-pack:index',
+        'saas:resource-pack-order:list'
       )
       AND \`delete_time\` IS NULL
     `);
@@ -405,7 +448,10 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
         'tenant:billing:upgrade',
         'tenant:quota:view',
         'tenant:resource:buy',
-        'tenant:resource-pack:view'
+        'tenant:resource-pack:view',
+        'tenant:resource-pack-order:create',
+        'tenant:resource-pack-order:view',
+        'tenant:resource-pack-order:pay'
       )
       AND \`delete_time\` IS NULL
     `);
@@ -414,7 +460,7 @@ export class SeedSaasFoundationData1760000000001 implements MigrationInterface {
     const platformMenuIds = await this.fetchMenuIds(queryRunner, `
       SELECT \`id\`
       FROM \`sa_system_menu\`
-      WHERE \`code\` IN ('SaasTenant', 'SaasPlan', 'SaasSubscription', 'SaasUsage', 'SaasResourcePack')
+      WHERE \`code\` IN ('SaasTenant', 'SaasPlan', 'SaasSubscription', 'SaasUsage', 'SaasResourcePack', 'SaasResourcePackOrder')
       AND \`delete_time\` IS NULL
     `);
     await this.deleteMenusByIds(queryRunner, platformMenuIds);

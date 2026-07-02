@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { SaasOrderEntity } from '../entities/saas-order.entity';
 import { SaasSubscriptionEntity } from '../entities/saas-subscription.entity';
 import { SaasPlatformService } from './saas-platform.service';
+import { SaasResourcePackOrderService } from './saas-resource-pack-order.service';
 import { SaasResourcePackService } from './saas-resource-pack.service';
 
 describe('SaasPlatformService', () => {
@@ -17,6 +18,9 @@ describe('SaasPlatformService', () => {
   };
   const resourcePackService = {
     listPlatformResourcePacks: jest.fn(),
+  };
+  const resourcePackOrderService = {
+    listPlatformOrders: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -36,6 +40,10 @@ describe('SaasPlatformService', () => {
         {
           provide: SaasResourcePackService,
           useValue: resourcePackService,
+        },
+        {
+          provide: SaasResourcePackOrderService,
+          useValue: resourcePackOrderService,
         },
       ],
     }).compile();
@@ -185,5 +193,22 @@ describe('SaasPlatformService', () => {
       limit: 20,
     });
     expect(resourcePackService.listPlatformResourcePacks).toHaveBeenCalledWith({ resource_type: 'tokens' });
+  });
+
+  it('delegates resource pack order listing to the resource pack order service', async () => {
+    resourcePackOrderService.listPlatformOrders.mockResolvedValue({
+      list: [{ order_no: 'RPO20260703120000001000001' }],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+
+    await expect(service.listResourcePackOrders({ status: 'paid' })).resolves.toEqual({
+      list: [{ order_no: 'RPO20260703120000001000001' }],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+    expect(resourcePackOrderService.listPlatformOrders).toHaveBeenCalledWith({ status: 'paid' });
   });
 });

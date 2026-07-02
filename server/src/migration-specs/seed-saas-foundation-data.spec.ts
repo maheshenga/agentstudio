@@ -19,5 +19,10 @@ describe('SeedSaasFoundationData1760000000001', () => {
     expect(params).toContain('tenant:resource-pack:view');
     expect(params).toContain('/saas/platform/resource-pack');
     expect(params).toContain('/saas/tenant/resource-pack');
+    expect(params).toContain('saas:resource-pack-order:list');
+    expect(params).toContain('tenant:resource-pack-order:create');
+    expect(params).toContain('tenant:resource-pack-order:view');
+    expect(params).toContain('tenant:resource-pack-order:pay');
+    expect(params).toContain('/saas/platform/resource-pack-order');
   });
 });
