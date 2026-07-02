@@ -13,7 +13,8 @@ import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
 import { SaasTrialEntity } from './entities/saas-trial.entity';
 import { SaasOrderService } from './services/saas-order.service';
 import { SaasQuotaService } from './services/saas-quota.service';
-import { SaasResourcePackOrderListQuery, SaasResourcePackOrderService } from './services/saas-resource-pack-order.service';
+import { SaasResourcePackOrderService } from './services/saas-resource-pack-order.service';
+import type { SaasResourcePackOrderListQuery } from './services/saas-resource-pack-order.service';
 import { SaasResourcePackService } from './services/saas-resource-pack.service';
 
 @ApiTags('SaaS Tenant')

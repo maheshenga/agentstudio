@@ -4,8 +4,10 @@ import { FindOptionsWhere, Repository } from 'typeorm';
 
 import { SaasOrderEntity } from '../entities/saas-order.entity';
 import { SaasSubscriptionEntity } from '../entities/saas-subscription.entity';
-import { SaasResourcePackOrderListQuery, SaasResourcePackOrderService } from './saas-resource-pack-order.service';
-import { SaasResourcePackListQuery, SaasResourcePackService } from './saas-resource-pack.service';
+import { SaasResourcePackOrderService } from './saas-resource-pack-order.service';
+import type { SaasResourcePackOrderListQuery } from './saas-resource-pack-order.service';
+import { SaasResourcePackService } from './saas-resource-pack.service';
+import type { SaasResourcePackListQuery } from './saas-resource-pack.service';
 
 export interface SaasPlatformListQuery {
   page?: string | number;
