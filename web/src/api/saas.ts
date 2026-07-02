@@ -67,6 +67,26 @@ export interface SaasPlatformSubscriptionRecord {
   create_time?: string | Date
 }
 
+export interface SaasResourcePackRecord {
+  id: number
+  code: string
+  name: string
+  resource_type: string
+  quota_amount: number
+  price_cents: number
+  currency: string
+  status: number
+  sort: number
+  remark?: string
+}
+
+export interface SaasResourcePackListParams {
+  page?: number
+  limit?: number
+  status?: number | string
+  resource_type?: string
+}
+
 export interface TenantUsageQuotaRecord {
   resource_type: string
   quota: number
@@ -213,5 +233,18 @@ export function fetchPlatformSubscriptions(params: SaasPlatformListParams) {
   return request.get<SaasPlatformPageResult<SaasPlatformSubscriptionRecord>>({
     url: '/api/saas/platform/subscriptions',
     params
+  })
+}
+
+export function fetchPlatformResourcePacks(params: SaasResourcePackListParams) {
+  return request.get<SaasPlatformPageResult<SaasResourcePackRecord>>({
+    url: '/api/saas/platform/resource-packs',
+    params
+  })
+}
+
+export function fetchTenantResourcePacks() {
+  return request.get<SaasResourcePackRecord[]>({
+    url: '/api/saas/tenant/resource-packs'
   })
 }
