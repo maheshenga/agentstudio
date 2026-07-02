@@ -7,7 +7,8 @@ import { TenantContext } from '../../common/tenant/tenant.context';
 import { User } from '../system/user/user.decorator';
 import type { UserDto } from '../system/user/user.decorator';
 import { TenantProvisionDto } from './dto/tenant-provision.dto';
-import { SaasPlatformListQuery, SaasPlatformService } from './services/saas-platform.service';
+import { SaasPlatformService } from './services/saas-platform.service';
+import type { SaasPlatformListQuery } from './services/saas-platform.service';
 import { SaasProvisioningService } from './services/saas-provisioning.service';
 
 @ApiTags('SaaS Platform')
