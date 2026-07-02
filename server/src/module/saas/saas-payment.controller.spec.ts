@@ -15,6 +15,7 @@ describe('SaasPaymentController', () => {
   const saasPaymentService = {
     createAlipayPayment: jest.fn(),
     verifyAlipayNotify: jest.fn(),
+    getAlipayConfigStatus: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -119,6 +120,31 @@ describe('SaasPaymentController', () => {
 
     expect(saasOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
     expect(result).toBe('fail');
+  });
+
+  it('returns Alipay config status in tenant context', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(12);
+    saasPaymentService.getAlipayConfigStatus.mockReturnValue({
+      enabled: false,
+      configured: false,
+      missing_keys: ['ALIPAY_APP_ID'],
+      app_id_masked: '',
+      gateway_url: 'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+      notify_url_configured: false,
+      return_url_configured: false,
+    });
+
+    const result = await controller.getAlipayConfigStatus();
+
+    expect(result.data).toEqual({
+      enabled: false,
+      configured: false,
+      missing_keys: ['ALIPAY_APP_ID'],
+      app_id_masked: '',
+      gateway_url: 'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+      notify_url_configured: false,
+      return_url_configured: false,
+    });
   });
 
   it('creates an Alipay payment in tenant context', async () => {

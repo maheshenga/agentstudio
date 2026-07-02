@@ -156,6 +156,57 @@ describe('SaasPaymentService', () => {
       }),
     ).toBe(false);
   });
+
+  it('reports missing Alipay config without exposing secret values', () => {
+    configService.get.mockImplementation((key: string) => {
+      if (key === 'payment.alipay.gatewayUrl') {
+        return 'https://openapi-sandbox.dl.alipaydev.com/gateway.do';
+      }
+      return '';
+    });
+
+    expect(service.getAlipayConfigStatus()).toEqual({
+      enabled: false,
+      configured: false,
+      missing_keys: [
+        'ALIPAY_ENABLED',
+        'ALIPAY_APP_ID',
+        'ALIPAY_PRIVATE_KEY',
+        'ALIPAY_PUBLIC_KEY',
+        'ALIPAY_NOTIFY_URL',
+        'ALIPAY_RETURN_URL',
+      ],
+      app_id_masked: '',
+      gateway_url: 'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+      notify_url_configured: false,
+      return_url_configured: false,
+    });
+  });
+
+  it('reports complete Alipay config with masked app id', () => {
+    configService.get.mockImplementation((key: string) => {
+      const values: Record<string, string | boolean> = {
+        'payment.alipay.enabled': true,
+        'payment.alipay.appId': '2026070200000001',
+        'payment.alipay.privateKey': 'private-key',
+        'payment.alipay.publicKey': 'public-key',
+        'payment.alipay.notifyUrl': 'http://127.0.0.1:8181/api/saas/payment/alipay/notify',
+        'payment.alipay.returnUrl': 'http://127.0.0.1:5731/#/tenant-saas/plan',
+        'payment.alipay.gatewayUrl': 'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+      };
+      return values[key];
+    });
+
+    expect(service.getAlipayConfigStatus()).toEqual({
+      enabled: true,
+      configured: true,
+      missing_keys: [],
+      app_id_masked: '2026********0001',
+      gateway_url: 'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+      notify_url_configured: true,
+      return_url_configured: true,
+    });
+  });
 });
 
 function buildAlipaySignContent(body: Record<string, string>) {

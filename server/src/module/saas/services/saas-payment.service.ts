@@ -20,6 +20,16 @@ export interface SaasAlipayPaymentResult {
   message: string;
 }
 
+export interface SaasAlipayConfigStatus {
+  enabled: boolean;
+  configured: boolean;
+  missing_keys: string[];
+  app_id_masked: string;
+  gateway_url: string;
+  notify_url_configured: boolean;
+  return_url_configured: boolean;
+}
+
 interface AlipayConfig {
   enabled: boolean;
   appId: string;
@@ -89,6 +99,21 @@ export class SaasPaymentService {
     }
   }
 
+  getAlipayConfigStatus(): SaasAlipayConfigStatus {
+    const config = this.getAlipayConfig();
+    const missingKeys = this.getMissingAlipayConfigKeys(config);
+
+    return {
+      enabled: config.enabled,
+      configured: missingKeys.length === 0,
+      missing_keys: missingKeys,
+      app_id_masked: this.maskConfigValue(config.appId),
+      gateway_url: config.gatewayUrl,
+      notify_url_configured: Boolean(config.notifyUrl),
+      return_url_configured: Boolean(config.returnUrl),
+    };
+  }
+
   private getAlipayConfig(): AlipayConfig {
     return {
       enabled: this.configService.get<boolean>('payment.alipay.enabled') === true,
@@ -102,15 +127,20 @@ export class SaasPaymentService {
   }
 
   private isAlipayConfigured(config: AlipayConfig): boolean {
-    return Boolean(
-      config.enabled &&
-        config.appId &&
-        config.privateKey &&
-        config.publicKey &&
-        config.notifyUrl &&
-        config.returnUrl &&
-        config.gatewayUrl,
-    );
+    return this.getMissingAlipayConfigKeys(config).length === 0;
+  }
+
+  private getMissingAlipayConfigKeys(config: AlipayConfig): string[] {
+    const checks: Array<[string, boolean]> = [
+      ['ALIPAY_ENABLED', config.enabled],
+      ['ALIPAY_APP_ID', Boolean(config.appId)],
+      ['ALIPAY_PRIVATE_KEY', Boolean(config.privateKey)],
+      ['ALIPAY_PUBLIC_KEY', Boolean(config.publicKey)],
+      ['ALIPAY_NOTIFY_URL', Boolean(config.notifyUrl)],
+      ['ALIPAY_RETURN_URL', Boolean(config.returnUrl)],
+    ];
+
+    return checks.filter(([, present]) => !present).map(([key]) => key);
   }
 
   private buildSignedPagePayUrl(
@@ -198,5 +228,15 @@ export class SaasPaymentService {
       ':',
       pad(date.getSeconds()),
     ].join('');
+  }
+
+  private maskConfigValue(value: string): string {
+    if (!value) {
+      return '';
+    }
+    if (value.length <= 8) {
+      return '*'.repeat(value.length);
+    }
+    return `${value.slice(0, 4)}${'*'.repeat(Math.max(4, value.length - 8))}${value.slice(-4)}`;
   }
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { Public } from '../../common/decorators/auth.decorator';
@@ -39,6 +39,17 @@ export class SaasPaymentController {
     }
 
     return ResultData.ok(await this.saasPaymentService.createAlipayPayment(tenantId, body.order_no));
+  }
+
+  @Get('alipay/config-status')
+  @ApiOperation({ summary: 'Get Alipay SaaS payment config status' })
+  async getAlipayConfigStatus() {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    return ResultData.ok(this.saasPaymentService.getAlipayConfigStatus());
   }
 
   @Public()
