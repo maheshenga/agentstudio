@@ -77,6 +77,7 @@
             <ElTag :type="alipayConfigStatus.configured ? 'success' : 'warning'" effect="light">
               {{ alipayConfigStatus.configured ? '支付宝已配置' : '支付宝未配置' }}
             </ElTag>
+            <span v-if="pollingPayment">正在同步支付结果...</span>
             <span v-if="!alipayConfigStatus.configured">{{ alipayMissingKeysText }}</span>
           </div>
           <ElButton
@@ -121,6 +122,8 @@
   defineOptions({ name: 'SaasTenantPlanPage' })
 
   const LAST_UPGRADE_ORDER_KEY = 'saas:last-upgrade-order-no'
+  const PAYMENT_POLL_INTERVAL_MS = 5000
+  const PAYMENT_POLL_TIMEOUT_MS = 120000
 
   const subscriptionInfo = ref<TenantSubscriptionSummary | null>(null)
   const alipayConfigStatus = ref<AlipayConfigStatus | null>(null)
@@ -131,7 +134,10 @@
   const creatingPlanCode = ref('')
   const creatingAlipayPayment = ref(false)
   const confirmingPayment = ref(false)
+  const pollingPayment = ref(false)
   const errorMessage = ref('')
+  let paymentPollingTimer: number | undefined
+  let paymentPollingStartedAt = 0
 
   const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
     year: 'numeric',
@@ -316,6 +322,7 @@
     confirmingPayment.value = true
 
     try {
+      stopPaymentPolling()
       currentOrder.value = await devConfirmTenantPayment(currentOrder.value.order_no)
       forgetRememberedOrder(currentOrder.value)
       ElMessage.success('本地模拟支付成功，套餐已更新')
@@ -337,6 +344,7 @@
       if (result.configured && result.pay_url) {
         rememberOrder(currentOrder.value)
         window.open(result.pay_url, '_blank', 'noopener,noreferrer')
+        startPaymentPolling()
         ElMessage.success('支付宝支付页面已打开')
         return
       }
@@ -357,6 +365,9 @@
       const order = await fetchTenantOrder(orderNo)
       currentOrder.value = order
       forgetRememberedOrder(order)
+      if (order.status !== 'paid' && alipayConfigStatus.value?.configured) {
+        startPaymentPolling()
+      }
     } catch (error) {
       sessionStorage.removeItem(LAST_UPGRADE_ORDER_KEY)
       console.error('[SaasTenantPlanPage] restore last order failed:', error)
@@ -374,8 +385,58 @@
     }
   }
 
+  function startPaymentPolling() {
+    if (!currentOrder.value || currentOrder.value.status === 'paid' || paymentPollingTimer) return
+
+    pollingPayment.value = true
+    paymentPollingStartedAt = Date.now()
+    paymentPollingTimer = window.setInterval(() => {
+      pollPaymentStatus()
+    }, PAYMENT_POLL_INTERVAL_MS)
+  }
+
+  function stopPaymentPolling() {
+    if (paymentPollingTimer) {
+      window.clearInterval(paymentPollingTimer)
+      paymentPollingTimer = undefined
+    }
+    pollingPayment.value = false
+    paymentPollingStartedAt = 0
+  }
+
+  async function pollPaymentStatus() {
+    const orderNo = currentOrder.value?.order_no
+    if (!orderNo) {
+      stopPaymentPolling()
+      return
+    }
+
+    if (Date.now() - paymentPollingStartedAt > PAYMENT_POLL_TIMEOUT_MS) {
+      stopPaymentPolling()
+      return
+    }
+
+    try {
+      const order = await fetchTenantOrder(orderNo)
+      currentOrder.value = order
+
+      if (order.status === 'paid') {
+        stopPaymentPolling()
+        forgetRememberedOrder(order)
+        ElMessage.success('支付成功，套餐已更新')
+        await loadPageData()
+      }
+    } catch (error) {
+      console.error('[SaasTenantPlanPage] poll payment status failed:', error)
+    }
+  }
+
   onMounted(() => {
     loadPageData()
+  })
+
+  onBeforeUnmount(() => {
+    stopPaymentPolling()
   })
 </script>
 
