@@ -170,4 +170,73 @@ describe('SaasOrderService', () => {
 
     jest.useRealTimers();
   });
+
+  it('confirms an Alipay notification payment by order number', async () => {
+    const paidAt = new Date('2026-07-02T01:00:00.000Z');
+    jest.useFakeTimers().setSystemTime(paidAt);
+
+    txOrderRepo.findOne.mockResolvedValue({
+      id: 89,
+      orderNo: 'SO20260702010000001000001',
+      tenantId: 12,
+      planId: 2,
+      planCode: 'pro',
+      billingCycle: 'yearly',
+      amountCents: 99000,
+      status: 'pending',
+      paymentMethod: 'alipay',
+    });
+    txOrderRepo.save.mockImplementation(async (payload) => payload);
+    txSubscriptionRepo.save.mockImplementation(async (_entity, payload) => ({ id: 100, ...payload }));
+
+    const order = await service.confirmAlipayPayment('SO20260702010000001000001', '2026070222000000000001');
+
+    expect(txOrderRepo.findOne).toHaveBeenCalledWith({
+      where: {
+        orderNo: 'SO20260702010000001000001',
+      },
+    });
+    expect(txSubscriptionRepo.update).toHaveBeenCalledWith(
+      {
+        tenantId: 12,
+        status: 'active',
+      },
+      {
+        status: 'expired',
+        endTime: paidAt,
+      },
+    );
+    expect(saasQuotaService.initializeTenantQuota).toHaveBeenCalledWith(12, 2, manager);
+    expect(order.status).toBe('paid');
+    expect(order.paidAt).toEqual(paidAt);
+    expect(order.alipayTradeNo).toBe('2026070222000000000001');
+
+    jest.useRealTimers();
+  });
+
+  it('returns an already paid order for duplicate Alipay notifications without reopening subscription', async () => {
+    const paidAt = new Date('2026-07-02T01:00:00.000Z');
+    txOrderRepo.findOne.mockResolvedValue({
+      id: 89,
+      orderNo: 'SO20260702010000001000001',
+      tenantId: 12,
+      planId: 2,
+      planCode: 'pro',
+      billingCycle: 'yearly',
+      amountCents: 99000,
+      status: 'paid',
+      paymentMethod: 'alipay',
+      alipayTradeNo: '2026070222000000000001',
+      paidAt,
+    });
+
+    const order = await service.confirmAlipayPayment('SO20260702010000001000001', '2026070222000000000001');
+
+    expect(order.status).toBe('paid');
+    expect(order.paidAt).toEqual(paidAt);
+    expect(txSubscriptionRepo.update).not.toHaveBeenCalled();
+    expect(txSubscriptionRepo.save).not.toHaveBeenCalled();
+    expect(saasQuotaService.initializeTenantQuota).not.toHaveBeenCalled();
+    expect(txOrderRepo.save).not.toHaveBeenCalled();
+  });
 });

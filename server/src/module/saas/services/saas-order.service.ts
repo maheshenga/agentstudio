@@ -51,51 +51,21 @@ export class SaasOrderService {
   }
 
   async confirmDevPayment(tenantId: number, orderNo: string): Promise<SaasOrderEntity> {
-    return this.dataSource.transaction(async (manager) => {
-      const orderRepo = manager.getRepository(SaasOrderEntity);
-      const subscriptionRepo = manager.getRepository(SaasSubscriptionEntity);
-      const order = await orderRepo.findOne({
-        where: {
-          tenantId,
-          orderNo,
-        },
-      });
-
-      if (!order) {
-        throw new NotFoundException('Order not found');
-      }
-      if (order.status !== SAAS_ORDER_PENDING) {
-        throw new BadRequestException('Only pending orders can be paid');
-      }
-
-      const paidAt = new Date();
-      order.status = SAAS_ORDER_PAID;
-      order.paidAt = paidAt;
-      order.alipayTradeNo = `DEV-${order.orderNo}`;
-
-      await subscriptionRepo.update(
-        {
-          tenantId,
-          status: SAAS_SUBSCRIPTION_ACTIVE,
-        },
-        {
-          status: SAAS_SUBSCRIPTION_EXPIRED,
-          endTime: paidAt,
-        },
-      );
-      await subscriptionRepo.save({
+    return this.confirmPaidOrder({
+      where: {
         tenantId,
-        planId: order.planId,
-        billingCycle: order.billingCycle,
-        status: SAAS_SUBSCRIPTION_ACTIVE,
-        startTime: paidAt,
-        endTime: this.calculateEndTime(paidAt, order.billingCycle),
-        cancelAtPeriodEnd: 0,
-        remark: `Activated by order ${order.orderNo}`,
-      });
-      await this.saasQuotaService.initializeTenantQuota(tenantId, order.planId, manager);
+        orderNo,
+      },
+      resolveTradeNo: (order) => `DEV-${order.orderNo}`,
+    });
+  }
 
-      return orderRepo.save(order);
+  async confirmAlipayPayment(orderNo: string, alipayTradeNo: string): Promise<SaasOrderEntity> {
+    return this.confirmPaidOrder({
+      where: {
+        orderNo,
+      },
+      resolveTradeNo: () => alipayTradeNo,
     });
   }
 
@@ -105,6 +75,58 @@ export class SaasOrderService {
         tenantId,
         orderNo,
       },
+    });
+  }
+
+  private async confirmPaidOrder(options: {
+    where: Record<string, string | number>;
+    resolveTradeNo: (order: SaasOrderEntity) => string;
+  }): Promise<SaasOrderEntity> {
+    return this.dataSource.transaction(async (manager) => {
+      const orderRepo = manager.getRepository(SaasOrderEntity);
+      const subscriptionRepo = manager.getRepository(SaasSubscriptionEntity);
+      const order = await orderRepo.findOne({
+        where: options.where,
+      });
+
+      if (!order) {
+        throw new NotFoundException('Order not found');
+      }
+      if (order.status === SAAS_ORDER_PAID) {
+        return order;
+      }
+      if (order.status !== SAAS_ORDER_PENDING) {
+        throw new BadRequestException('Only pending orders can be paid');
+      }
+
+      const paidAt = new Date();
+      order.status = SAAS_ORDER_PAID;
+      order.paidAt = paidAt;
+      order.alipayTradeNo = options.resolveTradeNo(order);
+
+      await subscriptionRepo.update(
+        {
+          tenantId: order.tenantId,
+          status: SAAS_SUBSCRIPTION_ACTIVE,
+        },
+        {
+          status: SAAS_SUBSCRIPTION_EXPIRED,
+          endTime: paidAt,
+        },
+      );
+      await subscriptionRepo.save({
+        tenantId: order.tenantId,
+        planId: order.planId,
+        billingCycle: order.billingCycle,
+        status: SAAS_SUBSCRIPTION_ACTIVE,
+        startTime: paidAt,
+        endTime: this.calculateEndTime(paidAt, order.billingCycle),
+        cancelAtPeriodEnd: 0,
+        remark: `Activated by order ${order.orderNo}`,
+      });
+      await this.saasQuotaService.initializeTenantQuota(order.tenantId, order.planId, manager);
+
+      return orderRepo.save(order);
     });
   }
 

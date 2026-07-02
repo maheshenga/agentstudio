@@ -10,6 +10,7 @@ describe('SaasPaymentController', () => {
 
   const saasOrderService = {
     confirmDevPayment: jest.fn(),
+    confirmAlipayPayment: jest.fn(),
   };
   const saasPaymentService = {
     createAlipayPayment: jest.fn(),
@@ -67,16 +68,46 @@ describe('SaasPaymentController', () => {
     });
   });
 
-  it('accepts the reserved Alipay notify endpoint', async () => {
+  it('confirms an order when Alipay notifies trade success', async () => {
+    saasOrderService.confirmAlipayPayment.mockResolvedValue({
+      orderNo: 'SO20260702000000001000001',
+      status: 'paid',
+      alipayTradeNo: '2026070222000000000001',
+    });
+
     const result = await controller.alipayNotify({
       out_trade_no: 'SO20260702000000001000001',
       trade_no: '2026070222000000000001',
       trade_status: 'TRADE_SUCCESS',
     });
 
+    expect(saasOrderService.confirmAlipayPayment).toHaveBeenCalledWith(
+      'SO20260702000000001000001',
+      '2026070222000000000001',
+    );
     expect(result.data).toEqual({
       received: true,
       provider: 'alipay',
+      processed: true,
+      order_no: 'SO20260702000000001000001',
+      status: 'paid',
+      alipay_trade_no: '2026070222000000000001',
+    });
+  });
+
+  it('ignores non-success Alipay notifications without mutating orders', async () => {
+    const result = await controller.alipayNotify({
+      out_trade_no: 'SO20260702000000001000001',
+      trade_no: '2026070222000000000001',
+      trade_status: 'WAIT_BUYER_PAY',
+    });
+
+    expect(saasOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
+    expect(result.data).toEqual({
+      received: true,
+      provider: 'alipay',
+      processed: false,
+      trade_status: 'WAIT_BUYER_PAY',
     });
   });
 

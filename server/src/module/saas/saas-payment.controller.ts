@@ -8,6 +8,8 @@ import { SaasOrderEntity } from './entities/saas-order.entity';
 import { SaasOrderService } from './services/saas-order.service';
 import { SaasPaymentService } from './services/saas-payment.service';
 
+const ALIPAY_PAID_TRADE_STATUSES = new Set(['TRADE_SUCCESS', 'TRADE_FINISHED']);
+
 @ApiTags('SaaS Payment')
 @ApiBearerAuth('Authorization')
 @Controller('api/saas/payment')
@@ -41,11 +43,30 @@ export class SaasPaymentController {
 
   @Public()
   @Post('alipay/notify')
-  @ApiOperation({ summary: 'Reserved Alipay notify endpoint' })
-  async alipayNotify(@Body() _body: Record<string, any>) {
+  @ApiOperation({ summary: 'Handle Alipay notify endpoint' })
+  async alipayNotify(@Body() body: Record<string, any>) {
+    const tradeStatus = String(body.trade_status || '');
+    if (!ALIPAY_PAID_TRADE_STATUSES.has(tradeStatus)) {
+      return ResultData.ok({
+        received: true,
+        provider: 'alipay',
+        processed: false,
+        trade_status: tradeStatus,
+      });
+    }
+
+    const order = await this.saasOrderService.confirmAlipayPayment(
+      String(body.out_trade_no || ''),
+      String(body.trade_no || ''),
+    );
+
     return ResultData.ok({
       received: true,
       provider: 'alipay',
+      processed: true,
+      order_no: order.orderNo,
+      status: order.status,
+      alipay_trade_no: order.alipayTradeNo,
     });
   }
 
