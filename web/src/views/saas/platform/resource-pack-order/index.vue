@@ -13,6 +13,13 @@
 
       <div class="saas-resource-pack-order-page__filters">
         <ElInput
+          v-model="filters.order_no"
+          clearable
+          placeholder="订单号"
+          class="saas-resource-pack-order-page__input"
+          @keyup.enter="refreshOrders"
+        />
+        <ElInput
           v-model="filters.tenant_id"
           clearable
           placeholder="租户 ID"
@@ -78,6 +85,11 @@
         <ElTableColumn label="发放时间" min-width="180">
           <template #default="{ row }">{{ formatDateTime(row.delivered_at) }}</template>
         </ElTableColumn>
+        <ElTableColumn label="操作" width="100" fixed="right">
+          <template #default="{ row }">
+            <ElButton type="primary" link @click="openOrderDetail(row)">详情</ElButton>
+          </template>
+        </ElTableColumn>
       </ElTable>
 
       <ElPagination
@@ -91,11 +103,35 @@
         @size-change="handleSizeChange"
       />
     </ElCard>
+
+    <ElDrawer v-model="detailVisible" title="资源包订单详情" size="520px">
+      <ElSkeleton v-if="detailLoading" animated :rows="8" />
+      <ElEmpty v-else-if="!currentDetail" description="未找到订单" />
+      <ElDescriptions v-else :column="1" border>
+        <ElDescriptionsItem label="订单号">{{ currentDetail.order_no }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="租户 ID">{{ currentDetail.tenant_id || '-' }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="资源包">{{ currentDetail.resource_pack_code }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="资源名称">{{ currentDetail.resource_pack_name }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="资源类型">{{ formatResourceType(currentDetail.resource_type) }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="额度">{{ formatQuota(currentDetail.resource_type, currentDetail.quota_amount) }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="金额">{{ formatPrice(currentDetail.amount_cents, currentDetail.currency) }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="状态">
+          <ElTag :type="getStatusTagType(currentDetail.status)" effect="light">
+            {{ formatStatus(currentDetail.status) }}
+          </ElTag>
+        </ElDescriptionsItem>
+        <ElDescriptionsItem label="支付宝交易号">{{ currentDetail.alipay_trade_no || '-' }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="创建时间">{{ formatDateTime(currentDetail.create_time) }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="支付时间">{{ formatDateTime(currentDetail.paid_at) }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="发放时间">{{ formatDateTime(currentDetail.delivered_at) }}</ElDescriptionsItem>
+      </ElDescriptions>
+    </ElDrawer>
   </div>
 </template>
 
 <script setup lang="ts">
   import {
+    fetchPlatformResourcePackOrder,
     fetchPlatformResourcePackOrders,
     type SaasResourcePackOrderRecord
   } from '@/api/saas'
@@ -103,8 +139,12 @@
   defineOptions({ name: 'SaasPlatformResourcePackOrderPage' })
 
   const loading = ref(false)
+  const detailVisible = ref(false)
+  const detailLoading = ref(false)
+  const currentDetail = ref<SaasResourcePackOrderRecord | null>(null)
   const orders = ref<SaasResourcePackOrderRecord[]>([])
   const filters = reactive({
+    order_no: '',
     tenant_id: '',
     resource_pack_code: '',
     resource_type: '',
@@ -146,6 +186,7 @@
       const result = await fetchPlatformResourcePackOrders({
         page: pager.page,
         limit: pager.limit,
+        order_no: filters.order_no || undefined,
         tenant_id: filters.tenant_id || undefined,
         resource_pack_code: filters.resource_pack_code || undefined,
         resource_type: filters.resource_type || undefined,
@@ -166,6 +207,16 @@
   function handleSizeChange() {
     pager.page = 1
     loadOrders()
+  }
+
+  async function openOrderDetail(row: SaasResourcePackOrderRecord) {
+    detailVisible.value = true
+    detailLoading.value = true
+    try {
+      currentDetail.value = await fetchPlatformResourcePackOrder(row.order_no)
+    } finally {
+      detailLoading.value = false
+    }
   }
 
   function formatResourceType(resourceType: string) {
