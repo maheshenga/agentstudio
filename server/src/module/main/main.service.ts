@@ -291,15 +291,6 @@ export class MainService {
   async getPermissions(req: any): Promise<ResultData> {
     const userId = req.user?.userId;
     if (!userId) return ResultData.fail(401, '未登录');
-    const isAdmin = await this.userService.isSuperAdmin(+userId);
-    if (isAdmin) {
-      const allMenus = await this.menuService.findMany({
-        where: { deleteTime: IsNull(), status: 1 } as any,
-        select: ['slug'] as any,
-      });
-      const permissions = (allMenus as any[]).map((m) => m.slug).filter(Boolean);
-      return ResultData.ok(permissions);
-    }
     const permissions = await this.userService.getUserPermissions(+userId);
     return ResultData.ok(permissions);
   }
