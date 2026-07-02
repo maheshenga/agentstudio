@@ -115,9 +115,44 @@ export interface SaasResourcePackOrderListParams {
   page?: number
   limit?: number
   tenant_id?: number | string
+  order_no?: string
   resource_pack_code?: string
   resource_type?: string
   status?: string
+}
+
+export interface TenantResourcePackOrderListParams {
+  page?: number
+  limit?: number
+  resource_pack_code?: string
+  status?: string
+}
+
+export interface PlatformAlipayConfigStatus {
+  provider: 'alipay'
+  enabled: boolean
+  configured: boolean
+  missing_keys: string[]
+  app_id_masked: string
+  gateway_url: string
+  notify_url: string
+  return_url: string
+  notify_url_configured: boolean
+  return_url_configured: boolean
+  private_key_configured: boolean
+  public_key_configured: boolean
+  remark?: string
+}
+
+export interface UpdatePlatformAlipayConfigParams {
+  enabled: boolean
+  app_id?: string
+  private_key?: string
+  public_key?: string
+  gateway_url?: string
+  notify_url?: string
+  return_url?: string
+  remark?: string
 }
 
 export interface TenantUsageQuotaRecord {
@@ -302,9 +337,35 @@ export function fetchTenantResourcePackOrder(orderNo: string) {
   })
 }
 
+export function fetchTenantResourcePackOrders(params: TenantResourcePackOrderListParams) {
+  return request.get<SaasPlatformPageResult<SaasResourcePackOrderRecord>>({
+    url: '/api/saas/tenant/resource-pack-orders',
+    params
+  })
+}
+
 export function fetchPlatformResourcePackOrders(params: SaasResourcePackOrderListParams) {
   return request.get<SaasPlatformPageResult<SaasResourcePackOrderRecord>>({
     url: '/api/saas/platform/resource-pack-orders',
     params
+  })
+}
+
+export function fetchPlatformResourcePackOrder(orderNo: string) {
+  return request.get<SaasResourcePackOrderRecord | null>({
+    url: `/api/saas/platform/resource-pack-orders/${orderNo}`
+  })
+}
+
+export function fetchPlatformAlipayConfig() {
+  return request.get<PlatformAlipayConfigStatus>({
+    url: '/api/saas/platform/payment/alipay/config'
+  })
+}
+
+export function updatePlatformAlipayConfig(params: UpdatePlatformAlipayConfigParams) {
+  return request.put<PlatformAlipayConfigStatus>({
+    url: '/api/saas/platform/payment/alipay/config',
+    data: params
   })
 }

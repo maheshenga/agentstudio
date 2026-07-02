@@ -76,6 +76,83 @@
         <span v-if="pollingPayment" class="tenant-resource-pack-page__polling">正在同步支付结果...</span>
       </div>
     </section>
+
+    <section class="tenant-resource-pack-page__orders">
+      <div class="tenant-resource-pack-page__section-header">
+        <div>
+          <h2 class="tenant-resource-pack-page__section-title">资源包订单记录</h2>
+          <p class="tenant-resource-pack-page__remark">查看历史购买、支付和发放状态。</p>
+        </div>
+        <ElButton :loading="orderHistoryLoading" @click="loadOrderHistory">刷新</ElButton>
+      </div>
+
+      <div class="tenant-resource-pack-page__filters">
+        <ElInput
+          v-model="orderFilters.resource_pack_code"
+          clearable
+          placeholder="资源包编码"
+          class="tenant-resource-pack-page__filter-input"
+          @keyup.enter="refreshOrderHistory"
+        />
+        <ElSelect
+          v-model="orderFilters.status"
+          clearable
+          placeholder="状态"
+          class="tenant-resource-pack-page__filter-input"
+          @change="refreshOrderHistory"
+        >
+          <ElOption label="待支付" value="pending" />
+          <ElOption label="已支付" value="paid" />
+          <ElOption label="已关闭" value="closed" />
+        </ElSelect>
+        <ElButton type="primary" :loading="orderHistoryLoading" @click="refreshOrderHistory">查询</ElButton>
+      </div>
+
+      <ElTable v-loading="orderHistoryLoading" :data="orderHistory" border>
+        <ElTableColumn prop="order_no" label="订单号" min-width="230" show-overflow-tooltip />
+        <ElTableColumn prop="resource_pack_code" label="资源包" width="170" show-overflow-tooltip />
+        <ElTableColumn label="资源类型" width="140">
+          <template #default="{ row }">{{ formatResourceType(row.resource_type) }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="额度" width="150">
+          <template #default="{ row }">{{ formatOrderQuota(row) }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="金额" width="130">
+          <template #default="{ row }">{{ formatPrice(row.amount_cents, row.currency) }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="状态" width="110">
+          <template #default="{ row }">
+            <ElTag :type="getOrderStatusTagType(row.status)" effect="light">
+              {{ formatOrderStatus(row.status) }}
+            </ElTag>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="创建时间" min-width="180">
+          <template #default="{ row }">{{ formatDateTime(row.create_time) }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="操作" width="180" fixed="right">
+          <template #default="{ row }">
+            <ElButton v-if="row.status === 'pending'" type="primary" link @click="resumeOrderPayment(row)">
+              继续支付
+            </ElButton>
+            <ElButton v-if="row.status === 'pending'" type="success" link @click="confirmHistoryOrder(row)">
+              模拟确认
+            </ElButton>
+          </template>
+        </ElTableColumn>
+      </ElTable>
+
+      <ElPagination
+        v-model:current-page="orderPager.page"
+        v-model:page-size="orderPager.limit"
+        class="tenant-resource-pack-page__pagination"
+        layout="total, sizes, prev, pager, next"
+        :page-sizes="[10, 20, 50]"
+        :total="orderPager.total"
+        @current-change="loadOrderHistory"
+        @size-change="handleOrderHistorySizeChange"
+      />
+    </section>
   </div>
 </template>
 
@@ -86,6 +163,7 @@
     createTenantResourcePackOrder,
     devConfirmTenantPayment,
     fetchTenantResourcePackOrder,
+    fetchTenantResourcePackOrders,
     fetchTenantResourcePacks,
     type SaasResourcePackOrderRecord,
     type SaasResourcePackRecord
@@ -100,6 +178,17 @@
   const creatingAlipayPayment = ref(false)
   const confirmingPayment = ref(false)
   const pollingPayment = ref(false)
+  const orderHistory = ref<SaasResourcePackOrderRecord[]>([])
+  const orderHistoryLoading = ref(false)
+  const orderFilters = reactive({
+    resource_pack_code: '',
+    status: ''
+  })
+  const orderPager = reactive({
+    page: 1,
+    limit: 10,
+    total: 0
+  })
   const errorMessage = ref('')
   let paymentPollingTimer: number | undefined
   let paymentPollingStartedAt = 0
@@ -135,6 +224,7 @@
         resource_pack_code: pack.code,
         payment_method: 'alipay'
       })
+      await loadOrderHistory()
       ElMessage.success('资源包订单已创建')
     } catch (error) {
       console.error('[SaasTenantResourcePackPage] create order failed:', error)
@@ -173,6 +263,7 @@
       )) as SaasResourcePackOrderRecord
       ElMessage.success('资源包支付成功，额度已发放')
       await loadResourcePacks()
+      await loadOrderHistory()
     } catch (error) {
       console.error('[SaasTenantResourcePackPage] confirm dev payment failed:', error)
     } finally {
@@ -211,6 +302,7 @@
       if (order.status === 'paid') {
         stopPaymentPolling()
         ElMessage.success('资源包支付成功，额度已发放')
+        await loadOrderHistory()
       }
     } catch (error) {
       console.error('[SaasTenantResourcePackPage] poll payment status failed:', error)
@@ -232,6 +324,69 @@
     return formattedAmount
   }
 
+  function formatOrderQuota(order: SaasResourcePackOrderRecord) {
+    const amount = Number(order.quota_amount) || 0
+    const formattedAmount = new Intl.NumberFormat('zh-CN').format(amount)
+    return order.resource_type === 'storage_mb' ? `${formattedAmount} MB` : formattedAmount
+  }
+
+  async function loadOrderHistory() {
+    orderHistoryLoading.value = true
+    try {
+      const result = await fetchTenantResourcePackOrders({
+        page: orderPager.page,
+        limit: orderPager.limit,
+        resource_pack_code: orderFilters.resource_pack_code || undefined,
+        status: orderFilters.status || undefined
+      })
+      orderHistory.value = result.list || []
+      orderPager.total = Number(result.total) || 0
+    } finally {
+      orderHistoryLoading.value = false
+    }
+  }
+
+  function refreshOrderHistory() {
+    orderPager.page = 1
+    loadOrderHistory()
+  }
+
+  function handleOrderHistorySizeChange() {
+    orderPager.page = 1
+    loadOrderHistory()
+  }
+
+  async function resumeOrderPayment(order: SaasResourcePackOrderRecord) {
+    currentOrder.value = order
+    await startAlipayPayment()
+  }
+
+  async function confirmHistoryOrder(order: SaasResourcePackOrderRecord) {
+    currentOrder.value = order
+    await confirmDevPayment()
+  }
+
+  function formatOrderStatus(status: string) {
+    const labels: Record<string, string> = {
+      pending: '待支付',
+      paid: '已支付',
+      closed: '已关闭'
+    }
+    return labels[status] || status
+  }
+
+  function getOrderStatusTagType(status: string) {
+    if (status === 'paid') return 'success'
+    if (status === 'pending') return 'warning'
+    return 'info'
+  }
+
+  function formatDateTime(value: unknown) {
+    if (!value) return '-'
+    const date = value instanceof Date ? value : new Date(String(value))
+    return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-CN', { hour12: false })
+  }
+
   function formatPrice(priceCents: number, currency = 'CNY') {
     return new Intl.NumberFormat('zh-CN', {
       style: 'currency',
@@ -241,6 +396,7 @@
 
   onMounted(() => {
     loadResourcePacks()
+    loadOrderHistory()
   })
 
   onBeforeUnmount(() => {
@@ -360,6 +516,33 @@
     flex-wrap: wrap;
     justify-content: flex-end;
     gap: 8px;
+  }
+
+  .tenant-resource-pack-page__orders {
+    display: grid;
+    gap: 16px;
+    overflow: hidden;
+  }
+
+  .tenant-resource-pack-page__section-header,
+  .tenant-resource-pack-page__filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .tenant-resource-pack-page__filters {
+    justify-content: flex-start;
+  }
+
+  .tenant-resource-pack-page__filter-input {
+    width: 180px;
+  }
+
+  .tenant-resource-pack-page__pagination {
+    justify-content: flex-end;
   }
 
   @media (max-width: 768px) {
