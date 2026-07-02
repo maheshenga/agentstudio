@@ -11,6 +11,7 @@ import { LlmSemaphoreService } from './services/llm-semaphore.service';
 import { AiStreamStopService } from './services/ai-stream-stop.service';
 import { ContextBuilderService } from './services/context-builder.service';
 import { SessionSummaryService } from './services/session-summary.service';
+import { SaasModule } from '../saas/saas.module';
 import {
   AiProviderEntity,
   AiModelEntity,
@@ -21,6 +22,7 @@ import {
 
 @Module({
   imports: [
+    SaasModule,
     TypeOrmModule.forFeature([
       AiProviderEntity,
       AiModelEntity,

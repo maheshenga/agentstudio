@@ -19,6 +19,8 @@ import { AiConfigService } from './ai-config.service';
 import { ContextBuilderService } from './context-builder.service';
 import { SessionSummaryService } from './session-summary.service';
 import { buildProviderExtraBody } from '../providers/llm-provider.util';
+import { SAAS_QUOTA_AI_CALLS, SAAS_QUOTA_TOKENS } from '../../saas/constants';
+import { SaasQuotaService } from '../../saas/services/saas-quota.service';
 import type {
   AiWsChatSendData,
   AiWsMessageDoneData,
@@ -47,6 +49,7 @@ export class ChatService {
     private readonly semaphore: LlmSemaphoreService,
     private readonly contextBuilder: ContextBuilderService,
     private readonly sessionSummaryService: SessionSummaryService,
+    private readonly saasQuotaService: SaasQuotaService,
   ) {}
 
   private authCtx(session: UserType) {
@@ -282,6 +285,19 @@ export class ChatService {
     if (!content) throw new BadRequestException('消息内容不能为空');
 
     const owned = await this.getOwnedSession(session, payload.session_uuid);
+    await this.saasQuotaService.assertTenantQuotaAvailable(
+      owned.tenantId,
+      SAAS_QUOTA_AI_CALLS,
+      1,
+      'AI 调用次数额度不足',
+    );
+    await this.saasQuotaService.assertTenantQuotaAvailable(
+      owned.tenantId,
+      SAAS_QUOTA_TOKENS,
+      1,
+      'Token 额度不足',
+    );
+
     const modelId = payload.model_id ?? owned.defaultModelId;
     if (!modelId) throw new BadRequestException('未选择模型');
 
@@ -420,6 +436,9 @@ export class ChatService {
         estimated_prompt_tokens: built.estimatedPromptTokens,
       };
       await this.messageRepo.save(assistantMsg);
+      await this.saasQuotaService.consumeAiUsage(owned.tenantId, {
+        totalTokens: usage.totalTokens,
+      });
 
       owned.messageCount += 2;
       owned.lastMessageAt = new Date();
