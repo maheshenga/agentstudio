@@ -41,6 +41,7 @@ export interface SaasPlatformPageResult<T> {
 export interface SaasPlatformOrderListParams extends SaasPlatformListParams {
   order_no?: string
   plan_code?: string
+  close_reason?: string
 }
 
 export interface SaasTenantOrderListParams {
@@ -208,6 +209,7 @@ export interface SaasResourcePackOrderListParams {
   resource_pack_code?: string
   resource_type?: string
   status?: string
+  close_reason?: string
 }
 
 export interface TenantResourcePackOrderListParams {
