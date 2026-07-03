@@ -47,6 +47,9 @@ export class SaasResourcePackOrderEntity {
   @Column({ type: 'datetime', name: 'paid_at', nullable: true })
   paidAt?: Date;
 
+  @Column({ type: 'datetime', name: 'payment_requested_at', nullable: true })
+  paymentRequestedAt?: Date;
+
   @Column({ type: 'datetime', name: 'delivered_at', nullable: true })
   deliveredAt?: Date;
 

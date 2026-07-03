@@ -18,6 +18,7 @@ describe('SaasResourcePackOrderService', () => {
     save: jest.fn(),
     findOne: jest.fn(),
     findAndCount: jest.fn(),
+    update: jest.fn(),
   };
   const dataSource = { transaction: jest.fn() };
   const manager = { getRepository: jest.fn() };
@@ -330,5 +331,31 @@ describe('SaasResourcePackOrderService', () => {
     expect(orderRepo.findOne).toHaveBeenCalledWith({
       where: { orderNo: 'RPO20260703120000001000001' },
     });
+  });
+
+  it('marks a tenant pending resource pack order as payment requested', async () => {
+    const requestedAt = new Date('2026-07-03T12:00:00.000Z');
+    const order = {
+      orderNo: 'RPO1',
+      tenantId: 12,
+      status: SAAS_ORDER_PENDING,
+      paymentRequestedAt: requestedAt,
+    };
+    orderRepo.update.mockResolvedValue({ affected: 1 });
+    orderRepo.findOne.mockResolvedValue(order);
+
+    await expect(service.markTenantPaymentRequested(12, 'RPO1', requestedAt)).resolves.toBe(order);
+    expect(orderRepo.update).toHaveBeenCalledWith(
+      { tenantId: 12, orderNo: 'RPO1', status: SAAS_ORDER_PENDING },
+      { paymentRequestedAt: requestedAt },
+    );
+    expect(orderRepo.findOne).toHaveBeenCalledWith({ where: { tenantId: 12, orderNo: 'RPO1' } });
+  });
+
+  it('rejects marking a closed tenant resource pack order as payment requested', async () => {
+    orderRepo.update.mockResolvedValue({ affected: 0 });
+    orderRepo.findOne.mockResolvedValue({ orderNo: 'RPO1', tenantId: 12, status: 'closed' });
+
+    await expect(service.markTenantPaymentRequested(12, 'RPO1')).rejects.toBeInstanceOf(BadRequestException);
   });
 });

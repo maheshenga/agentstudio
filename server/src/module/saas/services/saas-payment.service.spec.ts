@@ -11,9 +11,11 @@ import { SaasResourcePackOrderService } from './saas-resource-pack-order.service
 describe('SaasPaymentService', () => {
   const saasOrderService = {
     findTenantOrder: jest.fn(),
+    markTenantPaymentRequested: jest.fn(),
   };
   const resourcePackOrderService = {
     findTenantOrder: jest.fn(),
+    markTenantPaymentRequested: jest.fn(),
   };
   const configService = {
     get: jest.fn(),
@@ -34,6 +36,8 @@ describe('SaasPaymentService', () => {
       paymentConfigService as unknown as SaasPaymentConfigService,
     );
     paymentConfigService.resolveAlipayConfig.mockResolvedValue(null);
+    saasOrderService.markTenantPaymentRequested.mockResolvedValue(undefined);
+    resourcePackOrderService.markTenantPaymentRequested.mockResolvedValue(undefined);
   });
 
   it('returns an unconfigured Alipay result when sandbox keys are missing', async () => {
@@ -58,9 +62,10 @@ describe('SaasPaymentService', () => {
       pay_url: null,
       message: 'Alipay sandbox config is missing. Set ALIPAY_APP_ID, ALIPAY_PRIVATE_KEY, ALIPAY_PUBLIC_KEY, ALIPAY_NOTIFY_URL and ALIPAY_RETURN_URL.',
     });
+    expect(saasOrderService.markTenantPaymentRequested).not.toHaveBeenCalled();
   });
 
-  it('returns a signed Alipay page payment URL when config is complete', async () => {
+  it('marks a plan order payment requested before returning a signed Alipay page payment URL', async () => {
     const { privateKey, publicKey } = generateKeyPairSync('rsa', {
       modulusLength: 2048,
     });
@@ -86,6 +91,11 @@ describe('SaasPaymentService', () => {
 
     const result = await service.createAlipayPayment(12, 'SO20260702000000001000002');
 
+    expect(saasOrderService.markTenantPaymentRequested).toHaveBeenCalledWith(
+      12,
+      'SO20260702000000001000002',
+      expect.any(Date),
+    );
     expect(result.configured).toBe(true);
     expect(result.provider).toBe('alipay');
     expect(result.order_no).toBe('SO20260702000000001000002');
@@ -115,7 +125,7 @@ describe('SaasPaymentService', () => {
     ).toBe(true);
   });
 
-  it('returns a signed Alipay URL for resource pack orders with resource pack subject', async () => {
+  it('marks a resource pack order payment requested before returning a signed Alipay URL', async () => {
     const { privateKey, publicKey } = generateKeyPairSync('rsa', {
       modulusLength: 2048,
     });
@@ -142,6 +152,11 @@ describe('SaasPaymentService', () => {
     const result = await service.createAlipayPayment(12, 'RPO20260703120000001000001', 'resource_pack');
 
     expect(resourcePackOrderService.findTenantOrder).toHaveBeenCalledWith(12, 'RPO20260703120000001000001');
+    expect(resourcePackOrderService.markTenantPaymentRequested).toHaveBeenCalledWith(
+      12,
+      'RPO20260703120000001000001',
+      expect.any(Date),
+    );
     const payUrl = new URL(result.pay_url || '');
     const params = Object.fromEntries(payUrl.searchParams.entries());
     expect(JSON.parse(params.biz_content)).toEqual({
@@ -155,6 +170,36 @@ describe('SaasPaymentService', () => {
         .update(buildAlipaySignContent(params), 'utf8')
         .verify(publicKey, params.sign, 'base64'),
     ).toBe(true);
+  });
+
+  it('rejects without returning an Alipay URL when a plan order is no longer pending while marking payment requested', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+    });
+    saasOrderService.findTenantOrder.mockResolvedValue({
+      orderNo: 'SO20260702000000001000004',
+      tenantId: 12,
+      status: SAAS_ORDER_PENDING,
+      planCode: 'pro',
+      amountCents: 99000,
+    });
+    saasOrderService.markTenantPaymentRequested.mockRejectedValue(new BadRequestException('Only pending orders can be paid'));
+    configService.get.mockImplementation((key: string) => {
+      const values: Record<string, string | boolean> = {
+        'payment.alipay.enabled': true,
+        'payment.alipay.appId': '2026070200000001',
+        'payment.alipay.privateKey': privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+        'payment.alipay.publicKey': publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+        'payment.alipay.notifyUrl': 'http://127.0.0.1:8181/api/saas/payment/alipay/notify',
+        'payment.alipay.returnUrl': 'http://127.0.0.1:5731/#/tenant-saas/plan',
+        'payment.alipay.gatewayUrl': 'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+      };
+      return values[key];
+    });
+
+    await expect(service.createAlipayPayment(12, 'SO20260702000000001000004')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
   });
 
   it('uses database Alipay config before environment config', async () => {

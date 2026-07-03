@@ -92,6 +92,24 @@ export class SaasOrderService {
     });
   }
 
+  async markTenantPaymentRequested(tenantId: number, orderNo: string, now = new Date()): Promise<SaasOrderEntity> {
+    const updateResult = await this.saasOrderRepo.update(
+      { tenantId, orderNo, status: SAAS_ORDER_PENDING },
+      { paymentRequestedAt: now },
+    );
+    const order = await this.saasOrderRepo.findOne({ where: { tenantId, orderNo } });
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+    if ((updateResult.affected ?? 0) > 0) {
+      return order;
+    }
+    if (order.status === SAAS_ORDER_PAID) {
+      throw new BadRequestException('Only pending orders can be paid');
+    }
+    throw new BadRequestException('Only pending orders can be paid');
+  }
+
   async listTenantOrders(tenantId: number, query: SaasOrderListQuery = {}) {
     const { page, limit, skip } = this.resolvePagination(query);
     const where: FindOptionsWhere<SaasOrderEntity> = { tenantId };
@@ -141,6 +159,7 @@ export class SaasOrderService {
       status: order.status,
       alipay_trade_no: order.alipayTradeNo,
       paid_at: order.paidAt,
+      payment_requested_at: order.paymentRequestedAt ?? null,
       closed_at: order.closedAt ?? null,
       close_reason: order.closeReason ?? null,
       create_time: order.createTime,

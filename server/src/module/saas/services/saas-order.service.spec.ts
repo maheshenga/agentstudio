@@ -21,6 +21,7 @@ describe('SaasOrderService', () => {
     save: jest.fn(),
     findOne: jest.fn(),
     findAndCount: jest.fn(),
+    update: jest.fn(),
   };
 
   const dataSource = {
@@ -378,6 +379,7 @@ describe('SaasOrderService', () => {
           status: 'closed',
           alipay_trade_no: undefined,
           paid_at: undefined,
+          payment_requested_at: null,
           closed_at: closedAt,
           close_reason: 'tenant_cancelled',
           create_time: closedAt,
@@ -453,5 +455,31 @@ describe('SaasOrderService', () => {
       plan_code: 'pro',
     });
     expect(orderRepo.findOne).toHaveBeenCalledWith({ where: { orderNo: 'SO1' } });
+  });
+
+  it('marks a tenant pending order as payment requested', async () => {
+    const requestedAt = new Date('2026-07-03T12:00:00.000Z');
+    const order = {
+      orderNo: 'SO1',
+      tenantId: 12,
+      status: 'pending',
+      paymentRequestedAt: requestedAt,
+    };
+    orderRepo.update.mockResolvedValue({ affected: 1 });
+    orderRepo.findOne.mockResolvedValue(order);
+
+    await expect(service.markTenantPaymentRequested(12, 'SO1', requestedAt)).resolves.toBe(order);
+    expect(orderRepo.update).toHaveBeenCalledWith(
+      { tenantId: 12, orderNo: 'SO1', status: 'pending' },
+      { paymentRequestedAt: requestedAt },
+    );
+    expect(orderRepo.findOne).toHaveBeenCalledWith({ where: { tenantId: 12, orderNo: 'SO1' } });
+  });
+
+  it('rejects marking a closed tenant order as payment requested', async () => {
+    orderRepo.update.mockResolvedValue({ affected: 0 });
+    orderRepo.findOne.mockResolvedValue({ orderNo: 'SO1', tenantId: 12, status: 'closed' });
+
+    await expect(service.markTenantPaymentRequested(12, 'SO1')).rejects.toBeInstanceOf(BadRequestException);
   });
 });

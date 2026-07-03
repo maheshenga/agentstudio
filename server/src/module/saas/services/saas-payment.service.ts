@@ -76,6 +76,8 @@ export class SaasPaymentService {
       };
     }
 
+    await this.markPaymentRequested(tenantId, order.orderNo, orderType, new Date());
+
     return {
       configured: true,
       provider: SAAS_PAYMENT_ALIPAY,
@@ -212,6 +214,20 @@ export class SaasPaymentService {
       amountCents: order.amountCents,
       subject: `SaaS plan ${order.planCode}`,
     };
+  }
+
+  private async markPaymentRequested(
+    tenantId: number,
+    orderNo: string,
+    orderType: SaasPaymentOrderType,
+    now: Date,
+  ): Promise<void> {
+    if (orderType === 'resource_pack') {
+      await this.saasResourcePackOrderService.markTenantPaymentRequested(tenantId, orderNo, now);
+      return;
+    }
+
+    await this.saasOrderService.markTenantPaymentRequested(tenantId, orderNo, now);
   }
 
   private buildSignedPagePayUrl(config: AlipayConfig, order: SaasPayableOrder): string {

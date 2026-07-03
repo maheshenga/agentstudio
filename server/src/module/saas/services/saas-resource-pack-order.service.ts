@@ -67,6 +67,28 @@ export class SaasResourcePackOrderService {
     });
   }
 
+  async markTenantPaymentRequested(
+    tenantId: number,
+    orderNo: string,
+    now = new Date(),
+  ): Promise<SaasResourcePackOrderEntity> {
+    const updateResult = await this.resourcePackOrderRepo.update(
+      { tenantId, orderNo, status: SAAS_ORDER_PENDING },
+      { paymentRequestedAt: now },
+    );
+    const order = await this.resourcePackOrderRepo.findOne({ where: { tenantId, orderNo } });
+    if (!order) {
+      throw new NotFoundException('Resource pack order not found');
+    }
+    if ((updateResult.affected ?? 0) > 0) {
+      return order;
+    }
+    if (order.status === SAAS_ORDER_PAID) {
+      throw new BadRequestException('Only pending resource pack orders can be paid');
+    }
+    throw new BadRequestException('Only pending resource pack orders can be paid');
+  }
+
   async listTenantOrders(tenantId: number, query: SaasResourcePackOrderListQuery = {}) {
     const { page, limit, skip } = this.resolvePagination(query);
     const where: FindOptionsWhere<SaasResourcePackOrderEntity> = { tenantId };
@@ -159,6 +181,7 @@ export class SaasResourcePackOrderService {
       status: order.status,
       alipay_trade_no: order.alipayTradeNo,
       paid_at: order.paidAt,
+      payment_requested_at: order.paymentRequestedAt ?? null,
       delivered_at: order.deliveredAt,
       closed_at: order.closedAt ?? null,
       close_reason: order.closeReason ?? null,

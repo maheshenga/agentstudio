@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, LessThanOrEqual, MoreThanOrEqual, Repository } from 'typeorm';
+import { In, IsNull, LessThanOrEqual, MoreThanOrEqual, Repository } from 'typeorm';
 
 import { Task } from '../../../common/decorators/task.decorator';
 import {
@@ -48,11 +48,11 @@ export class SaasOrderRiskService {
     const cutoff = this.subtractMinutes(now, timeoutMinutes);
     const [planOrders, resourcePackOrders] = await Promise.all([
       this.planOrderRepo.find({
-        where: { status: SAAS_ORDER_PENDING, createTime: LessThanOrEqual(cutoff) },
+        where: { status: SAAS_ORDER_PENDING, createTime: LessThanOrEqual(cutoff), paymentRequestedAt: IsNull() },
         select: { orderNo: true },
       }),
       this.resourcePackOrderRepo.find({
-        where: { status: SAAS_ORDER_PENDING, createTime: LessThanOrEqual(cutoff) },
+        where: { status: SAAS_ORDER_PENDING, createTime: LessThanOrEqual(cutoff), paymentRequestedAt: IsNull() },
         select: { orderNo: true },
       }),
     ]);
@@ -63,14 +63,14 @@ export class SaasOrderRiskService {
 
     if (planOrderNos.length > 0) {
       const updateResult = await this.planOrderRepo.update(
-        { orderNo: In(planOrderNos), status: SAAS_ORDER_PENDING },
+        { orderNo: In(planOrderNos), status: SAAS_ORDER_PENDING, paymentRequestedAt: IsNull() },
         { status: SAAS_ORDER_CLOSED, closedAt: now, closeReason: SAAS_ORDER_CLOSE_REASON_TIMEOUT },
       );
       closedPlanOrderCount = updateResult.affected ?? 0;
     }
     if (resourcePackOrderNos.length > 0) {
       const updateResult = await this.resourcePackOrderRepo.update(
-        { orderNo: In(resourcePackOrderNos), status: SAAS_ORDER_PENDING },
+        { orderNo: In(resourcePackOrderNos), status: SAAS_ORDER_PENDING, paymentRequestedAt: IsNull() },
         { status: SAAS_ORDER_CLOSED, closedAt: now, closeReason: SAAS_ORDER_CLOSE_REASON_TIMEOUT },
       );
       closedResourcePackOrderCount = updateResult.affected ?? 0;
@@ -88,7 +88,7 @@ export class SaasOrderRiskService {
 
   async closeTenantPlanOrder(tenantId: number, orderNo: string, now = new Date()): Promise<SaasOrderEntity> {
     const updateResult = await this.planOrderRepo.update(
-      { tenantId, orderNo, status: SAAS_ORDER_PENDING },
+      { tenantId, orderNo, status: SAAS_ORDER_PENDING, paymentRequestedAt: IsNull() },
       { status: SAAS_ORDER_CLOSED, closedAt: now, closeReason: SAAS_ORDER_CLOSE_REASON_TENANT_CANCELLED },
     );
     const order = await this.planOrderRepo.findOne({ where: { tenantId, orderNo } });
@@ -96,6 +96,9 @@ export class SaasOrderRiskService {
     if ((updateResult.affected ?? 0) > 0) return order;
     if (order.status === SAAS_ORDER_CLOSED) return order;
     if (order.status === SAAS_ORDER_PAID) throw new BadRequestException('Paid orders cannot be cancelled');
+    if (order.status === SAAS_ORDER_PENDING && order.paymentRequestedAt) {
+      throw new BadRequestException('Payment has already been requested for this order');
+    }
     throw new BadRequestException('Only pending orders can be cancelled');
   }
 
@@ -105,7 +108,7 @@ export class SaasOrderRiskService {
     now = new Date(),
   ): Promise<SaasResourcePackOrderEntity> {
     const updateResult = await this.resourcePackOrderRepo.update(
-      { tenantId, orderNo, status: SAAS_ORDER_PENDING },
+      { tenantId, orderNo, status: SAAS_ORDER_PENDING, paymentRequestedAt: IsNull() },
       { status: SAAS_ORDER_CLOSED, closedAt: now, closeReason: SAAS_ORDER_CLOSE_REASON_TENANT_CANCELLED },
     );
     const order = await this.resourcePackOrderRepo.findOne({ where: { tenantId, orderNo } });
@@ -113,6 +116,9 @@ export class SaasOrderRiskService {
     if ((updateResult.affected ?? 0) > 0) return order;
     if (order.status === SAAS_ORDER_CLOSED) return order;
     if (order.status === SAAS_ORDER_PAID) throw new BadRequestException('Paid orders cannot be cancelled');
+    if (order.status === SAAS_ORDER_PENDING && order.paymentRequestedAt) {
+      throw new BadRequestException('Payment has already been requested for this order');
+    }
     throw new BadRequestException('Only pending orders can be cancelled');
   }
 
@@ -166,6 +172,7 @@ export class SaasOrderRiskService {
     return {
       closed_at: order.closedAt ?? null,
       close_reason: order.closeReason ?? null,
+      payment_requested_at: order.paymentRequestedAt ?? null,
     };
   }
 
@@ -173,6 +180,7 @@ export class SaasOrderRiskService {
     return {
       closed_at: order.closedAt ?? null,
       close_reason: order.closeReason ?? null,
+      payment_requested_at: order.paymentRequestedAt ?? null,
     };
   }
 

@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { IsNull, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 
 import {
   SAAS_ORDER_CLOSED,
@@ -64,11 +64,19 @@ describe('SaasOrderRiskService', () => {
     });
 
     expect(planOrderRepo.find).toHaveBeenCalledWith({
-      where: { status: SAAS_ORDER_PENDING, createTime: LessThanOrEqual(cutoff) },
+      where: { status: SAAS_ORDER_PENDING, createTime: LessThanOrEqual(cutoff), paymentRequestedAt: IsNull() },
       select: { orderNo: true },
     });
     expect(planOrderRepo.update).toHaveBeenCalledWith(
-      { orderNo: expect.any(Object), status: SAAS_ORDER_PENDING },
+      { orderNo: expect.any(Object), status: SAAS_ORDER_PENDING, paymentRequestedAt: IsNull() },
+      { status: SAAS_ORDER_CLOSED, closedAt: now, closeReason: SAAS_ORDER_CLOSE_REASON_TIMEOUT },
+    );
+    expect(resourcePackOrderRepo.find).toHaveBeenCalledWith({
+      where: { status: SAAS_ORDER_PENDING, createTime: LessThanOrEqual(cutoff), paymentRequestedAt: IsNull() },
+      select: { orderNo: true },
+    });
+    expect(resourcePackOrderRepo.update).toHaveBeenCalledWith(
+      { orderNo: expect.any(Object), status: SAAS_ORDER_PENDING, paymentRequestedAt: IsNull() },
       { status: SAAS_ORDER_CLOSED, closedAt: now, closeReason: SAAS_ORDER_CLOSE_REASON_TIMEOUT },
     );
   });
@@ -104,7 +112,7 @@ describe('SaasOrderRiskService', () => {
       closeReason: SAAS_ORDER_CLOSE_REASON_TENANT_CANCELLED,
     });
     expect(planOrderRepo.update).toHaveBeenCalledWith(
-      { tenantId: 12, orderNo: 'SO1', status: SAAS_ORDER_PENDING },
+      { tenantId: 12, orderNo: 'SO1', status: SAAS_ORDER_PENDING, paymentRequestedAt: IsNull() },
       { status: SAAS_ORDER_CLOSED, closedAt: now, closeReason: SAAS_ORDER_CLOSE_REASON_TENANT_CANCELLED },
     );
     expect(planOrderRepo.findOne).toHaveBeenCalledWith({ where: { tenantId: 12, orderNo: 'SO1' } });
@@ -126,7 +134,7 @@ describe('SaasOrderRiskService', () => {
 
     await expect(service.closeTenantPlanOrder(12, 'SO1')).resolves.toBe(order);
     expect(planOrderRepo.update).toHaveBeenCalledWith(
-      { tenantId: 12, orderNo: 'SO1', status: SAAS_ORDER_PENDING },
+      { tenantId: 12, orderNo: 'SO1', status: SAAS_ORDER_PENDING, paymentRequestedAt: IsNull() },
       expect.any(Object),
     );
     expect(planOrderRepo.save).not.toHaveBeenCalled();
@@ -137,6 +145,21 @@ describe('SaasOrderRiskService', () => {
     planOrderRepo.findOne.mockResolvedValue({ orderNo: 'SO1', tenantId: 12, status: SAAS_ORDER_PAID });
 
     await expect(service.closeTenantPlanOrder(12, 'SO1')).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects tenant cancellation for pending plan orders with requested external payment', async () => {
+    const paymentRequestedAt = new Date('2026-07-03T11:50:00.000Z');
+    planOrderRepo.update.mockResolvedValue({ affected: 0 });
+    planOrderRepo.findOne.mockResolvedValue({
+      orderNo: 'SO1',
+      tenantId: 12,
+      status: SAAS_ORDER_PENDING,
+      paymentRequestedAt,
+    });
+
+    await expect(service.closeTenantPlanOrder(12, 'SO1')).rejects.toThrow(
+      'Payment has already been requested for this order',
+    );
   });
 
   it('returns not found for another tenant plan order', async () => {
@@ -164,7 +187,7 @@ describe('SaasOrderRiskService', () => {
       closeReason: SAAS_ORDER_CLOSE_REASON_TENANT_CANCELLED,
     });
     expect(resourcePackOrderRepo.update).toHaveBeenCalledWith(
-      { tenantId: 12, orderNo: 'RPO1', status: SAAS_ORDER_PENDING },
+      { tenantId: 12, orderNo: 'RPO1', status: SAAS_ORDER_PENDING, paymentRequestedAt: IsNull() },
       { status: SAAS_ORDER_CLOSED, closedAt: now, closeReason: SAAS_ORDER_CLOSE_REASON_TENANT_CANCELLED },
     );
     expect(resourcePackOrderRepo.findOne).toHaveBeenCalledWith({ where: { tenantId: 12, orderNo: 'RPO1' } });
@@ -186,7 +209,7 @@ describe('SaasOrderRiskService', () => {
 
     await expect(service.closeTenantResourcePackOrder(12, 'RPO1')).resolves.toBe(order);
     expect(resourcePackOrderRepo.update).toHaveBeenCalledWith(
-      { tenantId: 12, orderNo: 'RPO1', status: SAAS_ORDER_PENDING },
+      { tenantId: 12, orderNo: 'RPO1', status: SAAS_ORDER_PENDING, paymentRequestedAt: IsNull() },
       expect.any(Object),
     );
     expect(resourcePackOrderRepo.save).not.toHaveBeenCalled();
@@ -197,6 +220,21 @@ describe('SaasOrderRiskService', () => {
     resourcePackOrderRepo.findOne.mockResolvedValue({ orderNo: 'RPO1', tenantId: 12, status: SAAS_ORDER_PAID });
 
     await expect(service.closeTenantResourcePackOrder(12, 'RPO1')).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects tenant cancellation for pending resource-pack orders with requested external payment', async () => {
+    const paymentRequestedAt = new Date('2026-07-03T11:50:00.000Z');
+    resourcePackOrderRepo.update.mockResolvedValue({ affected: 0 });
+    resourcePackOrderRepo.findOne.mockResolvedValue({
+      orderNo: 'RPO1',
+      tenantId: 12,
+      status: SAAS_ORDER_PENDING,
+      paymentRequestedAt,
+    });
+
+    await expect(service.closeTenantResourcePackOrder(12, 'RPO1')).rejects.toThrow(
+      'Payment has already been requested for this order',
+    );
   });
 
   it('returns not found for another tenant resource-pack order', async () => {
@@ -212,10 +250,12 @@ describe('SaasOrderRiskService', () => {
     expect(service.decoratePlanOrder({ closedAt, closeReason: SAAS_ORDER_CLOSE_REASON_TIMEOUT })).toEqual({
       closed_at: closedAt,
       close_reason: SAAS_ORDER_CLOSE_REASON_TIMEOUT,
+      payment_requested_at: null,
     });
     expect(service.decorateResourcePackOrder({})).toEqual({
       closed_at: null,
       close_reason: null,
+      payment_requested_at: null,
     });
   });
 
