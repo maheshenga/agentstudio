@@ -87,7 +87,13 @@
             <ElTag :type="getStatusTagType(row.status)" effect="light">
               {{ formatStatus(row.status) }}
             </ElTag>
+            <ElTag v-if="isPaymentRequestedPendingOrder(row)" class="saas-resource-pack-order-page__inline-tag" type="warning" effect="light">
+              已发起支付
+            </ElTag>
           </template>
+        </ElTableColumn>
+        <ElTableColumn label="发起支付时间" min-width="180">
+          <template #default="{ row }">{{ formatDateTime(row.payment_requested_at) }}</template>
         </ElTableColumn>
         <ElTableColumn label="支付时间" min-width="180">
           <template #default="{ row }">{{ formatDateTime(row.paid_at) }}</template>
@@ -135,9 +141,13 @@
           <ElTag :type="getStatusTagType(currentDetail.status)" effect="light">
             {{ formatStatus(currentDetail.status) }}
           </ElTag>
+          <ElTag v-if="isPaymentRequestedPendingOrder(currentDetail)" class="saas-resource-pack-order-page__inline-tag" type="warning" effect="light">
+            已发起支付
+          </ElTag>
         </ElDescriptionsItem>
         <ElDescriptionsItem label="支付宝交易号">{{ currentDetail.alipay_trade_no || '-' }}</ElDescriptionsItem>
         <ElDescriptionsItem label="创建时间">{{ formatDateTime(currentDetail.create_time) }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="发起支付时间">{{ formatDateTime(currentDetail.payment_requested_at) }}</ElDescriptionsItem>
         <ElDescriptionsItem label="支付时间">{{ formatDateTime(currentDetail.paid_at) }}</ElDescriptionsItem>
         <ElDescriptionsItem label="关闭原因">{{ formatCloseReason(currentDetail.close_reason) }}</ElDescriptionsItem>
         <ElDescriptionsItem label="关闭时间">{{ formatDateTime(currentDetail.closed_at) }}</ElDescriptionsItem>
@@ -153,6 +163,7 @@
     fetchPlatformResourcePackOrders,
     type SaasResourcePackOrderRecord
   } from '@/api/saas'
+  import { isPaymentRequestedPendingOrder } from '@/utils/saas/payment-request-state'
 
   defineOptions({ name: 'SaasPlatformResourcePackOrderPage' })
 
@@ -331,5 +342,9 @@
   .saas-resource-pack-order-page__pagination {
     margin-top: 16px;
     justify-content: flex-end;
+  }
+
+  .saas-resource-pack-order-page__inline-tag {
+    margin-left: 6px;
   }
 </style>

@@ -73,6 +73,7 @@ export interface SaasPlatformOrderRecord {
   payment_method: string
   status: string
   alipay_trade_no?: string
+  payment_requested_at?: string | Date | null
   paid_at?: string | Date
   closed_at?: string | Date | null
   close_reason?: string | null
@@ -194,6 +195,7 @@ export interface SaasResourcePackOrderRecord {
   payment_method?: string
   status: string
   alipay_trade_no?: string
+  payment_requested_at?: string | Date | null
   paid_at?: string | Date
   delivered_at?: string | Date
   closed_at?: string | Date | null
@@ -376,6 +378,7 @@ export interface SaasOrderRecord {
   status: string
   payment_method?: string
   alipay_trade_no?: string
+  payment_requested_at?: string | Date | null
   paid_at?: string | Date
   closed_at?: string | Date | null
   close_reason?: string | null

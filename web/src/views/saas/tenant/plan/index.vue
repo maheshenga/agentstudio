@@ -79,6 +79,12 @@
           <ElTag :type="currentOrderStatusTagType" effect="light">
             {{ currentOrderStatusText }}
           </ElTag>
+          <ElTag v-if="isCurrentOrderPaymentRequested" type="warning" effect="light">
+            已发起支付
+          </ElTag>
+          <p v-if="hasPaymentRequestedAt(currentOrder.payment_requested_at)" class="tenant-plan-page__order-meta">
+            发起支付时间：{{ formatDateTime(currentOrder.payment_requested_at) }}
+          </p>
           <p v-if="currentOrder.status === 'closed'" class="tenant-plan-page__order-meta">
             {{ formatCloseReason(currentOrder.close_reason) }} · {{ formatDateTime(currentOrder.closed_at) }}
           </p>
@@ -120,7 +126,13 @@
               <ElTag :type="getOrderStatusTagType(row.status)" effect="light">
                 {{ formatOrderStatus(row.status) }}
               </ElTag>
+              <ElTag v-if="isPaymentRequestedPendingOrder(row)" class="tenant-plan-page__inline-tag" type="warning" effect="light">
+                已发起支付
+              </ElTag>
             </template>
+          </ElTableColumn>
+          <ElTableColumn label="发起支付时间" min-width="180">
+            <template #default="{ row }">{{ formatDateTime(row.payment_requested_at) }}</template>
           </ElTableColumn>
           <ElTableColumn label="关闭原因" min-width="130">
             <template #default="{ row }">{{ formatCloseReason(row.close_reason) }}</template>
@@ -137,7 +149,7 @@
                 继续支付
               </ElButton>
               <ElButton
-                v-if="row.status === 'pending'"
+                v-if="row.status === 'pending' && !isPaymentRequestedPendingOrder(row)"
                 type="danger"
                 link
                 :disabled="cancellingOrderNo === row.order_no"
@@ -184,6 +196,7 @@
     type SaasPlanQuotaRecord,
     type TenantSubscriptionSummary
   } from '@/api/saas'
+  import { hasPaymentRequestedAt, isPaymentRequestedPendingOrder } from '@/utils/saas/payment-request-state'
 
   defineOptions({ name: 'SaasTenantPlanPage' })
 
@@ -265,6 +278,7 @@
     return missingKeys.length ? `缺少：${missingKeys.join('、')}` : ''
   })
   const isCurrentOrderPayable = computed(() => currentOrder.value?.status === 'pending')
+  const isCurrentOrderPaymentRequested = computed(() => isPaymentRequestedPendingOrder(currentOrder.value))
   const currentOrderStatusText = computed(() => formatOrderStatus(currentOrder.value?.status || ''))
   const currentOrderStatusTagType = computed(() => getOrderStatusTagType(currentOrder.value?.status || ''))
 
@@ -698,6 +712,10 @@
     font-size: 12px;
     line-height: 1.5;
     text-align: right;
+  }
+
+  .tenant-plan-page__inline-tag {
+    margin-left: 6px;
   }
 
   @media (max-width: 768px) {

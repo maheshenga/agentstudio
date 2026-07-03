@@ -137,9 +137,15 @@
             <ElTableColumn prop="status" label="状态" width="120">
               <template #default="{ row }">
                 <ElTag :type="getStatusTagType(row.status)" effect="light">{{ row.status }}</ElTag>
+                <ElTag v-if="isPaymentRequestedPendingOrder(row)" class="saas-platform-page__inline-tag" type="warning" effect="light">
+                  已发起支付
+                </ElTag>
               </template>
             </ElTableColumn>
             <ElTableColumn prop="alipay_trade_no" label="支付宝交易号" min-width="210" show-overflow-tooltip />
+            <ElTableColumn label="发起支付时间" min-width="180">
+              <template #default="{ row }">{{ formatDateTime(row.payment_requested_at) }}</template>
+            </ElTableColumn>
             <ElTableColumn label="支付时间" min-width="180">
               <template #default="{ row }">{{ formatDateTime(row.paid_at) }}</template>
             </ElTableColumn>
@@ -179,9 +185,13 @@
         <ElDescriptionsItem label="金额">{{ formatMoney(currentOrderDetail.amount_cents) }}</ElDescriptionsItem>
         <ElDescriptionsItem label="状态">
           <ElTag :type="getStatusTagType(currentOrderDetail.status)" effect="light">{{ currentOrderDetail.status }}</ElTag>
+          <ElTag v-if="isPaymentRequestedPendingOrder(currentOrderDetail)" class="saas-platform-page__inline-tag" type="warning" effect="light">
+            已发起支付
+          </ElTag>
         </ElDescriptionsItem>
         <ElDescriptionsItem label="支付方式">{{ currentOrderDetail.payment_method || '-' }}</ElDescriptionsItem>
         <ElDescriptionsItem label="支付宝交易号">{{ currentOrderDetail.alipay_trade_no || '-' }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="发起支付时间">{{ formatDateTime(currentOrderDetail.payment_requested_at) }}</ElDescriptionsItem>
         <ElDescriptionsItem label="支付时间">{{ formatDateTime(currentOrderDetail.paid_at) }}</ElDescriptionsItem>
         <ElDescriptionsItem label="关闭原因">{{ formatCloseReason(currentOrderDetail.close_reason) }}</ElDescriptionsItem>
         <ElDescriptionsItem label="关闭时间">{{ formatDateTime(currentOrderDetail.closed_at) }}</ElDescriptionsItem>
@@ -224,6 +234,7 @@
     type SaasPlatformSubscriptionRecord,
     type SaasSubscriptionLifecycleOverview
   } from '@/api/saas'
+  import { isPaymentRequestedPendingOrder } from '@/utils/saas/payment-request-state'
 
   defineOptions({ name: 'SaasPlatformSubscriptionPage' })
 
@@ -532,5 +543,9 @@
   .saas-platform-page__pagination {
     margin-top: 16px;
     justify-content: flex-end;
+  }
+
+  .saas-platform-page__inline-tag {
+    margin-left: 6px;
   }
 </style>
