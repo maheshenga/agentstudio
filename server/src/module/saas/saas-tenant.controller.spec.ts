@@ -13,6 +13,7 @@ import { SaasQuotaService } from './services/saas-quota.service';
 import { SaasResourcePackOrderService } from './services/saas-resource-pack-order.service';
 import { SaasResourcePackService } from './services/saas-resource-pack.service';
 import { SaasSubscriptionLifecycleService } from './services/saas-subscription-lifecycle.service';
+import { SaasTenantMemberService } from './services/saas-tenant-member.service';
 
 describe('SaasTenantController', () => {
   let controller: SaasTenantController;
@@ -80,6 +81,10 @@ describe('SaasTenantController', () => {
       is_expired_by_time: false,
     })),
   };
+  const tenantMemberService = {
+    listMembers: jest.fn(),
+    createMember: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -126,6 +131,10 @@ describe('SaasTenantController', () => {
         {
           provide: SaasSubscriptionLifecycleService,
           useValue: lifecycleService,
+        },
+        {
+          provide: SaasTenantMemberService,
+          useValue: tenantMemberService,
         },
       ],
     }).compile();
@@ -249,6 +258,37 @@ describe('SaasTenantController', () => {
       closed_at: null,
       close_reason: null,
     });
+  });
+
+  it('lists current tenant members', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
+    tenantMemberService.listMembers.mockResolvedValue({
+      list: [{ user_id: 7, username: 'alice', role: 'admin' }],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+
+    const result = await controller.members({ page: '1' });
+
+    expect(tenantMemberService.listMembers).toHaveBeenCalledWith(88, { page: '1' });
+    expect(result.data).toEqual({
+      list: [{ user_id: 7, username: 'alice', role: 'admin' }],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+  });
+
+  it('creates a tenant member in current tenant context', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
+    const body = { username: 'bob', password: '123456', realname: 'Bob', role: 'member' as const };
+    tenantMemberService.createMember.mockResolvedValue({ user_id: 8, username: 'bob', role: 'member' });
+
+    const result = await controller.createMember(body);
+
+    expect(tenantMemberService.createMember).toHaveBeenCalledWith(88, body);
+    expect(result.data).toEqual({ user_id: 8, username: 'bob', role: 'member' });
   });
 
   it('returns a tenant order by order number', async () => {

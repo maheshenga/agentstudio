@@ -50,10 +50,13 @@ describe('SaasProvisioningService', () => {
     { id: 501, code: 'TenantSaas', slug: null },
     { id: 502, code: 'TenantBilling', slug: null },
     { id: 503, code: 'TenantQuota', slug: null },
-    { id: 504, code: null, slug: 'tenant:billing:view' },
-    { id: 505, code: null, slug: 'tenant:billing:upgrade' },
-    { id: 506, code: null, slug: 'tenant:quota:view' },
-    { id: 507, code: null, slug: 'tenant:resource:buy' },
+    { id: 504, code: 'TenantMember', slug: null },
+    { id: 505, code: null, slug: 'tenant:billing:view' },
+    { id: 506, code: null, slug: 'tenant:billing:upgrade' },
+    { id: 507, code: null, slug: 'tenant:quota:view' },
+    { id: 508, code: null, slug: 'tenant:resource:buy' },
+    { id: 509, code: null, slug: 'tenant:member:index' },
+    { id: 510, code: null, slug: 'tenant:member:create' },
   ];
 
   beforeEach(async () => {
@@ -232,16 +235,22 @@ describe('SaasProvisioningService', () => {
         { roleId: 301, menuId: 505 },
         { roleId: 301, menuId: 506 },
         { roleId: 301, menuId: 507 },
-        { roleId: 302, menuId: 505 },
-        { roleId: 302, menuId: 507 },
-        { roleId: 303, menuId: 504 },
-        { roleId: 303, menuId: 506 },
+        { roleId: 301, menuId: 508 },
+        { roleId: 301, menuId: 509 },
+        { roleId: 301, menuId: 510 },
+        { roleId: 302, menuId: 506 },
+        { roleId: 302, menuId: 508 },
+        { roleId: 302, menuId: 510 },
+        { roleId: 303, menuId: 505 },
+        { roleId: 303, menuId: 507 },
+        { roleId: 303, menuId: 509 },
       ]),
     );
     expect(roleMenuRows).not.toEqual(
       expect.arrayContaining([
-        { roleId: 303, menuId: 505 },
-        { roleId: 303, menuId: 507 },
+        { roleId: 303, menuId: 506 },
+        { roleId: 303, menuId: 508 },
+        { roleId: 303, menuId: 510 },
       ]),
     );
 

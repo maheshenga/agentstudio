@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 
 import { ResultData } from '../../common/utils/result';
 import { getTenantId } from '../../common/utils/tenant.util';
+import { CreateTenantMemberDto } from './dto/create-tenant-member.dto';
 import { CreateResourcePackOrderDto } from './dto/create-resource-pack-order.dto';
 import { CreateUpgradeOrderDto } from './dto/create-upgrade-order.dto';
 import { SaasPlanEntity } from './entities/saas-plan.entity';
@@ -19,6 +20,7 @@ import { SaasResourcePackOrderService } from './services/saas-resource-pack-orde
 import type { SaasResourcePackOrderListQuery } from './services/saas-resource-pack-order.service';
 import { SaasResourcePackService } from './services/saas-resource-pack.service';
 import { SaasSubscriptionLifecycleService } from './services/saas-subscription-lifecycle.service';
+import { SaasTenantMemberListQuery, SaasTenantMemberService } from './services/saas-tenant-member.service';
 
 @ApiTags('SaaS Tenant')
 @ApiBearerAuth('Authorization')
@@ -38,6 +40,7 @@ export class SaasTenantController {
     private readonly saasResourcePackService: SaasResourcePackService,
     private readonly saasResourcePackOrderService: SaasResourcePackOrderService,
     private readonly lifecycleService: SaasSubscriptionLifecycleService,
+    private readonly tenantMemberService: SaasTenantMemberService,
   ) {}
 
   @Get('plans')
@@ -60,6 +63,28 @@ export class SaasTenantController {
     }
 
     return ResultData.ok(await this.saasQuotaService.getTenantUsageSummary(tenantId));
+  }
+
+  @Get('members')
+  @ApiOperation({ summary: 'List current tenant SaaS members' })
+  async members(@Query() query: SaasTenantMemberListQuery) {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    return ResultData.ok(await this.tenantMemberService.listMembers(tenantId, query));
+  }
+
+  @Post('members')
+  @ApiOperation({ summary: 'Create current tenant SaaS member' })
+  async createMember(@Body() body: CreateTenantMemberDto) {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    return ResultData.ok(await this.tenantMemberService.createMember(tenantId, body));
   }
 
   @Get('resource-packs')

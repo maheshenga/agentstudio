@@ -385,6 +385,31 @@ export interface SaasOrderRecord {
   create_time?: string | Date
 }
 
+export interface SaasTenantMemberRecord {
+  user_id: number
+  username: string
+  realname: string
+  email: string
+  phone: string
+  status: number
+  role: 'owner' | 'admin' | 'member' | string
+  create_time?: string | Date
+}
+
+export interface SaasTenantMemberListParams {
+  page?: number
+  limit?: number
+}
+
+export interface CreateSaasTenantMemberParams {
+  username: string
+  password: string
+  realname?: string
+  phone?: string
+  email?: string
+  role: 'admin' | 'member'
+}
+
 export interface AlipayPaymentResult {
   configured: boolean
   provider: 'alipay'
@@ -415,6 +440,14 @@ export function signupTenant(params: SaasSignupParams) {
 
 export function fetchTenantUsage() {
   return request.get<TenantUsageQuotaRecord[]>({ url: '/api/saas/tenant/usage' })
+}
+
+export function fetchTenantMembers(params: SaasTenantMemberListParams) {
+  return request.get<SaasPlatformPageResult<SaasTenantMemberRecord>>({ url: '/api/saas/tenant/members', params })
+}
+
+export function createTenantMember(params: CreateSaasTenantMemberParams) {
+  return request.post<SaasTenantMemberRecord>({ url: '/api/saas/tenant/members', data: params })
 }
 
 export function fetchTenantSubscription() {
