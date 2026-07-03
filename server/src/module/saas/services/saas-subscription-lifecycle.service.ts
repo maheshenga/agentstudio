@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, LessThanOrEqual, Repository } from 'typeorm';
+import { Between, LessThanOrEqual, MoreThanOrEqual, Repository } from 'typeorm';
 
 import { Task } from '../../../common/decorators/task.decorator';
 import { SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_EXPIRED } from '../constants';
@@ -75,6 +75,24 @@ export class SaasSubscriptionLifecycleService {
     };
   }
 
+  clampDays(value: unknown, fallback = 7): number {
+    const fallbackDays = Number.isFinite(fallback) ? Math.floor(fallback) : 7;
+    const safeFallback = Math.min(365, Math.max(1, fallbackDays));
+    const parsedValue = typeof value === 'number' ? value : Number(value);
+
+    if (!Number.isFinite(parsedValue) || parsedValue <= 0) {
+      return safeFallback;
+    }
+
+    return Math.min(365, Math.max(1, Math.floor(parsedValue)));
+  }
+
+  addDays(date: Date, days: number): Date {
+    const nextDate = new Date(date);
+    nextDate.setDate(nextDate.getDate() + days);
+    return nextDate;
+  }
+
   decorateSubscription(
     subscription: Pick<SaasSubscriptionEntity, 'status' | 'endTime'> | Partial<SaasSubscriptionEntity>,
     now = new Date(),
@@ -107,11 +125,20 @@ export class SaasSubscriptionLifecycleService {
     return this.sweepExpiredSubscriptions();
   }
 
-  private buildExpiringWhere(now = new Date(), thresholdDays = 7) {
-    const endTime = new Date(now.getTime() + thresholdDays * 86_400_000);
+  buildExpiringWhere(now = new Date(), rawDays = 7) {
+    const days = this.clampDays(rawDays, 7);
+    const endTime = this.addDays(now, days);
     return {
       status: SAAS_SUBSCRIPTION_ACTIVE,
       endTime: Between(now, endTime),
+    };
+  }
+
+  buildExpiredSinceWhere(now = new Date(), rawDays = 30) {
+    const days = this.clampDays(rawDays, 30);
+    return {
+      status: SAAS_SUBSCRIPTION_EXPIRED,
+      endTime: MoreThanOrEqual(this.addDays(now, -days)),
     };
   }
 }

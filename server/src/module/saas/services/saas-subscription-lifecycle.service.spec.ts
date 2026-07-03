@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { LessThanOrEqual } from 'typeorm';
+import { Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 
 import {
   SAAS_SUBSCRIPTION_ACTIVE,
@@ -169,5 +169,32 @@ describe('SaasSubscriptionLifecycleService', () => {
 
     expect(subscriptionRepo.count).toHaveBeenNthCalledWith(1, { where: { status: SAAS_SUBSCRIPTION_ACTIVE } });
     expect(subscriptionRepo.count).toHaveBeenNthCalledWith(4, { where: { status: SAAS_SUBSCRIPTION_EXPIRED } });
+  });
+
+  it('builds expired-since where with an expired status and a lower bound date', () => {
+    const now = new Date('2026-07-03T00:00:00.000Z');
+
+    expect(service.buildExpiredSinceWhere(now, 30)).toEqual({
+      status: SAAS_SUBSCRIPTION_EXPIRED,
+      endTime: MoreThanOrEqual(new Date('2026-06-03T00:00:00.000Z')),
+    });
+  });
+
+  it('clamps expiring query days to 365', () => {
+    const now = new Date('2026-07-03T00:00:00.000Z');
+
+    expect(service.buildExpiringWhere(now, 9999)).toEqual({
+      status: SAAS_SUBSCRIPTION_ACTIVE,
+      endTime: Between(now, new Date('2027-07-03T00:00:00.000Z')),
+    });
+  });
+
+  it('falls back to the default expiring window for invalid day input', () => {
+    const now = new Date('2026-07-03T00:00:00.000Z');
+
+    expect(service.buildExpiringWhere(now, 'bad' as any)).toEqual({
+      status: SAAS_SUBSCRIPTION_ACTIVE,
+      endTime: Between(now, new Date('2026-07-10T00:00:00.000Z')),
+    });
   });
 });
