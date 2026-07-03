@@ -24,6 +24,7 @@ import { SaasProvisioningService } from './services/saas-provisioning.service';
 import { SaasQuotaService } from './services/saas-quota.service';
 import { SaasResourcePackOrderService } from './services/saas-resource-pack-order.service';
 import { SaasResourcePackService } from './services/saas-resource-pack.service';
+import { SaasSubscriptionLifecycleService } from './services/saas-subscription-lifecycle.service';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { SaasResourcePackService } from './services/saas-resource-pack.service';
     SaasResourcePackService,
     SaasResourcePackOrderService,
     SaasProvisioningService,
+    SaasSubscriptionLifecycleService,
   ],
   exports: [
     SaasPlanService,
@@ -62,6 +64,7 @@ import { SaasResourcePackService } from './services/saas-resource-pack.service';
     SaasResourcePackService,
     SaasResourcePackOrderService,
     SaasProvisioningService,
+    SaasSubscriptionLifecycleService,
   ],
 })
 export class SaasModule {}
