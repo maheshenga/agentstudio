@@ -104,6 +104,13 @@ export class SaasPlatformController {
     return this.runOutsideTenant(user, () => this.platformService.listOrders(query).then((data) => ResultData.ok(data)));
   }
 
+  @Get('orders/risk/overview')
+  @ApiOperation({ summary: 'Get SaaS order risk overview' })
+  @RequirePermission('saas:order:list')
+  orderRiskOverview(@User() user: UserDto) {
+    return this.runOutsideTenant(user, () => this.platformService.getOrderRiskOverview().then((data) => ResultData.ok(data)));
+  }
+
   @Get('orders/:order_no')
   @ApiOperation({ summary: 'Get SaaS platform order detail' })
   @RequirePermission('saas:order:list')

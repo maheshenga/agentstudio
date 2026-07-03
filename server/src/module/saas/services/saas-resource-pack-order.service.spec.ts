@@ -219,8 +219,18 @@ describe('SaasResourcePackOrderService', () => {
   });
 
   it('lists tenant resource pack orders scoped to the current tenant', async () => {
+    const closedAt = new Date('2026-07-03T12:00:00.000Z');
     orderRepo.findAndCount.mockResolvedValue([
-      [{ orderNo: 'RPO20260703120000001000001', tenantId: 12, resourcePackCode: 'tokens_1m', status: 'pending' }],
+      [
+        {
+          orderNo: 'RPO20260703120000001000001',
+          tenantId: 12,
+          resourcePackCode: 'tokens_1m',
+          status: 'closed',
+          closedAt,
+          closeReason: 'tenant_cancelled',
+        },
+      ],
       1,
     ]);
 
@@ -228,16 +238,31 @@ describe('SaasResourcePackOrderService', () => {
       service.listTenantOrders(12, {
         page: '1',
         limit: '20',
-        status: 'pending',
+        status: 'closed',
         resource_pack_code: 'tokens_1m',
+        order_no: 'RPO20260703120000001000001',
+        close_reason: 'tenant_cancelled',
       }),
-    ).resolves.toMatchObject({ total: 1, page: 1, limit: 20 });
+    ).resolves.toMatchObject({
+      list: [
+        expect.objectContaining({
+          order_no: 'RPO20260703120000001000001',
+          closed_at: closedAt,
+          close_reason: 'tenant_cancelled',
+        }),
+      ],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
 
     expect(orderRepo.findAndCount).toHaveBeenCalledWith({
       where: {
         tenantId: 12,
+        orderNo: 'RPO20260703120000001000001',
         resourcePackCode: 'tokens_1m',
-        status: 'pending',
+        status: 'closed',
+        closeReason: 'tenant_cancelled',
       },
       order: { createTime: 'DESC', id: 'DESC' },
       skip: 0,
@@ -245,17 +270,17 @@ describe('SaasResourcePackOrderService', () => {
     });
   });
 
-  it('filters platform resource pack orders by order number', async () => {
+  it('filters platform resource pack orders by order number and close reason', async () => {
     orderRepo.findAndCount.mockResolvedValue([
       [{ orderNo: 'RPO20260703120000001000001', tenantId: 12 }],
       1,
     ]);
 
-    await service.listPlatformOrders({ order_no: 'RPO20260703120000001000001' });
+    await service.listPlatformOrders({ order_no: 'RPO20260703120000001000001', close_reason: 'timeout' });
 
     expect(orderRepo.findAndCount).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { orderNo: 'RPO20260703120000001000001' },
+        where: { orderNo: 'RPO20260703120000001000001', closeReason: 'timeout' },
       }),
     );
   });

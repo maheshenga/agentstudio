@@ -7,6 +7,7 @@ import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
 import { SaasTrialEntity } from './entities/saas-trial.entity';
 import { SaasTenantController } from './saas-tenant.controller';
 import { SaasOrderService } from './services/saas-order.service';
+import { SaasOrderRiskService } from './services/saas-order-risk.service';
 import { SaasPlanService } from './services/saas-plan.service';
 import { SaasQuotaService } from './services/saas-quota.service';
 import { SaasResourcePackOrderService } from './services/saas-resource-pack-order.service';
@@ -36,6 +37,22 @@ describe('SaasTenantController', () => {
   const saasOrderService = {
     createUpgradeOrder: jest.fn(),
     findTenantOrder: jest.fn(),
+    listTenantOrders: jest.fn(),
+    toResponse: jest.fn((order) => ({
+      order_no: order.orderNo,
+      plan_code: order.planCode,
+      amount_cents: order.amountCents,
+      status: order.status,
+      payment_method: order.paymentMethod,
+      alipay_trade_no: order.alipayTradeNo,
+      paid_at: order.paidAt,
+      closed_at: order.closedAt ?? null,
+      close_reason: order.closeReason ?? null,
+    })),
+  };
+  const saasOrderRiskService = {
+    closeTenantPlanOrder: jest.fn(),
+    closeTenantResourcePackOrder: jest.fn(),
   };
 
   const saasPlanService = {
@@ -87,6 +104,10 @@ describe('SaasTenantController', () => {
         {
           provide: SaasOrderService,
           useValue: saasOrderService,
+        },
+        {
+          provide: SaasOrderRiskService,
+          useValue: saasOrderRiskService,
         },
         {
           provide: SaasPlanService,
@@ -223,6 +244,8 @@ describe('SaasTenantController', () => {
       payment_method: undefined,
       alipay_trade_no: undefined,
       paid_at: undefined,
+      closed_at: null,
+      close_reason: null,
     });
   });
 
@@ -249,6 +272,59 @@ describe('SaasTenantController', () => {
       payment_method: 'alipay',
       alipay_trade_no: 'DEV-SO20260702000000001000001',
       paid_at: new Date('2026-07-02T00:00:00.000Z'),
+      closed_at: null,
+      close_reason: null,
+    });
+  });
+
+  it('lists current tenant plan orders', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
+    saasOrderService.listTenantOrders.mockResolvedValue({
+      list: [{ order_no: 'SO20260702000000001000001' }],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+
+    const result = await controller.orders({ status: 'closed', close_reason: 'tenant_cancelled' });
+
+    expect(saasOrderService.listTenantOrders).toHaveBeenCalledWith(88, {
+      status: 'closed',
+      close_reason: 'tenant_cancelled',
+    });
+    expect(result.data).toEqual({
+      list: [{ order_no: 'SO20260702000000001000001' }],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+  });
+
+  it('cancels a current tenant plan order', async () => {
+    const closedAt = new Date('2026-07-03T00:00:00.000Z');
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
+    saasOrderRiskService.closeTenantPlanOrder.mockResolvedValue({
+      orderNo: 'SO20260702000000001000001',
+      planCode: 'pro',
+      amountCents: 9900,
+      status: 'closed',
+      closedAt,
+      closeReason: 'tenant_cancelled',
+    });
+
+    const result = await controller.cancelOrder('SO20260702000000001000001');
+
+    expect(saasOrderRiskService.closeTenantPlanOrder).toHaveBeenCalledWith(88, 'SO20260702000000001000001');
+    expect(result.data).toEqual({
+      order_no: 'SO20260702000000001000001',
+      plan_code: 'pro',
+      amount_cents: 9900,
+      status: 'closed',
+      payment_method: undefined,
+      alipay_trade_no: undefined,
+      paid_at: undefined,
+      closed_at: closedAt,
+      close_reason: 'tenant_cancelled',
     });
   });
 
@@ -321,6 +397,28 @@ describe('SaasTenantController', () => {
       total: 1,
       page: 1,
       limit: 20,
+    });
+  });
+
+  it('cancels a current tenant resource pack order', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
+    saasOrderRiskService.closeTenantResourcePackOrder.mockResolvedValue({
+      orderNo: 'RPO20260703120000001000001',
+      resourcePackCode: 'tokens_1m',
+      status: 'closed',
+      closeReason: 'tenant_cancelled',
+    });
+
+    const result = await controller.cancelResourcePackOrder('RPO20260703120000001000001');
+
+    expect(saasOrderRiskService.closeTenantResourcePackOrder).toHaveBeenCalledWith(
+      88,
+      'RPO20260703120000001000001',
+    );
+    expect(result.data).toEqual({
+      order_no: 'RPO20260703120000001000001',
+      resource_pack_code: 'tokens_1m',
+      status: 'closed',
     });
   });
 });

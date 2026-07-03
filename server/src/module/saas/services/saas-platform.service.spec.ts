@@ -7,6 +7,8 @@ import { SaasResourcePackOrderEntity } from '../entities/saas-resource-pack-orde
 import { SaasSubscriptionEntity } from '../entities/saas-subscription.entity';
 import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
 import { SaasPlatformService } from './saas-platform.service';
+import { SaasOrderRiskService } from './saas-order-risk.service';
+import { SaasOrderService } from './saas-order.service';
 import { SaasSubscriptionLifecycleService } from './saas-subscription-lifecycle.service';
 import { SaasResourcePackOrderService } from './saas-resource-pack-order.service';
 import { SaasResourcePackService } from './saas-resource-pack.service';
@@ -36,9 +38,33 @@ describe('SaasPlatformService', () => {
   const resourcePackService = {
     listPlatformResourcePacks: jest.fn(),
   };
+  const saasOrderService = {
+    listPlatformOrders: jest.fn(),
+    findPlatformOrder: jest.fn(),
+    toResponse: jest.fn((order) => ({
+      id: order.id,
+      order_no: order.orderNo,
+      tenant_id: order.tenantId,
+      plan_id: order.planId,
+      plan_code: order.planCode,
+      billing_cycle: order.billingCycle,
+      amount_cents: order.amountCents,
+      currency: order.currency,
+      payment_method: order.paymentMethod,
+      status: order.status,
+      alipay_trade_no: order.alipayTradeNo,
+      paid_at: order.paidAt,
+      closed_at: order.closedAt,
+      close_reason: order.closeReason,
+      create_time: order.createTime,
+    })),
+  };
   const resourcePackOrderService = {
     listPlatformOrders: jest.fn(),
     findPlatformOrder: jest.fn(),
+  };
+  const orderRiskService = {
+    getOrderRiskOverview: jest.fn(),
   };
   const lifecycleService = {
     getLifecycleOverview: jest.fn(),
@@ -63,7 +89,9 @@ describe('SaasPlatformService', () => {
         { provide: getRepositoryToken(SaasTenantResourceEntity), useValue: tenantResourceRepo },
         { provide: getRepositoryToken(SaasResourcePackOrderEntity), useValue: resourcePackOrderRepo },
         { provide: SaasResourcePackService, useValue: resourcePackService },
+        { provide: SaasOrderService, useValue: saasOrderService },
         { provide: SaasResourcePackOrderService, useValue: resourcePackOrderService },
+        { provide: SaasOrderRiskService, useValue: orderRiskService },
         { provide: SaasSubscriptionLifecycleService, useValue: lifecycleService },
       ],
     }).compile();
@@ -163,54 +191,18 @@ describe('SaasPlatformService', () => {
   });
 
   it('lists SaaS orders with paging and filters', async () => {
-    const paidAt = new Date('2026-07-02T00:00:00.000Z');
-    orderRepo.findAndCount.mockResolvedValue([
-      [
-        {
-          id: 88,
-          orderNo: 'SO20260702000000001000001',
-          tenantId: 12,
-          planId: 2,
-          planCode: 'pro',
-          billingCycle: 'yearly',
-          amountCents: 99000,
-          currency: 'CNY',
-          paymentMethod: 'alipay',
-          status: 'paid',
-          alipayTradeNo: '2026070222000000000001',
-          paidAt,
-          createTime: paidAt,
-        },
-      ],
-      1,
-    ]);
+    saasOrderService.listPlatformOrders.mockResolvedValue({
+      list: [{ order_no: 'SO20260702000000001000001' }],
+      total: 1,
+      page: 2,
+      limit: 5,
+    });
 
     const result = await service.listOrders({ page: '2', limit: '5', status: 'paid', tenant_id: '12' });
 
-    expect(orderRepo.findAndCount).toHaveBeenCalledWith({
-      where: { status: 'paid', tenantId: 12 },
-      order: { createTime: 'DESC', id: 'DESC' },
-      skip: 5,
-      take: 5,
-    });
+    expect(saasOrderService.listPlatformOrders).toHaveBeenCalledWith({ page: '2', limit: '5', status: 'paid', tenant_id: '12' });
     expect(result).toEqual({
-      list: [
-        {
-          id: 88,
-          order_no: 'SO20260702000000001000001',
-          tenant_id: 12,
-          plan_id: 2,
-          plan_code: 'pro',
-          billing_cycle: 'yearly',
-          amount_cents: 99000,
-          currency: 'CNY',
-          payment_method: 'alipay',
-          status: 'paid',
-          alipay_trade_no: '2026070222000000000001',
-          paid_at: paidAt,
-          create_time: paidAt,
-        },
-      ],
+      list: [{ order_no: 'SO20260702000000001000001' }],
       total: 1,
       page: 2,
       limit: 5,
@@ -344,20 +336,18 @@ describe('SaasPlatformService', () => {
   });
 
   it('filters SaaS orders by order number and plan code', async () => {
-    orderRepo.findAndCount.mockResolvedValue([[{ orderNo: 'SO1', planCode: 'pro' }], 1]);
+    saasOrderService.listPlatformOrders.mockResolvedValue({ list: [{ order_no: 'SO1', plan_code: 'pro' }], total: 1 });
 
     await service.listOrders({ order_no: 'SO1', plan_code: 'pro' });
 
-    expect(orderRepo.findAndCount).toHaveBeenCalledWith(expect.objectContaining({
-      where: { orderNo: 'SO1', planCode: 'pro' },
-    }));
+    expect(saasOrderService.listPlatformOrders).toHaveBeenCalledWith({ order_no: 'SO1', plan_code: 'pro' });
   });
 
   it('finds a platform SaaS order by order number', async () => {
-    orderRepo.findOne.mockResolvedValue({ id: 1, orderNo: 'SO1', tenantId: 12, planCode: 'pro' });
+    saasOrderService.findPlatformOrder.mockResolvedValue({ order_no: 'SO1', tenant_id: 12, plan_code: 'pro' });
 
     await expect(service.findOrder('SO1')).resolves.toMatchObject({ order_no: 'SO1', tenant_id: 12 });
-    expect(orderRepo.findOne).toHaveBeenCalledWith({ where: { orderNo: 'SO1' } });
+    expect(saasOrderService.findPlatformOrder).toHaveBeenCalledWith('SO1');
   });
 
   it('filters subscriptions by plan id', async () => {
@@ -411,5 +401,26 @@ describe('SaasPlatformService', () => {
 
     await expect(service.findResourcePackOrder('RPO1')).resolves.toEqual({ order_no: 'RPO1' });
     expect(resourcePackOrderService.findPlatformOrder).toHaveBeenCalledWith('RPO1');
+  });
+
+  it('delegates order risk overview to risk service', async () => {
+    orderRiskService.getOrderRiskOverview.mockResolvedValue({
+      pending_plan_orders: 2,
+      pending_resource_pack_orders: 1,
+      timeout_closed_plan_orders_7d: 3,
+      timeout_closed_resource_pack_orders_7d: 4,
+      tenant_cancelled_plan_orders_7d: 5,
+      tenant_cancelled_resource_pack_orders_7d: 6,
+    });
+
+    await expect(service.getOrderRiskOverview()).resolves.toEqual({
+      pending_plan_orders: 2,
+      pending_resource_pack_orders: 1,
+      timeout_closed_plan_orders_7d: 3,
+      timeout_closed_resource_pack_orders_7d: 4,
+      tenant_cancelled_plan_orders_7d: 5,
+      tenant_cancelled_resource_pack_orders_7d: 6,
+    });
+    expect(orderRiskService.getOrderRiskOverview).toHaveBeenCalled();
   });
 });

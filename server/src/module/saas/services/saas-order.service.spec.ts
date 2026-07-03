@@ -20,6 +20,7 @@ describe('SaasOrderService', () => {
     create: jest.fn(),
     save: jest.fn(),
     findOne: jest.fn(),
+    findAndCount: jest.fn(),
   };
 
   const dataSource = {
@@ -308,5 +309,113 @@ describe('SaasOrderService', () => {
     expect(txSubscriptionRepo.save).not.toHaveBeenCalled();
     expect(saasQuotaService.initializeTenantQuota).not.toHaveBeenCalled();
     expect(txOrderRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('lists tenant orders scoped to tenant with filters and close metadata', async () => {
+    const closedAt = new Date('2026-07-03T00:00:00.000Z');
+    orderRepo.findAndCount.mockResolvedValue([
+      [
+        {
+          id: 91,
+          orderNo: 'SO20260703000000001000001',
+          tenantId: 12,
+          planId: 2,
+          planCode: 'pro',
+          billingCycle: 'monthly',
+          amountCents: 9900,
+          currency: 'CNY',
+          paymentMethod: 'alipay',
+          status: 'closed',
+          closedAt,
+          closeReason: 'tenant_cancelled',
+          createTime: closedAt,
+        },
+      ],
+      1,
+    ]);
+
+    const result = await service.listTenantOrders(12, {
+      page: '2',
+      limit: '10',
+      order_no: 'SO20260703000000001000001',
+      plan_code: 'pro',
+      status: 'closed',
+      close_reason: 'tenant_cancelled',
+    });
+
+    expect(orderRepo.findAndCount).toHaveBeenCalledWith({
+      where: {
+        tenantId: 12,
+        orderNo: 'SO20260703000000001000001',
+        planCode: 'pro',
+        status: 'closed',
+        closeReason: 'tenant_cancelled',
+      },
+      order: { createTime: 'DESC', id: 'DESC' },
+      skip: 10,
+      take: 10,
+    });
+    expect(result).toEqual({
+      list: [
+        {
+          id: 91,
+          order_no: 'SO20260703000000001000001',
+          tenant_id: 12,
+          plan_id: 2,
+          plan_code: 'pro',
+          billing_cycle: 'monthly',
+          amount_cents: 9900,
+          currency: 'CNY',
+          payment_method: 'alipay',
+          status: 'closed',
+          alipay_trade_no: undefined,
+          paid_at: undefined,
+          closed_at: closedAt,
+          close_reason: 'tenant_cancelled',
+          create_time: closedAt,
+        },
+      ],
+      total: 1,
+      page: 2,
+      limit: 10,
+    });
+  });
+
+  it('lists platform orders with order number, plan id, and close reason filters', async () => {
+    orderRepo.findAndCount.mockResolvedValue([[{ orderNo: 'SO1', tenantId: 12, planId: 2 }], 1]);
+
+    await service.listPlatformOrders({
+      tenant_id: '12',
+      order_no: 'SO1',
+      plan_id: '2',
+      plan_code: 'pro',
+      status: 'closed',
+      close_reason: 'timeout',
+    });
+
+    expect(orderRepo.findAndCount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          tenantId: 12,
+          orderNo: 'SO1',
+          planId: 2,
+          planCode: 'pro',
+          status: 'closed',
+          closeReason: 'timeout',
+        },
+      }),
+    );
+  });
+
+  it('finds a platform order by order number', async () => {
+    orderRepo.findOne.mockResolvedValue({ id: 91, orderNo: 'SO1', tenantId: 12, planCode: 'pro' });
+
+    await expect(service.findPlatformOrder('SO1')).resolves.toMatchObject({
+      id: 91,
+      order_no: 'SO1',
+      tenant_id: 12,
+      plan_code: 'pro',
+    });
+    expect(orderRepo.findOne).toHaveBeenCalledWith({ where: { orderNo: 'SO1' } });
   });
 });

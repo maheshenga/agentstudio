@@ -16,6 +16,7 @@ export interface SaasResourcePackOrderListQuery {
   resource_pack_code?: string;
   resource_type?: string;
   status?: string;
+  close_reason?: string;
 }
 
 @Injectable()
@@ -72,8 +73,14 @@ export class SaasResourcePackOrderService {
     if (query.resource_pack_code) {
       where.resourcePackCode = query.resource_pack_code;
     }
+    if (query.order_no) {
+      where.orderNo = query.order_no;
+    }
     if (query.status) {
       where.status = query.status;
+    }
+    if (query.close_reason) {
+      where.closeReason = query.close_reason;
     }
 
     const [list, total] = await this.resourcePackOrderRepo.findAndCount({
@@ -119,6 +126,9 @@ export class SaasResourcePackOrderService {
     if (query.status) {
       where.status = query.status;
     }
+    if (query.close_reason) {
+      where.closeReason = query.close_reason;
+    }
 
     const [list, total] = await this.resourcePackOrderRepo.findAndCount({
       where,
@@ -150,6 +160,8 @@ export class SaasResourcePackOrderService {
       alipay_trade_no: order.alipayTradeNo,
       paid_at: order.paidAt,
       delivered_at: order.deliveredAt,
+      closed_at: order.closedAt ?? null,
+      close_reason: order.closeReason ?? null,
       create_time: order.createTime,
     };
   }

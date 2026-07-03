@@ -7,11 +7,12 @@ import { ResultData } from '../../common/utils/result';
 import { getTenantId } from '../../common/utils/tenant.util';
 import { CreateResourcePackOrderDto } from './dto/create-resource-pack-order.dto';
 import { CreateUpgradeOrderDto } from './dto/create-upgrade-order.dto';
-import { SaasOrderEntity } from './entities/saas-order.entity';
 import { SaasPlanEntity } from './entities/saas-plan.entity';
 import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
 import { SaasTrialEntity } from './entities/saas-trial.entity';
+import { SaasOrderRiskService } from './services/saas-order-risk.service';
 import { SaasOrderService } from './services/saas-order.service';
+import type { SaasOrderListQuery } from './services/saas-order.service';
 import { SaasPlanService } from './services/saas-plan.service';
 import { SaasQuotaService } from './services/saas-quota.service';
 import { SaasResourcePackOrderService } from './services/saas-resource-pack-order.service';
@@ -32,6 +33,7 @@ export class SaasTenantController {
     private readonly saasTrialRepo: Repository<SaasTrialEntity>,
     private readonly saasQuotaService: SaasQuotaService,
     private readonly saasOrderService: SaasOrderService,
+    private readonly saasOrderRiskService: SaasOrderRiskService,
     private readonly saasPlanService: SaasPlanService,
     private readonly saasResourcePackService: SaasResourcePackService,
     private readonly saasResourcePackOrderService: SaasResourcePackOrderService,
@@ -95,6 +97,21 @@ export class SaasTenantController {
     }
 
     return ResultData.ok(await this.saasResourcePackOrderService.listTenantOrders(tenantId, query));
+  }
+
+  @Post('resource-pack-orders/:order_no/cancel')
+  @ApiOperation({ summary: 'Cancel a pending tenant SaaS resource pack order' })
+  async cancelResourcePackOrder(@Param('order_no') orderNo: string) {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    return ResultData.ok(
+      this.saasResourcePackOrderService.toResponse(
+        await this.saasOrderRiskService.closeTenantResourcePackOrder(tenantId, orderNo),
+      ),
+    );
   }
 
   @Get('resource-pack-orders/:order_no')
@@ -171,7 +188,29 @@ export class SaasTenantController {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
-    return ResultData.ok(this.toOrderResponse(await this.saasOrderService.createUpgradeOrder(tenantId, body)));
+    return ResultData.ok(this.saasOrderService.toResponse(await this.saasOrderService.createUpgradeOrder(tenantId, body)));
+  }
+
+  @Get('orders')
+  @ApiOperation({ summary: 'List current tenant SaaS orders' })
+  async orders(@Query() query: SaasOrderListQuery) {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    return ResultData.ok(await this.saasOrderService.listTenantOrders(tenantId, query));
+  }
+
+  @Post('orders/:order_no/cancel')
+  @ApiOperation({ summary: 'Cancel a pending tenant SaaS order' })
+  async cancelOrder(@Param('order_no') orderNo: string) {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    return ResultData.ok(this.saasOrderService.toResponse(await this.saasOrderRiskService.closeTenantPlanOrder(tenantId, orderNo)));
   }
 
   @Get('orders/:order_no')
@@ -183,18 +222,6 @@ export class SaasTenantController {
     }
 
     const order = await this.saasOrderService.findTenantOrder(tenantId, orderNo);
-    return ResultData.ok(order ? this.toOrderResponse(order) : null);
-  }
-
-  private toOrderResponse(order: Partial<SaasOrderEntity>) {
-    return {
-      order_no: order.orderNo,
-      plan_code: order.planCode,
-      amount_cents: order.amountCents,
-      status: order.status,
-      payment_method: order.paymentMethod,
-      alipay_trade_no: order.alipayTradeNo,
-      paid_at: order.paidAt,
-    };
+    return ResultData.ok(order ? this.saasOrderService.toResponse(order) : null);
   }
 }

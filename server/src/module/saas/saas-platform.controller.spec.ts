@@ -16,6 +16,7 @@ describe('SaasPlatformController', () => {
   };
   const platformService = {
     getUsageOverview: jest.fn(),
+    getOrderRiskOverview: jest.fn(),
     getSubscriptionLifecycleOverview: jest.fn(),
     listOrders: jest.fn(),
     listSubscriptions: jest.fn(),
@@ -107,6 +108,29 @@ describe('SaasPlatformController', () => {
 
     expect(platformService.listOrders).toHaveBeenCalledWith({ page: '1' });
     expect(result.data).toEqual({ list: [{ order_no: 'SO20260702000000001000001' }], total: 1, page: 1, limit: 20 });
+  });
+
+  it('returns SaaS order risk overview outside tenant scope', async () => {
+    platformService.getOrderRiskOverview.mockResolvedValue({
+      pending_plan_orders: 2,
+      pending_resource_pack_orders: 1,
+      timeout_closed_plan_orders_7d: 3,
+      timeout_closed_resource_pack_orders_7d: 4,
+      tenant_cancelled_plan_orders_7d: 5,
+      tenant_cancelled_resource_pack_orders_7d: 6,
+    });
+
+    const result = await controller.orderRiskOverview({ userId: 1 } as any);
+
+    expect(platformService.getOrderRiskOverview).toHaveBeenCalled();
+    expect(result.data).toEqual({
+      pending_plan_orders: 2,
+      pending_resource_pack_orders: 1,
+      timeout_closed_plan_orders_7d: 3,
+      timeout_closed_resource_pack_orders_7d: 4,
+      tenant_cancelled_plan_orders_7d: 5,
+      tenant_cancelled_resource_pack_orders_7d: 6,
+    });
   });
 
   it('lists platform SaaS subscriptions outside tenant scope', async () => {

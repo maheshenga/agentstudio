@@ -8,6 +8,9 @@ import { SaasResourcePackOrderEntity } from '../entities/saas-resource-pack-orde
 import { SaasSubscriptionEntity } from '../entities/saas-subscription.entity';
 import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
 import { SaasSubscriptionLifecycleService } from './saas-subscription-lifecycle.service';
+import { SaasOrderRiskService } from './saas-order-risk.service';
+import { SaasOrderService } from './saas-order.service';
+import type { SaasOrderListQuery } from './saas-order.service';
 import { SaasResourcePackOrderService } from './saas-resource-pack-order.service';
 import type { SaasResourcePackOrderListQuery } from './saas-resource-pack-order.service';
 import { SaasResourcePackService } from './saas-resource-pack.service';
@@ -21,6 +24,7 @@ export interface SaasPlatformListQuery {
   order_no?: string;
   plan_code?: string;
   plan_id?: string | number;
+  close_reason?: string;
   lifecycle_status?: string;
   expires_within_days?: string | number;
   expired_since_days?: string | number;
@@ -39,6 +43,8 @@ export interface SaasPlatformPlanOrderOverviewRecord {
   status?: string;
   alipay_trade_no?: string;
   paid_at?: Date;
+  closed_at?: Date;
+  close_reason?: string;
   create_time?: Date;
 }
 
@@ -56,6 +62,8 @@ export interface SaasPlatformResourcePackOrderOverviewRecord {
   alipay_trade_no?: string;
   paid_at?: Date;
   delivered_at?: Date;
+  closed_at?: Date;
+  close_reason?: string;
   create_time?: Date;
 }
 
@@ -100,32 +108,18 @@ export class SaasPlatformService {
     @InjectRepository(SaasResourcePackOrderEntity)
     private readonly resourcePackOrderRepo: Repository<SaasResourcePackOrderEntity>,
     private readonly resourcePackService: SaasResourcePackService,
+    private readonly saasOrderService: SaasOrderService,
     private readonly resourcePackOrderService: SaasResourcePackOrderService,
+    private readonly orderRiskService: SaasOrderRiskService,
     private readonly lifecycleService: SaasSubscriptionLifecycleService,
   ) {}
 
-  async listOrders(query: SaasPlatformListQuery = {}) {
-    const { page, limit, skip } = this.resolvePagination(query);
-    const where: FindOptionsWhere<SaasOrderEntity> = {};
-    if (query.status) where.status = query.status;
-    if (query.order_no) where.orderNo = query.order_no;
-    if (query.plan_code) where.planCode = query.plan_code;
-    const tenantId = this.resolveTenantId(query.tenant_id);
-    if (tenantId !== undefined) where.tenantId = tenantId;
-
-    const [list, total] = await this.orderRepo.findAndCount({
-      where,
-      order: { createTime: 'DESC', id: 'DESC' },
-      skip,
-      take: limit,
-    });
-
-    return { list: list.map((order) => this.toOrderResponse(order)), total, page, limit };
+  async listOrders(query: SaasOrderListQuery = {}) {
+    return this.saasOrderService.listPlatformOrders(query);
   }
 
   async findOrder(orderNo: string) {
-    const order = await this.orderRepo.findOne({ where: { orderNo } });
-    return order ? this.toOrderResponse(order) : null;
+    return this.saasOrderService.findPlatformOrder(orderNo);
   }
 
   async listSubscriptions(query: SaasPlatformListQuery = {}) {
@@ -195,7 +189,7 @@ export class SaasPlatformService {
       },
       quota_summary: this.buildQuotaSummary(tenantResources),
       plan_distribution: this.buildPlanDistribution(subscriptions, plans),
-      recent_plan_orders: recentPlanOrders.map((order) => this.toOrderResponse(order)),
+      recent_plan_orders: recentPlanOrders.map((order) => this.saasOrderService.toResponse(order)),
       recent_resource_pack_orders: resourcePackOrders.slice(0, 5).map((order) => this.toResourcePackOrderResponse(order)),
     };
   }
@@ -214,6 +208,10 @@ export class SaasPlatformService {
 
   findResourcePackOrder(orderNo: string) {
     return this.resourcePackOrderService.findPlatformOrder(orderNo);
+  }
+
+  getOrderRiskOverview() {
+    return this.orderRiskService.getOrderRiskOverview();
   }
 
   private buildQuotaSummary(resources: Partial<SaasTenantResourceEntity>[]) {
@@ -277,23 +275,8 @@ export class SaasPlatformService {
       alipay_trade_no: order.alipayTradeNo,
       paid_at: order.paidAt,
       delivered_at: order.deliveredAt,
-      create_time: order.createTime,
-    };
-  }
-  private toOrderResponse(order: Partial<SaasOrderEntity>) {
-    return {
-      id: order.id,
-      order_no: order.orderNo,
-      tenant_id: order.tenantId,
-      plan_id: order.planId,
-      plan_code: order.planCode,
-      billing_cycle: order.billingCycle,
-      amount_cents: order.amountCents,
-      currency: order.currency,
-      payment_method: order.paymentMethod,
-      status: order.status,
-      alipay_trade_no: order.alipayTradeNo,
-      paid_at: order.paidAt,
+      closed_at: order.closedAt ?? null,
+      close_reason: order.closeReason ?? null,
       create_time: order.createTime,
     };
   }
