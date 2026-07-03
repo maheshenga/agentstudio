@@ -4,7 +4,69 @@ jest.mock('uuid', () => ({
   v4: jest.fn(() => 'login-uuid'),
 }));
 
+jest.mock('../../../common/utils/index', () => ({
+  getNowDate: jest.fn(() => new Date('2026-01-01T00:00:00.000Z')),
+  generateUUID: jest.fn(() => 'test-uuid'),
+  uniq: jest.fn((items: unknown[]) => Array.from(new Set(items))),
+  formatDateTime: jest.fn((value: unknown) => value),
+}));
+
 import { UserService } from './user.service';
+
+type QueryBuilderMock = {
+  where: jest.Mock;
+  andWhere: jest.Mock;
+  leftJoinAndMapOne: jest.Mock;
+  skip: jest.Mock;
+  take: jest.Mock;
+  getManyAndCount: jest.Mock;
+};
+
+function createQueryBuilderMock(): QueryBuilderMock {
+  const qb: QueryBuilderMock = {
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    leftJoinAndMapOne: jest.fn().mockReturnThis(),
+    skip: jest.fn().mockReturnThis(),
+    take: jest.fn().mockReturnThis(),
+    getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+  };
+  return qb;
+}
+
+function createQueryFilterService(qb: QueryBuilderMock) {
+  const userRepo = {
+    createQueryBuilder: jest.fn().mockReturnValue(qb),
+  };
+
+  const roleLinkRepo = {
+    find: jest.fn().mockResolvedValue([{ userId: 1 }]),
+  };
+
+  return new UserService(
+    userRepo as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    roleLinkRepo as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    { findRoleWithDeptIds: jest.fn() } as any,
+    { findDeptIdsByDataScope: jest.fn() } as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
+}
+
+function expectParameterizedLike(qb: QueryBuilderMock, column: string, param: string, value: string) {
+  expect(qb.andWhere).toHaveBeenCalledWith(`${column} LIKE :${param}`, { [param]: `%${value}%` });
+  expect(qb.andWhere).not.toHaveBeenCalledWith(expect.stringContaining(value));
+}
 
 describe('UserService login', () => {
   const originalLoginCaptchaEnabled = process.env.LOGIN_CAPTCHA_ENABLED;
@@ -159,5 +221,49 @@ describe('UserService login', () => {
 
     expect(result.code).toBe(200);
     expect(redisService.get).not.toHaveBeenCalled();
+  });
+});
+
+describe('UserService query filters', () => {
+  it('parameterizes username and phone filters in user list queries', async () => {
+    const qb = createQueryBuilderMock();
+    const service = createQueryFilterService(qb);
+
+    await service.findAll({ username: `admin%" OR 1=1 --`, phone: `138%" OR 1=1 --` } as any, null as any);
+
+    expectParameterizedLike(qb, 'user.username', 'username', `admin%" OR 1=1 --`);
+    expectParameterizedLike(qb, 'user.phone', 'phone', `138%" OR 1=1 --`);
+  });
+
+  it('parameterizes username and phone filters in allocated user queries', async () => {
+    const qb = createQueryBuilderMock();
+    const service = createQueryFilterService(qb);
+
+    await service.allocatedList({
+      role_id: 1,
+      username: `allocated%" OR 1=1 --`,
+      phone: `139%" OR 1=1 --`,
+      pageNum: 1,
+      pageSize: 10,
+    } as any);
+
+    expectParameterizedLike(qb, 'user.username', 'username', `allocated%" OR 1=1 --`);
+    expectParameterizedLike(qb, 'user.phone', 'phone', `139%" OR 1=1 --`);
+  });
+
+  it('parameterizes username and phone filters in unallocated user queries', async () => {
+    const qb = createQueryBuilderMock();
+    const service = createQueryFilterService(qb);
+
+    await service.unallocatedList({
+      role_id: 1,
+      username: `unallocated%" OR 1=1 --`,
+      phone: `137%" OR 1=1 --`,
+      pageNum: 1,
+      pageSize: 10,
+    } as any);
+
+    expectParameterizedLike(qb, 'user.username', 'username', `unallocated%" OR 1=1 --`);
+    expectParameterizedLike(qb, 'user.phone', 'phone', `137%" OR 1=1 --`);
   });
 });

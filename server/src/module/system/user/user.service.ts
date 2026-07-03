@@ -202,11 +202,11 @@ export class UserService {
     }
 
     if (query.username) {
-      entity.andWhere(`user.username LIKE "%${query.username}%"`);
+      entity.andWhere('user.username LIKE :username', { username: `%${query.username}%` });
     }
 
     if (query.phone) {
-      entity.andWhere(`user.phone LIKE "%${query.phone}%"`);
+      entity.andWhere('user.phone LIKE :phone', { phone: `%${query.phone}%` });
     }
 
     if (query.status !== undefined && query.status !== null) {
@@ -1042,11 +1042,11 @@ export class UserService {
     entity.andWhere('user.status = :status', { status: 1 });
     entity.andWhere('user.id IN (:...userIds)', { userIds: userIds });
     if (query.username) {
-      entity.andWhere(`user.username LIKE "%${query.username}%"`);
+      entity.andWhere('user.username LIKE :username', { username: `%${query.username}%` });
     }
 
     if (query.phone) {
-      entity.andWhere(`user.phone LIKE "%${query.phone}%"`);
+      entity.andWhere('user.phone LIKE :phone', { phone: `%${query.phone}%` });
     }
     entity.skip(query.pageSize! * (query.pageNum! - 1)).take(query.pageSize!);
     //联查部门详情
@@ -1079,11 +1079,11 @@ export class UserService {
       id: Not(In(userIds)),
     });
     if (query.username) {
-      entity.andWhere(`user.username LIKE "%${query.username}%"`);
+      entity.andWhere('user.username LIKE :username', { username: `%${query.username}%` });
     }
 
     if (query.phone) {
-      entity.andWhere(`user.phone LIKE "%${query.phone}%"`);
+      entity.andWhere('user.phone LIKE :phone', { phone: `%${query.phone}%` });
     }
     entity.skip(query.pageSize! * (query.pageNum! - 1)).take(query.pageSize!);
     //联查部门详情

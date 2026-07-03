@@ -16,8 +16,12 @@ pnpm-debug.log*
 *.pid.lock
 
 # environment
+.env
 .env.*
 !.env.example
+
+# build metadata
+*.tsbuildinfo
 
 # editor
 .vscode
