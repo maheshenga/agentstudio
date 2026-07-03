@@ -209,6 +209,39 @@ export interface UpdatePlatformAlipayConfigParams {
   remark?: string
 }
 
+export interface SaasPlatformUsageKpis {
+  active_subscriptions: number
+  trialing_subscriptions: number
+  expired_subscriptions: number
+  pending_plan_orders: number
+  pending_resource_pack_orders: number
+  paid_plan_order_amount_cents: number
+  paid_resource_pack_order_amount_cents: number
+  total_paid_amount_cents: number
+}
+
+export interface SaasPlatformQuotaSummaryRecord {
+  resource_type: string
+  total_quota: number
+  used_quota: number
+  remaining_quota: number
+  usage_rate: number
+}
+
+export interface SaasPlatformPlanDistributionRecord {
+  plan_id: number
+  plan_code: string
+  plan_name: string
+  active_count: number
+}
+
+export interface SaasPlatformUsageOverview {
+  kpis: SaasPlatformUsageKpis
+  quota_summary: SaasPlatformQuotaSummaryRecord[]
+  plan_distribution: SaasPlatformPlanDistributionRecord[]
+  recent_plan_orders: SaasPlatformOrderRecord[]
+  recent_resource_pack_orders: SaasResourcePackOrderRecord[]
+}
 export interface TenantUsageQuotaRecord {
   resource_type: string
   quota: number
@@ -314,6 +347,9 @@ export function createSaasTenantFromPlatform(params: SaasTenantProvisionParams) 
   return request.post<SaasSignupResult>({ url: '/api/saas/platform/tenants', data: params })
 }
 
+export function fetchPlatformUsageOverview() {
+  return request.get<SaasPlatformUsageOverview>({ url: '/api/saas/platform/usage/overview' })
+}
 export function fetchPlatformOrders(params: SaasPlatformOrderListParams) {
   return request.get<SaasPlatformPageResult<SaasPlatformOrderRecord>>({ url: '/api/saas/platform/orders', params })
 }
