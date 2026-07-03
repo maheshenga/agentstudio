@@ -76,9 +76,12 @@
           <p class="tenant-plan-page__order-meta">
             {{ currentOrder.order_no }} · {{ currentOrder.plan_code }} · {{ formatMoney(currentOrder.amount_cents) }}
           </p>
-          <ElTag :type="currentOrder.status === 'paid' ? 'success' : 'warning'" effect="light">
-            {{ currentOrder.status === 'paid' ? '已支付' : '待支付' }}
+          <ElTag :type="currentOrderStatusTagType" effect="light">
+            {{ currentOrderStatusText }}
           </ElTag>
+          <p v-if="currentOrder.status === 'closed'" class="tenant-plan-page__order-meta">
+            {{ formatCloseReason(currentOrder.close_reason) }} · {{ formatDateTime(currentOrder.closed_at) }}
+          </p>
         </div>
         <div class="tenant-plan-page__order-actions">
           <div v-if="alipayConfigStatus" class="tenant-plan-page__payment-status">
@@ -88,10 +91,10 @@
             <span v-if="pollingPayment">正在同步支付结果...</span>
             <span v-if="!alipayConfigStatus.configured">{{ alipayMissingKeysText }}</span>
           </div>
-          <ElButton type="primary" :disabled="currentOrder.status === 'paid'" :loading="creatingAlipayPayment" @click="startAlipayPayment">
+          <ElButton type="primary" :disabled="!isCurrentOrderPayable" :loading="creatingAlipayPayment" @click="startAlipayPayment">
             去支付宝支付
           </ElButton>
-          <ElButton type="success" :disabled="currentOrder.status === 'paid'" :loading="confirmingPayment" @click="confirmDevPayment">
+          <ElButton type="success" :disabled="!isCurrentOrderPayable" :loading="confirmingPayment" @click="confirmDevPayment">
             本地模拟支付成功
           </ElButton>
         </div>
@@ -133,7 +136,14 @@
               <ElButton v-if="row.status === 'pending'" type="primary" link @click="resumePlanOrderPayment(row)">
                 继续支付
               </ElButton>
-              <ElButton v-if="row.status === 'pending'" type="danger" link @click="cancelPlanOrder(row)">
+              <ElButton
+                v-if="row.status === 'pending'"
+                type="danger"
+                link
+                :disabled="cancellingOrderNo === row.order_no"
+                :loading="cancellingOrderNo === row.order_no"
+                @click="cancelPlanOrder(row)"
+              >
                 取消
               </ElButton>
             </template>
@@ -191,6 +201,7 @@
   const creatingAlipayPayment = ref(false)
   const confirmingPayment = ref(false)
   const pollingPayment = ref(false)
+  const cancellingOrderNo = ref('')
   const orderHistory = ref<SaasPlatformOrderRecord[]>([])
   const orderHistoryLoading = ref(false)
   const orderPager = reactive({
@@ -253,6 +264,9 @@
     const missingKeys = alipayConfigStatus.value?.missing_keys || []
     return missingKeys.length ? `缺少：${missingKeys.join('、')}` : ''
   })
+  const isCurrentOrderPayable = computed(() => currentOrder.value?.status === 'pending')
+  const currentOrderStatusText = computed(() => formatOrderStatus(currentOrder.value?.status || ''))
+  const currentOrderStatusTagType = computed(() => getOrderStatusTagType(currentOrder.value?.status || ''))
 
   function pickValue(source: Record<string, any> | null, keys: string[]) {
     if (!source) return undefined
@@ -360,11 +374,12 @@
   }
 
   async function confirmDevPayment() {
-    if (!currentOrder.value) return
+    const order = currentOrder.value
+    if (!order || order.status !== 'pending') return
     confirmingPayment.value = true
     try {
       stopPaymentPolling()
-      currentOrder.value = await devConfirmTenantPayment(currentOrder.value.order_no)
+      currentOrder.value = await devConfirmTenantPayment(order.order_no)
       forgetRememberedOrder(currentOrder.value)
       ElMessage.success('本地模拟支付成功，套餐已更新')
       await loadPageData()
@@ -376,7 +391,7 @@
   }
 
   async function startAlipayPayment() {
-    if (!currentOrder.value) return
+    if (!isCurrentOrderPayable.value || !currentOrder.value) return
     creatingAlipayPayment.value = true
     try {
       const result = await createAlipayPayment(currentOrder.value.order_no)
@@ -404,6 +419,11 @@
       })
       orderHistory.value = result.list || []
       orderPager.total = Number(result.total) || 0
+    } catch (error) {
+      console.error('[SaasTenantPlanPage] load order history failed:', error)
+      orderHistory.value = []
+      orderPager.total = 0
+      ElMessage.error('加载订单记录失败')
     } finally {
       orderHistoryLoading.value = false
     }
@@ -416,22 +436,30 @@
 
   async function resumePlanOrderPayment(order: SaasPlatformOrderRecord) {
     currentOrder.value = order
+    if (order.status === 'closed') {
+      stopPaymentPolling()
+      forgetRememberedOrder(order)
+      return
+    }
     await startAlipayPayment()
   }
 
   async function cancelPlanOrder(order: SaasPlatformOrderRecord) {
-    if (order.status !== 'pending') return
+    if (order.status !== 'pending' || cancellingOrderNo.value) return
+    cancellingOrderNo.value = order.order_no
     try {
       await cancelTenantSaasOrder(order.order_no)
       if (currentOrder.value?.order_no === order.order_no) {
         stopPaymentPolling()
-        currentOrder.value = null
+        currentOrder.value = { ...currentOrder.value, status: 'closed', close_reason: 'tenant_cancelled', closed_at: new Date() }
         sessionStorage.removeItem(LAST_UPGRADE_ORDER_KEY)
       }
       ElMessage.success('订单已取消')
       await loadOrderHistory()
     } catch (error) {
       console.error('[SaasTenantPlanPage] cancel order failed:', error)
+    } finally {
+      cancellingOrderNo.value = ''
     }
   }
 
@@ -442,7 +470,12 @@
       const order = await fetchTenantOrder(orderNo)
       currentOrder.value = order
       forgetRememberedOrder(order)
-      if (order.status !== 'paid' && alipayConfigStatus.value?.configured) startPaymentPolling()
+      if (order.status === 'closed') {
+        stopPaymentPolling()
+        sessionStorage.removeItem(LAST_UPGRADE_ORDER_KEY)
+        return
+      }
+      if (order.status === 'pending' && alipayConfigStatus.value?.configured) startPaymentPolling()
     } catch (error) {
       sessionStorage.removeItem(LAST_UPGRADE_ORDER_KEY)
       console.error('[SaasTenantPlanPage] restore last order failed:', error)
@@ -450,16 +483,16 @@
   }
 
   function rememberOrder(order: SaasOrderRecord | SaasPlatformOrderRecord | null) {
-    if (!order?.order_no || order.status === 'paid') return
+    if (!order?.order_no || order.status !== 'pending') return
     sessionStorage.setItem(LAST_UPGRADE_ORDER_KEY, order.order_no)
   }
 
   function forgetRememberedOrder(order: SaasOrderRecord | SaasPlatformOrderRecord | null) {
-    if (order?.status === 'paid') sessionStorage.removeItem(LAST_UPGRADE_ORDER_KEY)
+    if (order?.status === 'paid' || order?.status === 'closed') sessionStorage.removeItem(LAST_UPGRADE_ORDER_KEY)
   }
 
   function startPaymentPolling() {
-    if (!currentOrder.value || currentOrder.value.status === 'paid' || paymentPollingTimer) return
+    if (!isCurrentOrderPayable.value || paymentPollingTimer) return
     pollingPayment.value = true
     paymentPollingStartedAt = Date.now()
     paymentPollingTimer = window.setInterval(() => pollPaymentStatus(), PAYMENT_POLL_INTERVAL_MS)
@@ -486,6 +519,12 @@
         forgetRememberedOrder(order)
         ElMessage.success('支付成功，套餐已更新')
         await loadPageData()
+        return
+      }
+      if (order.status === 'closed') {
+        stopPaymentPolling()
+        forgetRememberedOrder(order)
+        await loadOrderHistory()
       }
     } catch (error) {
       console.error('[SaasTenantPlanPage] poll payment status failed:', error)

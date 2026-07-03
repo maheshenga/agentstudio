@@ -37,7 +37,7 @@
         <ElButton
           type="primary"
           :loading="creatingPackCode === pack.code"
-          :disabled="pack.status !== 1 || Boolean(currentOrder && currentOrder.status !== 'paid')"
+          :disabled="pack.status !== 1 || currentOrder?.status === 'pending'"
           @click="createOrder(pack)"
         >
           购买
@@ -52,14 +52,17 @@
           {{ currentOrder.order_no }} · {{ currentOrder.resource_pack_code }} ·
           {{ formatPrice(currentOrder.amount_cents, currentOrder.currency) }}
         </p>
-        <ElTag :type="currentOrder.status === 'paid' ? 'success' : 'warning'" effect="light">
-          {{ currentOrder.status === 'paid' ? '已支付' : '待支付' }}
+        <ElTag :type="currentOrderStatusTagType" effect="light">
+          {{ currentOrderStatusText }}
         </ElTag>
+        <p v-if="currentOrder.status === 'closed'" class="tenant-resource-pack-page__order-meta">
+          {{ formatCloseReason(currentOrder.close_reason) }} · {{ formatDateTime(currentOrder.closed_at) }}
+        </p>
       </div>
       <div class="tenant-resource-pack-page__order-actions">
         <ElButton
           type="primary"
-          :disabled="currentOrder.status === 'paid'"
+          :disabled="!isCurrentOrderPayable"
           :loading="creatingAlipayPayment"
           @click="startAlipayPayment"
         >
@@ -67,7 +70,7 @@
         </ElButton>
         <ElButton
           type="success"
-          :disabled="currentOrder.status === 'paid'"
+          :disabled="!isCurrentOrderPayable"
           :loading="confirmingPayment"
           @click="confirmDevPayment"
         >
@@ -144,7 +147,14 @@
             <ElButton v-if="row.status === 'pending'" type="success" link @click="confirmHistoryOrder(row)">
               模拟确认
             </ElButton>
-            <ElButton v-if="row.status === 'pending'" type="danger" link @click="cancelOrder(row)">
+            <ElButton
+              v-if="row.status === 'pending'"
+              type="danger"
+              link
+              :disabled="cancellingOrderNo === row.order_no"
+              :loading="cancellingOrderNo === row.order_no"
+              @click="cancelOrder(row)"
+            >
               取消
             </ElButton>
           </template>
@@ -188,6 +198,7 @@
   const creatingAlipayPayment = ref(false)
   const confirmingPayment = ref(false)
   const pollingPayment = ref(false)
+  const cancellingOrderNo = ref('')
   const orderHistory = ref<SaasResourcePackOrderRecord[]>([])
   const orderHistoryLoading = ref(false)
   const orderFilters = reactive({
@@ -211,6 +222,10 @@
     storage_mb: '存储空间',
     rag_documents: '知识库文档'
   }
+
+  const isCurrentOrderPayable = computed(() => currentOrder.value?.status === 'pending')
+  const currentOrderStatusText = computed(() => formatOrderStatus(currentOrder.value?.status || ''))
+  const currentOrderStatusTagType = computed(() => getOrderStatusTagType(currentOrder.value?.status || ''))
 
   async function loadResourcePacks() {
     loading.value = true
@@ -244,7 +259,7 @@
   }
 
   async function startAlipayPayment() {
-    if (!currentOrder.value) return
+    if (!isCurrentOrderPayable.value || !currentOrder.value) return
     creatingAlipayPayment.value = true
     try {
       const result = await createAlipayPayment(currentOrder.value.order_no, 'resource_pack')
@@ -263,12 +278,13 @@
   }
 
   async function confirmDevPayment() {
-    if (!currentOrder.value) return
+    const order = currentOrder.value
+    if (!order || order.status !== 'pending') return
     confirmingPayment.value = true
     try {
       stopPaymentPolling()
       currentOrder.value = (await devConfirmTenantPayment(
-        currentOrder.value.order_no,
+        order.order_no,
         'resource_pack'
       )) as SaasResourcePackOrderRecord
       ElMessage.success('资源包支付成功，额度已发放')
@@ -282,7 +298,7 @@
   }
 
   function startPaymentPolling() {
-    if (!currentOrder.value || currentOrder.value.status === 'paid' || paymentPollingTimer) return
+    if (!isCurrentOrderPayable.value || paymentPollingTimer) return
     pollingPayment.value = true
     paymentPollingStartedAt = Date.now()
     paymentPollingTimer = window.setInterval(() => {
@@ -312,6 +328,11 @@
       if (order.status === 'paid') {
         stopPaymentPolling()
         ElMessage.success('资源包支付成功，额度已发放')
+        await loadOrderHistory()
+        return
+      }
+      if (order.status === 'closed') {
+        stopPaymentPolling()
         await loadOrderHistory()
       }
     } catch (error) {
@@ -351,6 +372,11 @@
       })
       orderHistory.value = result.list || []
       orderPager.total = Number(result.total) || 0
+    } catch (error) {
+      console.error('[SaasTenantResourcePackPage] load order history failed:', error)
+      orderHistory.value = []
+      orderPager.total = 0
+      ElMessage.error('加载订单记录失败')
     } finally {
       orderHistoryLoading.value = false
     }
@@ -368,26 +394,37 @@
 
   async function resumeOrderPayment(order: SaasResourcePackOrderRecord) {
     currentOrder.value = order
+    if (order.status === 'closed') {
+      stopPaymentPolling()
+      return
+    }
     await startAlipayPayment()
   }
 
   async function confirmHistoryOrder(order: SaasResourcePackOrderRecord) {
     currentOrder.value = order
+    if (order.status === 'closed') {
+      stopPaymentPolling()
+      return
+    }
     await confirmDevPayment()
   }
 
   async function cancelOrder(order: SaasResourcePackOrderRecord) {
-    if (order.status !== 'pending') return
+    if (order.status !== 'pending' || cancellingOrderNo.value) return
+    cancellingOrderNo.value = order.order_no
     try {
       await cancelTenantResourcePackOrder(order.order_no)
       if (currentOrder.value?.order_no === order.order_no) {
         stopPaymentPolling()
-        currentOrder.value = null
+        currentOrder.value = { ...currentOrder.value, status: 'closed', close_reason: 'tenant_cancelled', closed_at: new Date() }
       }
       ElMessage.success('订单已取消')
       await loadOrderHistory()
     } catch (error) {
       console.error('[SaasTenantResourcePackPage] cancel order failed:', error)
+    } finally {
+      cancellingOrderNo.value = ''
     }
   }
 
