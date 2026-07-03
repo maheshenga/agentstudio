@@ -3,7 +3,9 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { SaasOrderEntity } from '../entities/saas-order.entity';
 import { SaasPlanEntity } from '../entities/saas-plan.entity';
+import { SaasResourcePackOrderEntity } from '../entities/saas-resource-pack-order.entity';
 import { SaasSubscriptionEntity } from '../entities/saas-subscription.entity';
+import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
 import { SaasPlatformService } from './saas-platform.service';
 import { SaasResourcePackOrderService } from './saas-resource-pack-order.service';
 import { SaasResourcePackService } from './saas-resource-pack.service';
@@ -12,6 +14,7 @@ describe('SaasPlatformService', () => {
   let service: SaasPlatformService;
 
   const orderRepo = {
+    find: jest.fn(),
     findAndCount: jest.fn(),
     findOne: jest.fn(),
   };
@@ -20,7 +23,14 @@ describe('SaasPlatformService', () => {
     findOne: jest.fn(),
   };
   const planRepo = {
+    find: jest.fn(),
     findOne: jest.fn(),
+  };
+  const tenantResourceRepo = {
+    find: jest.fn(),
+  };
+  const resourcePackOrderRepo = {
+    find: jest.fn(),
   };
   const resourcePackService = {
     listPlatformResourcePacks: jest.fn(),
@@ -39,12 +49,105 @@ describe('SaasPlatformService', () => {
         { provide: getRepositoryToken(SaasOrderEntity), useValue: orderRepo },
         { provide: getRepositoryToken(SaasSubscriptionEntity), useValue: subscriptionRepo },
         { provide: getRepositoryToken(SaasPlanEntity), useValue: planRepo },
+        { provide: getRepositoryToken(SaasTenantResourceEntity), useValue: tenantResourceRepo },
+        { provide: getRepositoryToken(SaasResourcePackOrderEntity), useValue: resourcePackOrderRepo },
         { provide: SaasResourcePackService, useValue: resourcePackService },
         { provide: SaasResourcePackOrderService, useValue: resourcePackOrderService },
       ],
     }).compile();
 
     service = module.get(SaasPlatformService);
+  });
+
+
+  it('returns zero usage overview when there is no SaaS operating data', async () => {
+    subscriptionRepo.findAndCount.mockResolvedValue([[], 0]);
+    orderRepo.findAndCount.mockResolvedValue([[], 0]);
+    orderRepo.find.mockResolvedValue([]);
+    resourcePackOrderRepo.find.mockResolvedValue([]);
+    tenantResourceRepo.find.mockResolvedValue([]);
+    planRepo.find.mockResolvedValue([]);
+
+    await expect(service.getUsageOverview()).resolves.toEqual({
+      kpis: {
+        active_subscriptions: 0,
+        trialing_subscriptions: 0,
+        expired_subscriptions: 0,
+        pending_plan_orders: 0,
+        pending_resource_pack_orders: 0,
+        paid_plan_order_amount_cents: 0,
+        paid_resource_pack_order_amount_cents: 0,
+        total_paid_amount_cents: 0,
+      },
+      quota_summary: [],
+      plan_distribution: [],
+      recent_plan_orders: [],
+      recent_resource_pack_orders: [],
+    });
+  });
+
+  it('aggregates platform usage KPIs, quotas, plan distribution, and recent orders', async () => {
+    const now = new Date('2026-07-03T06:00:00.000Z');
+
+    subscriptionRepo.findAndCount.mockResolvedValue([
+      [
+        { id: 1, tenantId: 10, planId: 2, billingCycle: 'yearly', status: 'active', createTime: now },
+        { id: 2, tenantId: 11, planId: 2, billingCycle: 'monthly', status: 'active', createTime: now },
+        { id: 3, tenantId: 12, planId: 3, billingCycle: 'monthly', status: 'trialing', createTime: now },
+        { id: 4, tenantId: 13, planId: 99, billingCycle: 'monthly', status: 'expired', createTime: now },
+      ],
+      4,
+    ]);
+
+    orderRepo.findAndCount.mockResolvedValue([
+      [
+        { id: 20, orderNo: 'SO-PAID', tenantId: 10, planId: 2, planCode: 'pro', billingCycle: 'yearly', amountCents: 99000, status: 'paid', paidAt: now, createTime: now },
+        { id: 21, orderNo: 'SO-PENDING', tenantId: 11, planId: 2, planCode: 'pro', billingCycle: 'monthly', amountCents: 9900, status: 'pending', createTime: now },
+      ],
+      2,
+    ]);
+    orderRepo.find.mockResolvedValue([
+      { id: 21, orderNo: 'SO-PENDING', tenantId: 11, planId: 2, planCode: 'pro', billingCycle: 'monthly', amountCents: 9900, currency: 'CNY', paymentMethod: 'alipay', status: 'pending', createTime: now },
+      { id: 20, orderNo: 'SO-PAID', tenantId: 10, planId: 2, planCode: 'pro', billingCycle: 'yearly', amountCents: 99000, currency: 'CNY', paymentMethod: 'alipay', status: 'paid', paidAt: now, createTime: now },
+    ]);
+
+    resourcePackOrderRepo.find.mockResolvedValue([
+      { id: 30, orderNo: 'RPO-PAID', tenantId: 10, resourcePackCode: 'tokens_1m', resourcePackName: 'Tokens 1M', resourceType: 'tokens', quotaAmount: 1000000, amountCents: 19900, status: 'paid', paidAt: now, createTime: now },
+      { id: 31, orderNo: 'RPO-PENDING', tenantId: 11, resourcePackCode: 'ai_1k', resourcePackName: 'AI 1K', resourceType: 'ai_calls', quotaAmount: 1000, amountCents: 9900, status: 'pending', createTime: now },
+    ]);
+
+    tenantResourceRepo.find.mockResolvedValue([
+      { tenantId: 10, resourceType: 'tokens', totalQuota: 1000, usedQuota: 250 },
+      { tenantId: 11, resourceType: 'tokens', totalQuota: 3000, usedQuota: 750 },
+      { tenantId: 12, resourceType: 'ai_calls', totalQuota: 100, usedQuota: 40 },
+    ]);
+
+    planRepo.find.mockResolvedValue([
+      { id: 2, code: 'pro', name: 'Pro' },
+      { id: 3, code: 'enterprise', name: 'Enterprise' },
+    ]);
+
+    const result = await service.getUsageOverview();
+
+    expect(result.kpis).toEqual({
+      active_subscriptions: 2,
+      trialing_subscriptions: 1,
+      expired_subscriptions: 1,
+      pending_plan_orders: 1,
+      pending_resource_pack_orders: 1,
+      paid_plan_order_amount_cents: 99000,
+      paid_resource_pack_order_amount_cents: 19900,
+      total_paid_amount_cents: 118900,
+    });
+    expect(result.quota_summary).toEqual([
+      { resource_type: 'tokens', total_quota: 4000, used_quota: 1000, remaining_quota: 3000, usage_rate: 25 },
+      { resource_type: 'ai_calls', total_quota: 100, used_quota: 40, remaining_quota: 60, usage_rate: 40 },
+    ]);
+    expect(result.plan_distribution).toEqual([
+      { plan_id: 2, plan_code: 'pro', plan_name: 'Pro', active_count: 2 },
+    ]);
+    expect(result.recent_plan_orders).toHaveLength(2);
+    expect(result.recent_resource_pack_orders).toHaveLength(2);
   });
 
   it('lists SaaS orders with paging and filters', async () => {
