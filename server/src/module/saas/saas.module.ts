@@ -17,6 +17,7 @@ import { SaasPublicController } from './saas-public.controller';
 import { SaasTenantController } from './saas-tenant.controller';
 import { SaasPlanService } from './services/saas-plan.service';
 import { SaasOrderService } from './services/saas-order.service';
+import { SaasOrderRiskService } from './services/saas-order-risk.service';
 import { SaasPaymentService } from './services/saas-payment.service';
 import { SaasPaymentConfigService } from './services/saas-payment-config.service';
 import { SaasPlatformService } from './services/saas-platform.service';
@@ -46,6 +47,7 @@ import { SaasSubscriptionLifecycleService } from './services/saas-subscription-l
   providers: [
     SaasPlanService,
     SaasOrderService,
+    SaasOrderRiskService,
     SaasPaymentService,
     SaasPaymentConfigService,
     SaasPlatformService,
@@ -59,6 +61,7 @@ import { SaasSubscriptionLifecycleService } from './services/saas-subscription-l
   exports: [
     SaasPlanService,
     SaasOrderService,
+    SaasOrderRiskService,
     SaasPaymentService,
     SaasPaymentConfigService,
     SaasPlatformService,
