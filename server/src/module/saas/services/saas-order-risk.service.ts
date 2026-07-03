@@ -49,49 +49,54 @@ export class SaasOrderRiskService {
     const [planOrders, resourcePackOrders] = await Promise.all([
       this.planOrderRepo.find({
         where: { status: SAAS_ORDER_PENDING, createTime: LessThanOrEqual(cutoff) },
-        select: ['orderNo'] as any,
+        select: { orderNo: true },
       }),
       this.resourcePackOrderRepo.find({
         where: { status: SAAS_ORDER_PENDING, createTime: LessThanOrEqual(cutoff) },
-        select: ['orderNo'] as any,
+        select: { orderNo: true },
       }),
     ]);
     const planOrderNos = planOrders.map((order) => order.orderNo).filter(Boolean);
     const resourcePackOrderNos = resourcePackOrders.map((order) => order.orderNo).filter(Boolean);
+    let closedPlanOrderCount = 0;
+    let closedResourcePackOrderCount = 0;
 
     if (planOrderNos.length > 0) {
-      await this.planOrderRepo.update(
+      const updateResult = await this.planOrderRepo.update(
         { orderNo: In(planOrderNos), status: SAAS_ORDER_PENDING },
         { status: SAAS_ORDER_CLOSED, closedAt: now, closeReason: SAAS_ORDER_CLOSE_REASON_TIMEOUT },
       );
+      closedPlanOrderCount = updateResult.affected ?? 0;
     }
     if (resourcePackOrderNos.length > 0) {
-      await this.resourcePackOrderRepo.update(
+      const updateResult = await this.resourcePackOrderRepo.update(
         { orderNo: In(resourcePackOrderNos), status: SAAS_ORDER_PENDING },
         { status: SAAS_ORDER_CLOSED, closedAt: now, closeReason: SAAS_ORDER_CLOSE_REASON_TIMEOUT },
       );
+      closedResourcePackOrderCount = updateResult.affected ?? 0;
     }
 
     return {
       checked_at: now,
       timeout_minutes: timeoutMinutes,
-      closed_plan_order_count: planOrderNos.length,
-      closed_resource_pack_order_count: resourcePackOrderNos.length,
+      closed_plan_order_count: closedPlanOrderCount,
+      closed_resource_pack_order_count: closedResourcePackOrderCount,
       closed_plan_order_nos: planOrderNos,
       closed_resource_pack_order_nos: resourcePackOrderNos,
     };
   }
 
   async closeTenantPlanOrder(tenantId: number, orderNo: string, now = new Date()): Promise<SaasOrderEntity> {
+    const updateResult = await this.planOrderRepo.update(
+      { tenantId, orderNo, status: SAAS_ORDER_PENDING },
+      { status: SAAS_ORDER_CLOSED, closedAt: now, closeReason: SAAS_ORDER_CLOSE_REASON_TENANT_CANCELLED },
+    );
     const order = await this.planOrderRepo.findOne({ where: { tenantId, orderNo } });
     if (!order) throw new NotFoundException('Order not found');
+    if ((updateResult.affected ?? 0) > 0) return order;
     if (order.status === SAAS_ORDER_CLOSED) return order;
     if (order.status === SAAS_ORDER_PAID) throw new BadRequestException('Paid orders cannot be cancelled');
-
-    order.status = SAAS_ORDER_CLOSED;
-    order.closedAt = now;
-    order.closeReason = SAAS_ORDER_CLOSE_REASON_TENANT_CANCELLED;
-    return this.planOrderRepo.save(order);
+    throw new BadRequestException('Only pending orders can be cancelled');
   }
 
   async closeTenantResourcePackOrder(
@@ -99,15 +104,16 @@ export class SaasOrderRiskService {
     orderNo: string,
     now = new Date(),
   ): Promise<SaasResourcePackOrderEntity> {
+    const updateResult = await this.resourcePackOrderRepo.update(
+      { tenantId, orderNo, status: SAAS_ORDER_PENDING },
+      { status: SAAS_ORDER_CLOSED, closedAt: now, closeReason: SAAS_ORDER_CLOSE_REASON_TENANT_CANCELLED },
+    );
     const order = await this.resourcePackOrderRepo.findOne({ where: { tenantId, orderNo } });
     if (!order) throw new NotFoundException('Resource pack order not found');
+    if ((updateResult.affected ?? 0) > 0) return order;
     if (order.status === SAAS_ORDER_CLOSED) return order;
     if (order.status === SAAS_ORDER_PAID) throw new BadRequestException('Paid orders cannot be cancelled');
-
-    order.status = SAAS_ORDER_CLOSED;
-    order.closedAt = now;
-    order.closeReason = SAAS_ORDER_CLOSE_REASON_TENANT_CANCELLED;
-    return this.resourcePackOrderRepo.save(order);
+    throw new BadRequestException('Only pending orders can be cancelled');
   }
 
   async getOrderRiskOverview(now = new Date()): Promise<OrderRiskOverview> {
