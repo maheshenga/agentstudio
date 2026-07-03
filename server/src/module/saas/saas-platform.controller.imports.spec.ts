@@ -7,6 +7,8 @@ describe('SaasPlatformController imports', () => {
 
     expect(source).toContain("import { SaasPlatformService } from './services/saas-platform.service';");
     expect(source).toContain("import type { SaasPlatformListQuery } from './services/saas-platform.service';");
+    expect(source).toContain("import { SaasRevenueReportService } from './services/saas-revenue-report.service';");
+    expect(source).toContain('private readonly revenueReportService: SaasRevenueReportService');
     expect(source).not.toContain('import { SaasPlatformListQuery, SaasPlatformService }');
   });
 });

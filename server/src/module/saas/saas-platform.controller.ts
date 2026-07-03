@@ -18,6 +18,7 @@ import type { SaasPlanListQuery } from './services/saas-plan.service';
 import { SaasPlatformService } from './services/saas-platform.service';
 import type { SaasPlatformListQuery } from './services/saas-platform.service';
 import { SaasProvisioningService } from './services/saas-provisioning.service';
+import { SaasRevenueReportService } from './services/saas-revenue-report.service';
 import type { SaasResourcePackOrderListQuery } from './services/saas-resource-pack-order.service';
 import type { SaasResourcePackListQuery } from './services/saas-resource-pack.service';
 
@@ -30,6 +31,7 @@ export class SaasPlatformController {
     private readonly platformService: SaasPlatformService,
     private readonly paymentConfigService: SaasPaymentConfigService,
     private readonly planService: SaasPlanService,
+    private readonly revenueReportService: SaasRevenueReportService,
   ) {}
 
   @Post('tenants')
@@ -86,6 +88,13 @@ export class SaasPlatformController {
   @RequirePermission('saas:usage:index')
   usageOverview(@User() user: UserDto) {
     return this.runOutsideTenant(user, () => this.platformService.getUsageOverview().then((data) => ResultData.ok(data)));
+  }
+
+  @Get('revenue/overview')
+  @ApiOperation({ summary: 'Get SaaS revenue overview' })
+  @RequirePermission('saas:revenue:index')
+  revenueOverview(@User() user: UserDto) {
+    return this.runOutsideTenant(user, () => this.revenueReportService.getOverview().then((data) => ResultData.ok(data)));
   }
 
   @Get('orders')

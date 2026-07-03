@@ -21,6 +21,7 @@ import { SaasPaymentService } from './services/saas-payment.service';
 import { SaasPaymentConfigService } from './services/saas-payment-config.service';
 import { SaasPlatformService } from './services/saas-platform.service';
 import { SaasProvisioningService } from './services/saas-provisioning.service';
+import { SaasRevenueReportService } from './services/saas-revenue-report.service';
 import { SaasQuotaService } from './services/saas-quota.service';
 import { SaasResourcePackOrderService } from './services/saas-resource-pack-order.service';
 import { SaasResourcePackService } from './services/saas-resource-pack.service';
@@ -52,6 +53,7 @@ import { SaasSubscriptionLifecycleService } from './services/saas-subscription-l
     SaasResourcePackService,
     SaasResourcePackOrderService,
     SaasProvisioningService,
+    SaasRevenueReportService,
     SaasSubscriptionLifecycleService,
   ],
   exports: [
@@ -64,6 +66,7 @@ import { SaasSubscriptionLifecycleService } from './services/saas-subscription-l
     SaasResourcePackService,
     SaasResourcePackOrderService,
     SaasProvisioningService,
+    SaasRevenueReportService,
     SaasSubscriptionLifecycleService,
   ],
 })

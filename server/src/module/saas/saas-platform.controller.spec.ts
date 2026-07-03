@@ -6,6 +6,7 @@ import { SaasPaymentConfigService } from './services/saas-payment-config.service
 import { SaasPlanService } from './services/saas-plan.service';
 import { SaasPlatformService } from './services/saas-platform.service';
 import { SaasProvisioningService } from './services/saas-provisioning.service';
+import { SaasRevenueReportService } from './services/saas-revenue-report.service';
 
 describe('SaasPlatformController', () => {
   let controller: SaasPlatformController;
@@ -36,6 +37,9 @@ describe('SaasPlatformController', () => {
     updatePlatformPlanStatus: jest.fn(),
     updatePlatformPlanQuotas: jest.fn(),
   };
+  const revenueReportService = {
+    getOverview: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -47,6 +51,7 @@ describe('SaasPlatformController', () => {
         { provide: SaasPlatformService, useValue: platformService },
         { provide: SaasPaymentConfigService, useValue: paymentConfigService },
         { provide: SaasPlanService, useValue: planService },
+        { provide: SaasRevenueReportService, useValue: revenueReportService },
       ],
     }).compile();
 
@@ -71,6 +76,27 @@ describe('SaasPlatformController', () => {
       plan_distribution: [],
       recent_plan_orders: [],
       recent_resource_pack_orders: [],
+    });
+  });
+
+  it('returns SaaS revenue overview outside tenant scope', async () => {
+    revenueReportService.getOverview.mockResolvedValue({
+      kpis: { today_revenue_cents: 1000, total_revenue_cents: 5000 },
+      revenue_split: [],
+      daily_trend: [],
+      top_tenants: [],
+      recent_paid_orders: [],
+    });
+
+    const result = await controller.revenueOverview({ userId: 1 } as any);
+
+    expect(revenueReportService.getOverview).toHaveBeenCalled();
+    expect(result.data).toEqual({
+      kpis: { today_revenue_cents: 1000, total_revenue_cents: 5000 },
+      revenue_split: [],
+      daily_trend: [],
+      top_tenants: [],
+      recent_paid_orders: [],
     });
   });
 
