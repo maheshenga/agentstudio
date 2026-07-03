@@ -99,6 +99,33 @@
         </ElTabPane>
 
         <ElTabPane label="订单" name="orders">
+          <div class="saas-platform-page__order-risk-summary">
+            <div class="saas-platform-page__summary-item">
+              <span>待支付套餐订单</span>
+              <strong>{{ orderRiskOverview.pending_plan_orders }}</strong>
+            </div>
+            <div class="saas-platform-page__summary-item">
+              <span>7 天超时关闭套餐订单</span>
+              <strong>{{ orderRiskOverview.timeout_closed_plan_orders_7d }}</strong>
+            </div>
+            <div class="saas-platform-page__summary-item">
+              <span>7 天租户取消套餐订单</span>
+              <strong>{{ orderRiskOverview.tenant_cancelled_plan_orders_7d }}</strong>
+            </div>
+          </div>
+
+          <ElSegmented
+            v-model="orderRiskFilter"
+            class="saas-platform-page__order-risk-filter"
+            :options="[
+              { label: '全部', value: 'all' },
+              { label: '待支付', value: 'pending' },
+              { label: '超时关闭', value: 'timeout' },
+              { label: '租户取消', value: 'tenant_cancelled' }
+            ]"
+            @change="refreshCurrentTab"
+          />
+
           <ElTable v-loading="loading && activeTab === 'orders'" :data="orders" border>
             <ElTableColumn prop="order_no" label="订单号" min-width="230" show-overflow-tooltip />
             <ElTableColumn prop="tenant_id" label="租户 ID" width="110" />
@@ -115,6 +142,12 @@
             <ElTableColumn prop="alipay_trade_no" label="支付宝交易号" min-width="210" show-overflow-tooltip />
             <ElTableColumn label="支付时间" min-width="180">
               <template #default="{ row }">{{ formatDateTime(row.paid_at) }}</template>
+            </ElTableColumn>
+            <ElTableColumn label="关闭原因" min-width="130">
+              <template #default="{ row }">{{ formatCloseReason(row.close_reason) }}</template>
+            </ElTableColumn>
+            <ElTableColumn label="关闭时间" min-width="180">
+              <template #default="{ row }">{{ formatDateTime(row.closed_at) }}</template>
             </ElTableColumn>
             <ElTableColumn label="操作" fixed="right" width="100">
               <template #default="{ row }">
@@ -150,6 +183,8 @@
         <ElDescriptionsItem label="支付方式">{{ currentOrderDetail.payment_method || '-' }}</ElDescriptionsItem>
         <ElDescriptionsItem label="支付宝交易号">{{ currentOrderDetail.alipay_trade_no || '-' }}</ElDescriptionsItem>
         <ElDescriptionsItem label="支付时间">{{ formatDateTime(currentOrderDetail.paid_at) }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="关闭原因">{{ formatCloseReason(currentOrderDetail.close_reason) }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="关闭时间">{{ formatDateTime(currentOrderDetail.closed_at) }}</ElDescriptionsItem>
         <ElDescriptionsItem label="创建时间">{{ formatDateTime(currentOrderDetail.create_time) }}</ElDescriptionsItem>
       </ElDescriptions>
       <ElEmpty v-else description="未找到订单" />
@@ -179,10 +214,12 @@
 <script setup lang="ts">
   import {
     fetchPlatformOrder,
+    fetchPlatformOrderRiskOverview,
     fetchPlatformOrders,
     fetchPlatformSubscription,
     fetchPlatformSubscriptionLifecycleOverview,
     fetchPlatformSubscriptions,
+    type SaasOrderRiskOverview,
     type SaasPlatformOrderRecord,
     type SaasPlatformSubscriptionRecord,
     type SaasSubscriptionLifecycleOverview
@@ -194,6 +231,7 @@
   const loading = ref(false)
   const detailLoading = ref(false)
   const lifecycleFilter = ref<'all' | 'active' | 'expiring' | 'expired'>('all')
+  const orderRiskFilter = ref<'all' | 'pending' | 'timeout' | 'tenant_cancelled'>('all')
   const filters = reactive({ tenant_id: '', status: '', order_no: '', plan_code: '', plan_id: '' })
   const subscriptions = ref<SaasPlatformSubscriptionRecord[]>([])
   const orders = ref<SaasPlatformOrderRecord[]>([])
@@ -202,6 +240,14 @@
     expiring_7_days_count: 0,
     expiring_30_days_count: 0,
     expired_count: 0
+  })
+  const orderRiskOverview = ref<SaasOrderRiskOverview>({
+    pending_plan_orders: 0,
+    pending_resource_pack_orders: 0,
+    timeout_closed_plan_orders_7d: 0,
+    timeout_closed_resource_pack_orders_7d: 0,
+    tenant_cancelled_plan_orders_7d: 0,
+    tenant_cancelled_resource_pack_orders_7d: 0
   })
   const currentOrderDetail = ref<SaasPlatformOrderRecord | null>(null)
   const currentSubscriptionDetail = ref<SaasPlatformSubscriptionRecord | null>(null)
@@ -231,6 +277,15 @@
     return {}
   }
 
+  function buildOrderRiskQuery() {
+    if (orderRiskFilter.value === 'pending') return { status: 'pending' as const }
+    if (orderRiskFilter.value === 'timeout') return { status: 'closed' as const, close_reason: 'timeout' as const }
+    if (orderRiskFilter.value === 'tenant_cancelled') {
+      return { status: 'closed' as const, close_reason: 'tenant_cancelled' as const }
+    }
+    return {}
+  }
+
   async function loadSubscriptions() {
     loading.value = true
     try {
@@ -252,6 +307,7 @@
     try {
       const result = await fetchPlatformOrders({
         ...buildBaseQuery(orderPager.page, orderPager.limit),
+        ...buildOrderRiskQuery(),
         order_no: filters.order_no || undefined,
         plan_code: filters.plan_code || undefined
       })
@@ -266,8 +322,13 @@
     lifecycleOverview.value = await fetchPlatformSubscriptionLifecycleOverview()
   }
 
+  async function loadOrderRiskOverview() {
+    orderRiskOverview.value = await fetchPlatformOrderRiskOverview()
+  }
+
   function refreshCurrentTab() {
     void loadLifecycleOverview()
+    void loadOrderRiskOverview()
     if (activeTab.value === 'orders') {
       orderPager.page = 1
       void loadOrders()
@@ -347,6 +408,16 @@
     return 'info'
   }
 
+  function formatCloseReason(value: unknown) {
+    const labels: Record<string, string> = {
+      timeout: '超时关闭',
+      tenant_cancelled: '租户取消'
+    }
+    if (!value) return '-'
+    const normalized = String(value)
+    return labels[normalized] || normalized
+  }
+
   function getStatusTagType(status: string) {
     const normalized = String(status || '').toLowerCase()
     if (['active', 'paid'].includes(normalized)) return 'success'
@@ -357,6 +428,7 @@
 
   onMounted(() => {
     void loadLifecycleOverview()
+    void loadOrderRiskOverview()
     void loadSubscriptions()
   })
 </script>
@@ -422,6 +494,17 @@
   }
 
   .saas-platform-page__lifecycle-filter {
+    margin-bottom: 16px;
+  }
+
+  .saas-platform-page__order-risk-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .saas-platform-page__order-risk-filter {
     margin-bottom: 16px;
   }
 

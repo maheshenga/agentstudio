@@ -56,6 +56,16 @@
           <ElOption label="已支付" value="paid" />
           <ElOption label="已关闭" value="closed" />
         </ElSelect>
+        <ElSelect
+          v-model="filters.close_reason"
+          clearable
+          placeholder="关闭原因"
+          class="saas-resource-pack-order-page__select"
+          @change="refreshOrders"
+        >
+          <ElOption label="超时关闭" value="timeout" />
+          <ElOption label="租户取消" value="tenant_cancelled" />
+        </ElSelect>
         <ElButton type="primary" :loading="loading" @click="refreshOrders">查询</ElButton>
       </div>
 
@@ -81,6 +91,12 @@
         </ElTableColumn>
         <ElTableColumn label="支付时间" min-width="180">
           <template #default="{ row }">{{ formatDateTime(row.paid_at) }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="关闭原因" min-width="130">
+          <template #default="{ row }">{{ formatCloseReason(row.close_reason) }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="关闭时间" min-width="180">
+          <template #default="{ row }">{{ formatDateTime(row.closed_at) }}</template>
         </ElTableColumn>
         <ElTableColumn label="发放时间" min-width="180">
           <template #default="{ row }">{{ formatDateTime(row.delivered_at) }}</template>
@@ -123,6 +139,8 @@
         <ElDescriptionsItem label="支付宝交易号">{{ currentDetail.alipay_trade_no || '-' }}</ElDescriptionsItem>
         <ElDescriptionsItem label="创建时间">{{ formatDateTime(currentDetail.create_time) }}</ElDescriptionsItem>
         <ElDescriptionsItem label="支付时间">{{ formatDateTime(currentDetail.paid_at) }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="关闭原因">{{ formatCloseReason(currentDetail.close_reason) }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="关闭时间">{{ formatDateTime(currentDetail.closed_at) }}</ElDescriptionsItem>
         <ElDescriptionsItem label="发放时间">{{ formatDateTime(currentDetail.delivered_at) }}</ElDescriptionsItem>
       </ElDescriptions>
     </ElDrawer>
@@ -148,7 +166,8 @@
     tenant_id: '',
     resource_pack_code: '',
     resource_type: '',
-    status: ''
+    status: '',
+    close_reason: ''
   })
   const pager = reactive({
     page: 1,
@@ -190,7 +209,8 @@
         tenant_id: filters.tenant_id || undefined,
         resource_pack_code: filters.resource_pack_code || undefined,
         resource_type: filters.resource_type || undefined,
-        status: filters.status || undefined
+        status: filters.status || undefined,
+        close_reason: filters.close_reason || undefined
       })
       orders.value = result.list || []
       pager.total = Number(result.total) || 0
@@ -238,6 +258,16 @@
 
   function formatStatus(status: string) {
     return statusLabels[status] || status
+  }
+
+  function formatCloseReason(value: unknown) {
+    const labels: Record<string, string> = {
+      timeout: '超时关闭',
+      tenant_cancelled: '租户取消'
+    }
+    if (!value) return '-'
+    const normalized = String(value)
+    return labels[normalized] || normalized
   }
 
   function getStatusTagType(status: string) {
