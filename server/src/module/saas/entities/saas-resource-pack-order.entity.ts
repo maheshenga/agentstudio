@@ -50,6 +50,12 @@ export class SaasResourcePackOrderEntity {
   @Column({ type: 'datetime', name: 'delivered_at', nullable: true })
   deliveredAt?: Date;
 
+  @Column({ type: 'datetime', name: 'closed_at', nullable: true })
+  closedAt?: Date;
+
+  @Column({ type: 'varchar', name: 'close_reason', length: 50, nullable: true })
+  closeReason?: string;
+
   @Column({ type: 'varchar', name: 'remark', length: 255, nullable: true })
   remark?: string;
 

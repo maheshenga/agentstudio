@@ -18,5 +18,8 @@ export const SAAS_DEFAULT_TRIAL_DAYS = 14;
 export const SAAS_ORDER_PENDING = 'pending';
 export const SAAS_ORDER_PAID = 'paid';
 export const SAAS_ORDER_CLOSED = 'closed';
+export const SAAS_ORDER_CLOSE_REASON_TIMEOUT = 'timeout';
+export const SAAS_ORDER_CLOSE_REASON_TENANT_CANCELLED = 'tenant_cancelled';
+export const SAAS_ORDER_PENDING_TIMEOUT_MINUTES = 120;
 
 export const SAAS_PAYMENT_ALIPAY = 'alipay';
