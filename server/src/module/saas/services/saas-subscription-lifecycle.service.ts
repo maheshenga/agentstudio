@@ -107,13 +107,15 @@ export class SaasSubscriptionLifecycleService {
       };
     }
 
-    const daysUntilExpiry = Math.ceil((endTime.getTime() - now.getTime()) / 86_400_000);
+    const diffMs = endTime.getTime() - now.getTime();
+    const daysUntilExpiry = diffMs <= 0 ? Math.floor(diffMs / 86_400_000) : Math.ceil(diffMs / 86_400_000);
     const isActive = subscription.status === SAAS_SUBSCRIPTION_ACTIVE;
+    const isExpiredByTime = isActive && diffMs <= 0;
 
     return {
       days_until_expiry: daysUntilExpiry,
-      is_expiring_soon: isActive && daysUntilExpiry >= 0 && daysUntilExpiry <= thresholdDays,
-      is_expired_by_time: isActive && daysUntilExpiry < 0,
+      is_expiring_soon: isActive && !isExpiredByTime && daysUntilExpiry <= thresholdDays,
+      is_expired_by_time: isExpiredByTime,
     };
   }
 

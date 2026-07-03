@@ -114,6 +114,25 @@ describe('SaasSubscriptionLifecycleService', () => {
     });
   });
 
+  it('marks active subscriptions that expired less than a day ago as expired by time', () => {
+    const now = new Date('2026-07-03T12:00:00.000Z');
+
+    expect(
+      service.decorateSubscription(
+        {
+          status: SAAS_SUBSCRIPTION_ACTIVE,
+          endTime: new Date('2026-07-03T11:59:00.000Z'),
+        },
+        now,
+        7,
+      ),
+    ).toEqual({
+      days_until_expiry: -1,
+      is_expiring_soon: false,
+      is_expired_by_time: true,
+    });
+  });
+
   it('does not mark null-end or inactive subscriptions as expiring soon', () => {
     const now = new Date('2026-07-03T00:00:00.000Z');
 
