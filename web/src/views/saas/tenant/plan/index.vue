@@ -151,10 +151,12 @@
   })
   const isExpiringSoon = computed(() => Boolean(pickValue(subscriptionInfo.value, ['is_expiring_soon', 'isExpiringSoon'])))
   const isExpiredByTime = computed(() => Boolean(pickValue(subscriptionInfo.value, ['is_expired_by_time', 'isExpiredByTime'])))
+  const normalizedSubscriptionStatus = computed(() => String(pickValue(subscriptionInfo.value, ['subscription_status', 'subscriptionStatus', 'status']) ?? '').trim().toLowerCase())
+  const isExpiredSubscription = computed(() => isExpiredByTime.value || normalizedSubscriptionStatus.value === 'expired')
   const subscriptionStatus = computed(() => {
     const rawStatus = pickValue(subscriptionInfo.value, ['subscription_status', 'subscriptionStatus', 'status'])
-    if (rawStatus === undefined) return { text: '-', type: 'info' as const }
-    const normalized = String(rawStatus).trim().toLowerCase()
+    const normalized = normalizedSubscriptionStatus.value
+    if (!normalized) return { text: '-', type: 'info' as const }
     const statusMap: Record<string, { text: string; type: 'success' | 'warning' | 'info' | 'danger' }> = {
       active: { text: '正常', type: 'success' },
       trialing: { text: '试用中', type: 'warning' },
@@ -174,8 +176,7 @@
   const subscriptionStatusText = computed(() => subscriptionStatus.value.text)
   const subscriptionTagType = computed(() => subscriptionStatus.value.type)
   const renewalState = computed(() => {
-    const rawStatus = pickValue(subscriptionInfo.value, ['subscription_status', 'subscriptionStatus', 'status'])
-    if (isExpiredByTime.value || String(rawStatus).toLowerCase() === 'expired') {
+    if (isExpiredSubscription.value) {
       return { type: 'danger' as const, text: '订阅已过期，请续费或升级套餐' }
     }
     if (isExpiringSoon.value) {
@@ -241,7 +242,7 @@
   }
 
   function isCurrentPlanRenewable(plan: SaasPlanOption) {
-    return plan.code === currentPlanCode.value && plan.code !== 'free' && getPlanAmount(plan) > 0 && (isExpiringSoon.value || isExpiredByTime.value)
+    return plan.code === currentPlanCode.value && plan.code !== 'free' && getPlanAmount(plan) > 0 && (isExpiringSoon.value || isExpiredSubscription.value)
   }
 
   function isPlanOrderDisabled(plan: SaasPlanOption) {
