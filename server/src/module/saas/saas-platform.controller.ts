@@ -81,6 +81,13 @@ export class SaasPlatformController {
     return this.runOutsideTenant(user, () => this.planService.updatePlatformPlanQuotas(code, body).then((data) => ResultData.ok(data)));
   }
 
+  @Get('usage/overview')
+  @ApiOperation({ summary: 'Get SaaS platform usage overview' })
+  @RequirePermission('saas:usage:index')
+  usageOverview(@User() user: UserDto) {
+    return this.runOutsideTenant(user, () => this.platformService.getUsageOverview().then((data) => ResultData.ok(data)));
+  }
+
   @Get('orders')
   @ApiOperation({ summary: 'List SaaS platform orders' })
   @RequirePermission('saas:order:list')

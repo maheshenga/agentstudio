@@ -14,6 +14,7 @@ describe('SaasPlatformController', () => {
     createTenantFromPlatform: jest.fn(),
   };
   const platformService = {
+    getUsageOverview: jest.fn(),
     listOrders: jest.fn(),
     listSubscriptions: jest.fn(),
     findOrder: jest.fn(),
@@ -49,6 +50,27 @@ describe('SaasPlatformController', () => {
     }).compile();
 
     controller = module.get(SaasPlatformController);
+  });
+
+  it('returns platform SaaS usage overview outside tenant scope', async () => {
+    platformService.getUsageOverview.mockResolvedValue({
+      kpis: { active_subscriptions: 1, total_paid_amount_cents: 99000 },
+      quota_summary: [],
+      plan_distribution: [],
+      recent_plan_orders: [],
+      recent_resource_pack_orders: [],
+    });
+
+    const result = await controller.usageOverview({ userId: 1 } as any);
+
+    expect(platformService.getUsageOverview).toHaveBeenCalled();
+    expect(result.data).toEqual({
+      kpis: { active_subscriptions: 1, total_paid_amount_cents: 99000 },
+      quota_summary: [],
+      plan_distribution: [],
+      recent_plan_orders: [],
+      recent_resource_pack_orders: [],
+    });
   });
 
   it('lists platform SaaS orders outside tenant scope', async () => {
