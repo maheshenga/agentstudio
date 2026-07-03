@@ -43,6 +43,15 @@ export interface SaasPlatformOrderListParams extends SaasPlatformListParams {
   plan_code?: string
 }
 
+export interface SaasTenantOrderListParams {
+  page?: number
+  limit?: number
+  order_no?: string
+  plan_code?: string
+  status?: string
+  close_reason?: string
+}
+
 export interface SaasPlatformSubscriptionListParams extends SaasPlatformListParams {
   plan_id?: number | string
   plan_code?: string
@@ -64,6 +73,8 @@ export interface SaasPlatformOrderRecord {
   status: string
   alipay_trade_no?: string
   paid_at?: string | Date
+  closed_at?: string | Date | null
+  close_reason?: string | null
   create_time?: string | Date
 }
 
@@ -88,6 +99,15 @@ export interface SaasSubscriptionLifecycleOverview {
   expiring_7_days_count: number
   expiring_30_days_count: number
   expired_count: number
+}
+
+export interface SaasOrderRiskOverview {
+  pending_plan_orders: number
+  pending_resource_pack_orders: number
+  timeout_closed_plan_orders_7d: number
+  timeout_closed_resource_pack_orders_7d: number
+  tenant_cancelled_plan_orders_7d: number
+  tenant_cancelled_resource_pack_orders_7d: number
 }
 
 export interface SaasPlanQuotaRecord {
@@ -175,6 +195,8 @@ export interface SaasResourcePackOrderRecord {
   alipay_trade_no?: string
   paid_at?: string | Date
   delivered_at?: string | Date
+  closed_at?: string | Date | null
+  close_reason?: string | null
   create_time?: string | Date
 }
 
@@ -353,6 +375,9 @@ export interface SaasOrderRecord {
   payment_method?: string
   alipay_trade_no?: string
   paid_at?: string | Date
+  closed_at?: string | Date | null
+  close_reason?: string | null
+  create_time?: string | Date
 }
 
 export interface AlipayPaymentResult {
@@ -403,6 +428,19 @@ export function fetchTenantOrder(orderNo: string) {
   return request.get<SaasOrderRecord>({ url: `/api/saas/tenant/orders/${orderNo}` })
 }
 
+export function fetchTenantSaasOrders(params: SaasTenantOrderListParams) {
+  return request.get<SaasPlatformPageResult<SaasPlatformOrderRecord>>({
+    url: '/api/saas/tenant/orders',
+    params
+  })
+}
+
+export function cancelTenantSaasOrder(orderNo: string) {
+  return request.post<SaasPlatformOrderRecord>({
+    url: `/api/saas/tenant/orders/${orderNo}/cancel`
+  })
+}
+
 export function devConfirmTenantPayment(orderNo: string, orderType?: 'plan'): Promise<SaasOrderRecord>
 export function devConfirmTenantPayment(orderNo: string, orderType: 'resource_pack'): Promise<SaasResourcePackOrderRecord>
 export function devConfirmTenantPayment(orderNo: string, orderType: SaasPaymentOrderType = 'plan') {
@@ -433,6 +471,10 @@ export function fetchPlatformUsageOverview() {
 
 export function fetchPlatformRevenueOverview() {
   return request.get<SaasRevenueOverview>({ url: '/api/saas/platform/revenue/overview' })
+}
+
+export function fetchPlatformOrderRiskOverview() {
+  return request.get<SaasOrderRiskOverview>({ url: '/api/saas/platform/orders/risk/overview' })
 }
 
 export function fetchPlatformSubscriptionLifecycleOverview() {
@@ -493,6 +535,12 @@ export function createTenantResourcePackOrder(params: CreateResourcePackOrderPar
 
 export function fetchTenantResourcePackOrder(orderNo: string) {
   return request.get<SaasResourcePackOrderRecord>({ url: `/api/saas/tenant/resource-pack-orders/${orderNo}` })
+}
+
+export function cancelTenantResourcePackOrder(orderNo: string) {
+  return request.post<SaasResourcePackOrderRecord>({
+    url: `/api/saas/tenant/resource-pack-orders/${orderNo}/cancel`
+  })
 }
 
 export function fetchTenantResourcePackOrders(params: TenantResourcePackOrderListParams) {
