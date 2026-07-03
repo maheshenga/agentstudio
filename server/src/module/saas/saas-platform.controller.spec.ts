@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UpdateAlipayConfigDto } from './dto/update-alipay-config.dto';
 import { SaasPlatformController } from './saas-platform.controller';
 import { SaasPaymentConfigService } from './services/saas-payment-config.service';
+import { SaasModuleService } from './services/saas-module.service';
 import { SaasPlanService } from './services/saas-plan.service';
 import { SaasPlatformService } from './services/saas-platform.service';
 import { SaasProvisioningService } from './services/saas-provisioning.service';
@@ -38,6 +39,13 @@ describe('SaasPlatformController', () => {
     updatePlatformPlanStatus: jest.fn(),
     updatePlatformPlanQuotas: jest.fn(),
   };
+  const moduleService = {
+    listPlatformModules: jest.fn(),
+    createPlatformModule: jest.fn(),
+    updatePlatformModule: jest.fn(),
+    updatePlatformModuleStatus: jest.fn(),
+    updatePlanModules: jest.fn(),
+  };
   const revenueReportService = {
     getOverview: jest.fn(),
   };
@@ -52,6 +60,7 @@ describe('SaasPlatformController', () => {
         { provide: SaasPlatformService, useValue: platformService },
         { provide: SaasPaymentConfigService, useValue: paymentConfigService },
         { provide: SaasPlanService, useValue: planService },
+        { provide: SaasModuleService, useValue: moduleService },
         { provide: SaasRevenueReportService, useValue: revenueReportService },
       ],
     }).compile();
@@ -187,6 +196,53 @@ describe('SaasPlatformController', () => {
 
     expect(planService.updatePlatformPlanQuotas).toHaveBeenCalledWith('pro', body);
     expect(result.data).toEqual({ code: 'pro', quotas: [] });
+  });
+
+  it('lists platform SaaS modules outside tenant scope', async () => {
+    moduleService.listPlatformModules.mockResolvedValue([{ code: 'crm' }]);
+
+    const result = await controller.listModules({ status: '1' }, { userId: 1 } as any);
+
+    expect(moduleService.listPlatformModules).toHaveBeenCalledWith({ status: '1' });
+    expect(result.data).toEqual([{ code: 'crm' }]);
+  });
+
+  it('creates a platform SaaS module outside tenant scope', async () => {
+    moduleService.createPlatformModule.mockResolvedValue({ code: 'crm' });
+    const body = { code: 'crm', name: 'CRM' };
+
+    const result = await controller.createModule(body as any, { userId: 1 } as any);
+
+    expect(moduleService.createPlatformModule).toHaveBeenCalledWith(body);
+    expect(result.data).toEqual({ code: 'crm' });
+  });
+
+  it('updates a platform SaaS module outside tenant scope', async () => {
+    moduleService.updatePlatformModule.mockResolvedValue({ code: 'crm', name: 'CRM Plus' });
+    const body = { name: 'CRM Plus' };
+
+    const result = await controller.updateModule('crm', body as any, { userId: 1 } as any);
+
+    expect(moduleService.updatePlatformModule).toHaveBeenCalledWith('crm', body);
+    expect(result.data).toEqual({ code: 'crm', name: 'CRM Plus' });
+  });
+
+  it('updates platform SaaS module status outside tenant scope', async () => {
+    moduleService.updatePlatformModuleStatus.mockResolvedValue({ code: 'crm', status: 0 });
+
+    const result = await controller.updateModuleStatus('crm', { status: 0 } as any, { userId: 1 } as any);
+
+    expect(moduleService.updatePlatformModuleStatus).toHaveBeenCalledWith('crm', 0);
+    expect(result.data).toEqual({ code: 'crm', status: 0 });
+  });
+
+  it('updates plan modules outside tenant scope', async () => {
+    moduleService.updatePlanModules.mockResolvedValue({ code: 'pro', module_codes: ['crm'] });
+
+    const result = await controller.updatePlanModules('pro', { module_codes: ['crm'] }, { userId: 1 } as any);
+
+    expect(moduleService.updatePlanModules).toHaveBeenCalledWith('pro', ['crm']);
+    expect(result.data).toEqual({ code: 'pro', module_codes: ['crm'] });
   });
 
   it('returns platform SaaS order detail outside tenant scope', async () => {

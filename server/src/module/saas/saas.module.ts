@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { SaasPlanFeatureEntity } from './entities/saas-plan-feature.entity';
+import { SaasModuleEntity } from './entities/saas-module.entity';
 import { SaasPlanQuotaEntity } from './entities/saas-plan-quota.entity';
 import { SaasOrderEntity } from './entities/saas-order.entity';
 import { SaasPlanEntity } from './entities/saas-plan.entity';
@@ -16,6 +17,7 @@ import { SaasPlatformController } from './saas-platform.controller';
 import { SaasPublicController } from './saas-public.controller';
 import { SaasTenantController } from './saas-tenant.controller';
 import { SaasPlanService } from './services/saas-plan.service';
+import { SaasModuleService } from './services/saas-module.service';
 import { SaasOrderService } from './services/saas-order.service';
 import { SaasOrderRiskService } from './services/saas-order-risk.service';
 import { SaasPaymentService } from './services/saas-payment.service';
@@ -33,6 +35,7 @@ import { SaasTenantMemberService } from './services/saas-tenant-member.service';
   imports: [
     TypeOrmModule.forFeature([
       SaasPlanEntity,
+      SaasModuleEntity,
       SaasOrderEntity,
       SaasPlanQuotaEntity,
       SaasPlanFeatureEntity,
@@ -47,6 +50,7 @@ import { SaasTenantMemberService } from './services/saas-tenant-member.service';
   controllers: [SaasPublicController, SaasPlatformController, SaasTenantController, SaasPaymentController],
   providers: [
     SaasPlanService,
+    SaasModuleService,
     SaasOrderService,
     SaasOrderRiskService,
     SaasPaymentService,
@@ -62,6 +66,7 @@ import { SaasTenantMemberService } from './services/saas-tenant-member.service';
   ],
   exports: [
     SaasPlanService,
+    SaasModuleService,
     SaasOrderService,
     SaasOrderRiskService,
     SaasPaymentService,

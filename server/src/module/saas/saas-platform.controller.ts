@@ -7,12 +7,15 @@ import { ResultData } from '../../common/utils/result';
 import { User } from '../system/user/user.decorator';
 import type { UserDto } from '../system/user/user.decorator';
 import { CreateSaasPlanDto } from './dto/create-saas-plan.dto';
+import { SaveSaasModuleDto, UpdatePlanModulesDto, UpdateSaasModuleStatusDto } from './dto/save-saas-module.dto';
 import { TenantProvisionDto } from './dto/tenant-provision.dto';
 import { UpdateAlipayConfigDto } from './dto/update-alipay-config.dto';
 import { UpdateSaasPlanQuotasDto } from './dto/update-saas-plan-quotas.dto';
 import { UpdateSaasPlanStatusDto } from './dto/update-saas-plan-status.dto';
 import { UpdateSaasPlanDto } from './dto/update-saas-plan.dto';
 import { SaasPaymentConfigService } from './services/saas-payment-config.service';
+import { SaasModuleService } from './services/saas-module.service';
+import type { SaasModuleListQuery } from './services/saas-module.service';
 import { SaasPlanService } from './services/saas-plan.service';
 import type { SaasPlanListQuery } from './services/saas-plan.service';
 import { SaasPlatformService } from './services/saas-platform.service';
@@ -31,6 +34,7 @@ export class SaasPlatformController {
     private readonly platformService: SaasPlatformService,
     private readonly paymentConfigService: SaasPaymentConfigService,
     private readonly planService: SaasPlanService,
+    private readonly moduleService: SaasModuleService,
     private readonly revenueReportService: SaasRevenueReportService,
   ) {}
 
@@ -81,6 +85,41 @@ export class SaasPlatformController {
   @RequirePermission('saas:plan:quota:update')
   updatePlanQuotas(@Param('code') code: string, @Body() body: UpdateSaasPlanQuotasDto, @User() user: UserDto) {
     return this.runOutsideTenant(user, () => this.planService.updatePlatformPlanQuotas(code, body).then((data) => ResultData.ok(data)));
+  }
+
+  @Put('plans/:code/modules')
+  @ApiOperation({ summary: 'Update SaaS platform plan modules' })
+  @RequirePermission('saas:plan:module:update')
+  updatePlanModules(@Param('code') code: string, @Body() body: UpdatePlanModulesDto, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () => this.moduleService.updatePlanModules(code, body.module_codes).then((data) => ResultData.ok(data)));
+  }
+
+  @Get('modules')
+  @ApiOperation({ summary: 'List SaaS platform modules' })
+  @RequirePermission('saas:module:list')
+  listModules(@Query() query: SaasModuleListQuery, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () => this.moduleService.listPlatformModules(query).then((data) => ResultData.ok(data)));
+  }
+
+  @Post('modules')
+  @ApiOperation({ summary: 'Create SaaS platform module' })
+  @RequirePermission('saas:module:save')
+  createModule(@Body() body: SaveSaasModuleDto, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () => this.moduleService.createPlatformModule(body).then((data) => ResultData.ok(data)));
+  }
+
+  @Put('modules/:code')
+  @ApiOperation({ summary: 'Update SaaS platform module' })
+  @RequirePermission('saas:module:update')
+  updateModule(@Param('code') code: string, @Body() body: SaveSaasModuleDto, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () => this.moduleService.updatePlatformModule(code, body).then((data) => ResultData.ok(data)));
+  }
+
+  @Put('modules/:code/status')
+  @ApiOperation({ summary: 'Update SaaS platform module status' })
+  @RequirePermission('saas:module:status')
+  updateModuleStatus(@Param('code') code: string, @Body() body: UpdateSaasModuleStatusDto, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () => this.moduleService.updatePlatformModuleStatus(code, body.status).then((data) => ResultData.ok(data)));
   }
 
   @Get('usage/overview')
