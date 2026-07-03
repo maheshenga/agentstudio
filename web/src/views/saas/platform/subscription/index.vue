@@ -11,6 +11,25 @@
         </div>
       </template>
 
+      <div class="saas-platform-page__lifecycle-summary">
+        <div class="saas-platform-page__summary-item">
+          <span>正常订阅</span>
+          <strong>{{ lifecycleOverview.active_count }}</strong>
+        </div>
+        <div class="saas-platform-page__summary-item">
+          <span>7 天内到期</span>
+          <strong>{{ lifecycleOverview.expiring_7_days_count }}</strong>
+        </div>
+        <div class="saas-platform-page__summary-item">
+          <span>30 天内到期</span>
+          <strong>{{ lifecycleOverview.expiring_30_days_count }}</strong>
+        </div>
+        <div class="saas-platform-page__summary-item">
+          <span>已过期</span>
+          <strong>{{ lifecycleOverview.expired_count }}</strong>
+        </div>
+      </div>
+
       <div class="saas-platform-page__filters">
         <ElInput v-model="filters.tenant_id" class="saas-platform-page__filter-item" clearable placeholder="租户 ID" @keyup.enter="refreshCurrentTab" />
         <ElInput v-model="filters.plan_id" class="saas-platform-page__filter-item" clearable placeholder="套餐 ID" @keyup.enter="refreshCurrentTab" />
@@ -23,6 +42,18 @@
         <ElButton @click="resetFilters">重置</ElButton>
       </div>
 
+      <ElSegmented
+        v-model="lifecycleFilter"
+        class="saas-platform-page__lifecycle-filter"
+        :options="[
+          { label: '全部', value: 'all' },
+          { label: '正常', value: 'active' },
+          { label: '即将到期', value: 'expiring' },
+          { label: '已过期', value: 'expired' }
+        ]"
+        @change="refreshCurrentTab"
+      />
+
       <ElTabs v-model="activeTab" @tab-change="handleTabChange">
         <ElTabPane label="订阅" name="subscriptions">
           <ElTable v-loading="loading && activeTab === 'subscriptions'" :data="subscriptions" border>
@@ -30,14 +61,41 @@
             <ElTableColumn prop="plan_id" label="套餐 ID" width="110" />
             <ElTableColumn prop="billing_cycle" label="周期" width="110" />
             <ElTableColumn prop="status" label="状态" width="120">
-              <template #default="{ row }"><ElTag :type="getStatusTagType(row.status)" effect="light">{{ row.status }}</ElTag></template>
+              <template #default="{ row }">
+                <ElTag :type="getStatusTagType(row.status)" effect="light">{{ row.status }}</ElTag>
+              </template>
             </ElTableColumn>
-            <ElTableColumn label="开始时间" min-width="180"><template #default="{ row }">{{ formatDateTime(row.start_time) }}</template></ElTableColumn>
-            <ElTableColumn label="结束时间" min-width="180"><template #default="{ row }">{{ formatDateTime(row.end_time) }}</template></ElTableColumn>
+            <ElTableColumn label="开始时间" min-width="180">
+              <template #default="{ row }">{{ formatDateTime(row.start_time) }}</template>
+            </ElTableColumn>
+            <ElTableColumn label="结束时间" min-width="180">
+              <template #default="{ row }">{{ formatDateTime(row.end_time) }}</template>
+            </ElTableColumn>
+            <ElTableColumn label="剩余天数" width="120">
+              <template #default="{ row }">{{ formatRemainingDays(row.days_until_expiry) }}</template>
+            </ElTableColumn>
+            <ElTableColumn label="生命周期" width="130">
+              <template #default="{ row }">
+                <ElTag :type="getLifecycleTagType(row)" effect="light">{{ getLifecycleText(row) }}</ElTag>
+              </template>
+            </ElTableColumn>
             <ElTableColumn prop="remark" label="备注" min-width="220" show-overflow-tooltip />
-            <ElTableColumn label="操作" fixed="right" width="100"><template #default="{ row }"><ElButton link type="primary" @click="openSubscriptionDetail(row)">详情</ElButton></template></ElTableColumn>
+            <ElTableColumn label="操作" fixed="right" width="100">
+              <template #default="{ row }">
+                <ElButton link type="primary" @click="openSubscriptionDetail(row)">详情</ElButton>
+              </template>
+            </ElTableColumn>
           </ElTable>
-          <ElPagination v-model:current-page="subscriptionPager.page" v-model:page-size="subscriptionPager.limit" class="saas-platform-page__pagination" layout="total, sizes, prev, pager, next" :page-sizes="[10, 20, 50, 100]" :total="subscriptionPager.total" @current-change="loadSubscriptions" @size-change="handleSubscriptionSizeChange" />
+          <ElPagination
+            v-model:current-page="subscriptionPager.page"
+            v-model:page-size="subscriptionPager.limit"
+            class="saas-platform-page__pagination"
+            layout="total, sizes, prev, pager, next"
+            :page-sizes="[10, 20, 50, 100]"
+            :total="subscriptionPager.total"
+            @current-change="loadSubscriptions"
+            @size-change="handleSubscriptionSizeChange"
+          />
         </ElTabPane>
 
         <ElTabPane label="订单" name="orders">
@@ -45,14 +103,35 @@
             <ElTableColumn prop="order_no" label="订单号" min-width="230" show-overflow-tooltip />
             <ElTableColumn prop="tenant_id" label="租户 ID" width="110" />
             <ElTableColumn prop="plan_code" label="套餐" width="120" />
-            <ElTableColumn label="金额" width="130"><template #default="{ row }">{{ formatMoney(row.amount_cents) }}</template></ElTableColumn>
+            <ElTableColumn label="金额" width="130">
+              <template #default="{ row }">{{ formatMoney(row.amount_cents) }}</template>
+            </ElTableColumn>
             <ElTableColumn prop="payment_method" label="支付方式" width="120" />
-            <ElTableColumn prop="status" label="状态" width="120"><template #default="{ row }"><ElTag :type="getStatusTagType(row.status)" effect="light">{{ row.status }}</ElTag></template></ElTableColumn>
+            <ElTableColumn prop="status" label="状态" width="120">
+              <template #default="{ row }">
+                <ElTag :type="getStatusTagType(row.status)" effect="light">{{ row.status }}</ElTag>
+              </template>
+            </ElTableColumn>
             <ElTableColumn prop="alipay_trade_no" label="支付宝交易号" min-width="210" show-overflow-tooltip />
-            <ElTableColumn label="支付时间" min-width="180"><template #default="{ row }">{{ formatDateTime(row.paid_at) }}</template></ElTableColumn>
-            <ElTableColumn label="操作" fixed="right" width="100"><template #default="{ row }"><ElButton link type="primary" @click="openOrderDetail(row)">详情</ElButton></template></ElTableColumn>
+            <ElTableColumn label="支付时间" min-width="180">
+              <template #default="{ row }">{{ formatDateTime(row.paid_at) }}</template>
+            </ElTableColumn>
+            <ElTableColumn label="操作" fixed="right" width="100">
+              <template #default="{ row }">
+                <ElButton link type="primary" @click="openOrderDetail(row)">详情</ElButton>
+              </template>
+            </ElTableColumn>
           </ElTable>
-          <ElPagination v-model:current-page="orderPager.page" v-model:page-size="orderPager.limit" class="saas-platform-page__pagination" layout="total, sizes, prev, pager, next" :page-sizes="[10, 20, 50, 100]" :total="orderPager.total" @current-change="loadOrders" @size-change="handleOrderSizeChange" />
+          <ElPagination
+            v-model:current-page="orderPager.page"
+            v-model:page-size="orderPager.limit"
+            class="saas-platform-page__pagination"
+            layout="total, sizes, prev, pager, next"
+            :page-sizes="[10, 20, 50, 100]"
+            :total="orderPager.total"
+            @current-change="loadOrders"
+            @size-change="handleOrderSizeChange"
+          />
         </ElTabPane>
       </ElTabs>
     </ElCard>
@@ -65,7 +144,9 @@
         <ElDescriptionsItem label="套餐">{{ currentOrderDetail.plan_code }} / {{ currentOrderDetail.plan_id }}</ElDescriptionsItem>
         <ElDescriptionsItem label="周期">{{ currentOrderDetail.billing_cycle }}</ElDescriptionsItem>
         <ElDescriptionsItem label="金额">{{ formatMoney(currentOrderDetail.amount_cents) }}</ElDescriptionsItem>
-        <ElDescriptionsItem label="状态"><ElTag :type="getStatusTagType(currentOrderDetail.status)" effect="light">{{ currentOrderDetail.status }}</ElTag></ElDescriptionsItem>
+        <ElDescriptionsItem label="状态">
+          <ElTag :type="getStatusTagType(currentOrderDetail.status)" effect="light">{{ currentOrderDetail.status }}</ElTag>
+        </ElDescriptionsItem>
         <ElDescriptionsItem label="支付方式">{{ currentOrderDetail.payment_method || '-' }}</ElDescriptionsItem>
         <ElDescriptionsItem label="支付宝交易号">{{ currentOrderDetail.alipay_trade_no || '-' }}</ElDescriptionsItem>
         <ElDescriptionsItem label="支付时间">{{ formatDateTime(currentOrderDetail.paid_at) }}</ElDescriptionsItem>
@@ -81,7 +162,9 @@
         <ElDescriptionsItem label="租户 ID">{{ currentSubscriptionDetail.tenant_id }}</ElDescriptionsItem>
         <ElDescriptionsItem label="套餐 ID">{{ currentSubscriptionDetail.plan_id }}</ElDescriptionsItem>
         <ElDescriptionsItem label="周期">{{ currentSubscriptionDetail.billing_cycle }}</ElDescriptionsItem>
-        <ElDescriptionsItem label="状态"><ElTag :type="getStatusTagType(currentSubscriptionDetail.status)" effect="light">{{ currentSubscriptionDetail.status }}</ElTag></ElDescriptionsItem>
+        <ElDescriptionsItem label="状态">
+          <ElTag :type="getStatusTagType(currentSubscriptionDetail.status)" effect="light">{{ currentSubscriptionDetail.status }}</ElTag>
+        </ElDescriptionsItem>
         <ElDescriptionsItem label="开始时间">{{ formatDateTime(currentSubscriptionDetail.start_time) }}</ElDescriptionsItem>
         <ElDescriptionsItem label="结束时间">{{ formatDateTime(currentSubscriptionDetail.end_time) }}</ElDescriptionsItem>
         <ElDescriptionsItem label="到期取消">{{ currentSubscriptionDetail.cancel_at_period_end ? '是' : '否' }}</ElDescriptionsItem>
@@ -98,9 +181,11 @@
     fetchPlatformOrder,
     fetchPlatformOrders,
     fetchPlatformSubscription,
+    fetchPlatformSubscriptionLifecycleOverview,
     fetchPlatformSubscriptions,
     type SaasPlatformOrderRecord,
-    type SaasPlatformSubscriptionRecord
+    type SaasPlatformSubscriptionRecord,
+    type SaasSubscriptionLifecycleOverview
   } from '@/api/saas'
 
   defineOptions({ name: 'SaasPlatformSubscriptionPage' })
@@ -108,9 +193,16 @@
   const activeTab = ref<'subscriptions' | 'orders'>('subscriptions')
   const loading = ref(false)
   const detailLoading = ref(false)
+  const lifecycleFilter = ref<'all' | 'active' | 'expiring' | 'expired'>('all')
   const filters = reactive({ tenant_id: '', status: '', order_no: '', plan_code: '', plan_id: '' })
   const subscriptions = ref<SaasPlatformSubscriptionRecord[]>([])
   const orders = ref<SaasPlatformOrderRecord[]>([])
+  const lifecycleOverview = ref<SaasSubscriptionLifecycleOverview>({
+    active_count: 0,
+    expiring_7_days_count: 0,
+    expiring_30_days_count: 0,
+    expired_count: 0
+  })
   const currentOrderDetail = ref<SaasPlatformOrderRecord | null>(null)
   const currentSubscriptionDetail = ref<SaasPlatformSubscriptionRecord | null>(null)
   const orderDetailVisible = ref(false)
@@ -118,16 +210,36 @@
   const subscriptionPager = reactive({ page: 1, limit: 20, total: 0 })
   const orderPager = reactive({ page: 1, limit: 20, total: 0 })
   const statusOptions = ['active', 'trialing', 'expired', 'frozen', 'pending', 'paid', 'closed']
-  const dateFormatter = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+  const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  })
 
   function buildBaseQuery(page: number, limit: number) {
     return { page, limit, status: filters.status || undefined, tenant_id: filters.tenant_id || undefined }
   }
 
+  function buildLifecycleQuery() {
+    if (lifecycleFilter.value === 'active') return { lifecycle_status: 'active' as const }
+    if (lifecycleFilter.value === 'expiring') return { lifecycle_status: 'expiring' as const, expires_within_days: 7 }
+    if (lifecycleFilter.value === 'expired') return { lifecycle_status: 'expired' as const, expired_since_days: 365 }
+    return {}
+  }
+
   async function loadSubscriptions() {
     loading.value = true
     try {
-      const result = await fetchPlatformSubscriptions({ ...buildBaseQuery(subscriptionPager.page, subscriptionPager.limit), plan_id: filters.plan_id || undefined, plan_code: filters.plan_code || undefined })
+      const result = await fetchPlatformSubscriptions({
+        ...buildBaseQuery(subscriptionPager.page, subscriptionPager.limit),
+        ...buildLifecycleQuery(),
+        plan_id: filters.plan_id || undefined,
+        plan_code: filters.plan_code || undefined
+      })
       subscriptions.value = result.list || []
       subscriptionPager.total = Number(result.total) || 0
     } finally {
@@ -138,7 +250,11 @@
   async function loadOrders() {
     loading.value = true
     try {
-      const result = await fetchPlatformOrders({ ...buildBaseQuery(orderPager.page, orderPager.limit), order_no: filters.order_no || undefined, plan_code: filters.plan_code || undefined })
+      const result = await fetchPlatformOrders({
+        ...buildBaseQuery(orderPager.page, orderPager.limit),
+        order_no: filters.order_no || undefined,
+        plan_code: filters.plan_code || undefined
+      })
       orders.value = result.list || []
       orderPager.total = Number(result.total) || 0
     } finally {
@@ -146,14 +262,19 @@
     }
   }
 
+  async function loadLifecycleOverview() {
+    lifecycleOverview.value = await fetchPlatformSubscriptionLifecycleOverview()
+  }
+
   function refreshCurrentTab() {
+    void loadLifecycleOverview()
     if (activeTab.value === 'orders') {
       orderPager.page = 1
-      loadOrders()
+      void loadOrders()
       return
     }
     subscriptionPager.page = 1
-    loadSubscriptions()
+    void loadSubscriptions()
   }
 
   function resetFilters() {
@@ -167,12 +288,12 @@
 
   function handleSubscriptionSizeChange() {
     subscriptionPager.page = 1
-    loadSubscriptions()
+    void loadSubscriptions()
   }
 
   function handleOrderSizeChange() {
     orderPager.page = 1
-    loadOrders()
+    void loadOrders()
   }
 
   async function openOrderDetail(row: SaasPlatformOrderRecord) {
@@ -205,6 +326,27 @@
     return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format((Number(amountCents) || 0) / 100)
   }
 
+  function formatRemainingDays(value: number | null | undefined) {
+    if (value === null || value === undefined) return '-'
+    if (value < 0) return `已过期 ${Math.abs(value)} 天`
+    if (value === 0) return '今天到期'
+    return `${value} 天`
+  }
+
+  function getLifecycleText(row: SaasPlatformSubscriptionRecord) {
+    if (row.is_expired_by_time || row.status === 'expired') return '已过期'
+    if (row.is_expiring_soon) return '即将到期'
+    if (row.status === 'active') return '正常'
+    return row.status || '-'
+  }
+
+  function getLifecycleTagType(row: SaasPlatformSubscriptionRecord) {
+    if (row.is_expired_by_time || row.status === 'expired') return 'danger'
+    if (row.is_expiring_soon) return 'warning'
+    if (row.status === 'active') return 'success'
+    return 'info'
+  }
+
   function getStatusTagType(status: string) {
     const normalized = String(status || '').toLowerCase()
     if (['active', 'paid'].includes(normalized)) return 'success'
@@ -213,7 +355,10 @@
     return 'info'
   }
 
-  onMounted(() => loadSubscriptions())
+  onMounted(() => {
+    void loadLifecycleOverview()
+    void loadSubscriptions()
+  })
 </script>
 
 <style scoped>
@@ -242,10 +387,41 @@
     line-height: 1.5;
   }
 
+  .saas-platform-page__lifecycle-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .saas-platform-page__summary-item {
+    display: grid;
+    gap: 4px;
+    border: 1px solid var(--el-border-color-light);
+    border-radius: 8px;
+    padding: 14px 16px;
+    background: var(--el-bg-color);
+  }
+
+  .saas-platform-page__summary-item span {
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .saas-platform-page__summary-item strong {
+    font-size: 22px;
+    line-height: 1.2;
+  }
+
   .saas-platform-page__filters {
     display: flex;
     flex-wrap: wrap;
     gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .saas-platform-page__lifecycle-filter {
     margin-bottom: 16px;
   }
 
