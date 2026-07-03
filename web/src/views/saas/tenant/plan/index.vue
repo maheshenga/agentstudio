@@ -21,6 +21,10 @@
         <ElDescriptions :column="1" border>
           <ElDescriptionsItem label="当前套餐">{{ currentPlanText }}</ElDescriptionsItem>
           <ElDescriptionsItem label="试用结束时间">{{ trialEndTimeText }}</ElDescriptionsItem>
+          <ElDescriptionsItem label="订阅结束时间">{{ subscriptionEndTimeText }}</ElDescriptionsItem>
+          <ElDescriptionsItem label="剩余时间">
+            <ElTag :type="renewalState.type" effect="light">{{ renewalState.text }}</ElTag>
+          </ElDescriptionsItem>
           <ElDescriptionsItem label="订阅状态">
             <ElTag :type="subscriptionTagType" effect="light">{{ subscriptionStatusText }}</ElTag>
           </ElDescriptionsItem>
@@ -138,6 +142,15 @@
   const currentPlanCode = computed(() => formatText(pickValue(subscriptionInfo.value, ['current_plan', 'currentPlan'])))
   const currentPlanText = computed(() => formatText(pickValue(subscriptionInfo.value, ['plan_name', 'planName', 'current_plan', 'currentPlan'])))
   const trialEndTimeText = computed(() => formatDateTime(pickValue(subscriptionInfo.value, ['trial_end_time', 'trialEndTime', 'trial_end_at', 'trialEndAt'])))
+  const subscriptionEndTimeText = computed(() => formatDateTime(pickValue(subscriptionInfo.value, ['end_time', 'endTime'])))
+  const daysUntilExpiry = computed(() => {
+    const value = pickValue(subscriptionInfo.value, ['days_until_expiry', 'daysUntilExpiry'])
+    if (value === undefined) return null
+    const days = Number(value)
+    return Number.isFinite(days) ? days : null
+  })
+  const isExpiringSoon = computed(() => Boolean(pickValue(subscriptionInfo.value, ['is_expiring_soon', 'isExpiringSoon'])))
+  const isExpiredByTime = computed(() => Boolean(pickValue(subscriptionInfo.value, ['is_expired_by_time', 'isExpiredByTime'])))
   const subscriptionStatus = computed(() => {
     const rawStatus = pickValue(subscriptionInfo.value, ['subscription_status', 'subscriptionStatus', 'status'])
     if (rawStatus === undefined) return { text: '-', type: 'info' as const }
@@ -160,6 +173,16 @@
   })
   const subscriptionStatusText = computed(() => subscriptionStatus.value.text)
   const subscriptionTagType = computed(() => subscriptionStatus.value.type)
+  const renewalState = computed(() => {
+    const rawStatus = pickValue(subscriptionInfo.value, ['subscription_status', 'subscriptionStatus', 'status'])
+    if (isExpiredByTime.value || String(rawStatus).toLowerCase() === 'expired') {
+      return { type: 'danger' as const, text: '订阅已过期，请续费或升级套餐' }
+    }
+    if (isExpiringSoon.value) {
+      return { type: 'warning' as const, text: `订阅即将到期，剩余时间：${formatRemainingDays(daysUntilExpiry.value)}` }
+    }
+    return { type: 'success' as const, text: `订阅正常，剩余时间：${formatRemainingDays(daysUntilExpiry.value)}` }
+  })
   const alipayMissingKeysText = computed(() => {
     const missingKeys = alipayConfigStatus.value?.missing_keys || []
     return missingKeys.length ? `缺少：${missingKeys.join('、')}` : ''
@@ -190,6 +213,13 @@
     return Number.isNaN(asDate.getTime()) ? String(value) : dateFormatter.format(asDate)
   }
 
+  function formatRemainingDays(value: number | null) {
+    if (value === null) return '-'
+    if (value < 0) return `已过期 ${Math.abs(value)} 天`
+    if (value === 0) return '今天到期'
+    return `${value} 天`
+  }
+
   function formatMoney(amountCents: number) {
     return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format((Number(amountCents) || 0) / 100)
   }
@@ -210,11 +240,17 @@
     return `${labels[item.quota_type] || item.quota_type}: ${amount}`
   }
 
+  function isCurrentPlanRenewable(plan: SaasPlanOption) {
+    return plan.code === currentPlanCode.value && plan.code !== 'free' && getPlanAmount(plan) > 0 && (isExpiringSoon.value || isExpiredByTime.value)
+  }
+
   function isPlanOrderDisabled(plan: SaasPlanOption) {
+    if (isCurrentPlanRenewable(plan)) return false
     return plan.code === currentPlanCode.value || plan.code === 'free' || getPlanAmount(plan) <= 0
   }
 
   function getPlanButtonText(plan: SaasPlanOption) {
+    if (isCurrentPlanRenewable(plan)) return '续费当前套餐'
     if (plan.code === currentPlanCode.value) return '当前套餐'
     if (plan.code === 'free') return '默认套餐'
     if (getPlanAmount(plan) <= 0) return '不可购买'
