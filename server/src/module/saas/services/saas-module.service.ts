@@ -96,7 +96,7 @@ export class SaasModuleService {
 
   async updatePlanModules(planCode: string, moduleCodes: string[] = []) {
     const plan = await this.planRepo.findOne({
-      where: { code: planCode, status: 1, deleteTime: IsNull() },
+      where: { code: planCode, deleteTime: IsNull() },
     });
     if (!plan) {
       throw new NotFoundException(`Plan ${planCode} not found`);

@@ -89,6 +89,20 @@ describe('SaasModuleService', () => {
     ]);
   });
 
+  it('updates modules for an inactive non-deleted plan', async () => {
+    planRepo.findOne.mockResolvedValue({ id: 8, code: 'legacy', status: 0 });
+    moduleRepo.find.mockResolvedValue([{ id: 1, code: 'crm', name: 'CRM', status: 1 }]);
+
+    await expect(service.updatePlanModules('legacy', ['crm'])).resolves.toEqual({
+      code: 'legacy',
+      module_codes: ['crm'],
+    });
+
+    expect(planRepo.findOne).toHaveBeenCalledWith({
+      where: expect.not.objectContaining({ status: 1 }),
+    });
+  });
+
   it('lists tenant modules from the active subscription plan', async () => {
     subscriptionRepo.findOne.mockResolvedValue({ id: 10, tenantId: 12, planId: 8, status: 'active' });
     planFeatureRepo.find.mockResolvedValue([
