@@ -46,6 +46,13 @@ export class MainController {
   }
 
   @Public()
+  @Get('core/login-captcha')
+  @ApiOperation({ summary: '登录验证码开关' })
+  loginCaptcha() {
+    return this.mainService.isLoginCaptchaEnabled();
+  }
+
+  @Public()
   @Post('core/login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '登录' })

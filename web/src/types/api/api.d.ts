@@ -82,12 +82,16 @@ declare namespace Api {
       image: string
     }
 
+    interface LoginCaptchaStatus {
+      enabled: boolean
+    }
+
     /** 登录参数 */
     interface LoginParams {
       username: string
       password: string
-      code: string
-      uuid: string
+      code?: string
+      uuid?: string
       tenant_id?: number
     }
 

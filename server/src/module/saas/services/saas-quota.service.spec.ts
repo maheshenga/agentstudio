@@ -1,0 +1,229 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
+
+import { SaasPlanQuotaEntity } from '../entities/saas-plan-quota.entity';
+import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
+import { SaasQuotaService } from './saas-quota.service';
+
+describe('SaasQuotaService', () => {
+  let service: SaasQuotaService;
+
+  const planQuotaRepo = {
+    find: jest.fn(),
+  };
+
+  const tenantResourceRepo = {
+    upsert: jest.fn(),
+    find: jest.fn(),
+    findOne: jest.fn(),
+    increment: jest.fn(),
+  };
+
+  const txPlanQuotaRepo = {
+    find: jest.fn(),
+  };
+
+  const txTenantResourceRepo = {
+    upsert: jest.fn(),
+  };
+
+  const txManager = {
+    getRepository: jest.fn(),
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+
+    txManager.getRepository.mockImplementation((entity) => {
+      if (entity === SaasPlanQuotaEntity) {
+        return txPlanQuotaRepo;
+      }
+      if (entity === SaasTenantResourceEntity) {
+        return txTenantResourceRepo;
+      }
+      return undefined;
+    });
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        SaasQuotaService,
+        {
+          provide: getRepositoryToken(SaasPlanQuotaEntity),
+          useValue: planQuotaRepo,
+        },
+        {
+          provide: getRepositoryToken(SaasTenantResourceEntity),
+          useValue: tenantResourceRepo,
+        },
+      ],
+    }).compile();
+
+    service = module.get(SaasQuotaService);
+  });
+
+  it('initializes tenant quota rows for every supported plan quota', async () => {
+    planQuotaRepo.find.mockResolvedValue([
+      { quotaType: 'users', totalQuota: 3, status: 1 },
+      { quotaType: 'storage_mb', totalQuota: 1024, status: 1 },
+      { quotaType: 'ai_calls', totalQuota: 50, status: 1 },
+      { quotaType: 'rag_documents', totalQuota: 20, status: 1 },
+      { quotaType: 'tokens', totalQuota: 100000, status: 1 },
+    ]);
+    tenantResourceRepo.upsert.mockResolvedValue(undefined);
+
+    await service.initializeTenantQuota(42, 7);
+
+    expect(planQuotaRepo.find).toHaveBeenCalledWith({
+      where: {
+        planId: 7,
+        status: 1,
+      },
+      order: {
+        id: 'ASC',
+      },
+    });
+    expect(tenantResourceRepo.upsert).toHaveBeenCalledWith(
+      [
+        { tenantId: 42, resourceType: 'users', totalQuota: 3, usedQuota: 0, status: 1 },
+        { tenantId: 42, resourceType: 'storage_mb', totalQuota: 1024, usedQuota: 0, status: 1 },
+        { tenantId: 42, resourceType: 'ai_calls', totalQuota: 50, usedQuota: 0, status: 1 },
+        { tenantId: 42, resourceType: 'rag_documents', totalQuota: 20, usedQuota: 0, status: 1 },
+        { tenantId: 42, resourceType: 'tokens', totalQuota: 100000, usedQuota: 0, status: 1 },
+      ],
+      ['tenantId', 'resourceType'],
+    );
+  });
+
+  it('uses the transaction manager repositories when one is provided', async () => {
+    txPlanQuotaRepo.find.mockResolvedValue([{ quotaType: 'users', totalQuota: 5, status: 1 }]);
+    txTenantResourceRepo.upsert.mockResolvedValue(undefined);
+
+    await service.initializeTenantQuota(88, 12, txManager as any);
+
+    expect(txManager.getRepository).toHaveBeenCalledWith(SaasPlanQuotaEntity);
+    expect(txManager.getRepository).toHaveBeenCalledWith(SaasTenantResourceEntity);
+    expect(txPlanQuotaRepo.find).toHaveBeenCalledWith({
+      where: {
+        planId: 12,
+        status: 1,
+      },
+      order: {
+        id: 'ASC',
+      },
+    });
+    expect(txTenantResourceRepo.upsert).toHaveBeenCalledWith(
+      [{ tenantId: 88, resourceType: 'users', totalQuota: 5, usedQuota: 0, status: 1 }],
+      ['tenantId', 'resourceType'],
+    );
+    expect(planQuotaRepo.find).not.toHaveBeenCalled();
+    expect(tenantResourceRepo.upsert).not.toHaveBeenCalled();
+  });
+
+  it('returns tenant usage summary with non-negative remaining quota', async () => {
+    tenantResourceRepo.find.mockResolvedValue([
+      { resourceType: 'users', totalQuota: 3, usedQuota: 1 },
+      { resourceType: 'tokens', totalQuota: 100, usedQuota: 140 },
+    ]);
+
+    await expect(service.getTenantUsageSummary(42)).resolves.toEqual([
+      { resource_type: 'users', quota: 3, used: 1, remaining: 2 },
+      { resource_type: 'tokens', quota: 100, used: 140, remaining: 0 },
+    ]);
+
+    expect(tenantResourceRepo.find).toHaveBeenCalledWith({
+      where: {
+        tenantId: 42,
+        status: 1,
+      },
+      order: {
+        id: 'ASC',
+      },
+    });
+  });
+
+  it('allows quota checks when remaining quota is enough', async () => {
+    tenantResourceRepo.findOne.mockResolvedValue({
+      tenantId: 42,
+      resourceType: 'tokens',
+      totalQuota: 100,
+      usedQuota: 20,
+      status: 1,
+    });
+
+    await expect(service.assertTenantQuotaAvailable(42, 'tokens', 30)).resolves.toBeUndefined();
+
+    expect(tenantResourceRepo.findOne).toHaveBeenCalledWith({
+      where: { tenantId: 42, resourceType: 'tokens', status: 1 },
+    });
+  });
+
+  it('rejects quota checks when remaining quota is exhausted', async () => {
+    tenantResourceRepo.findOne.mockResolvedValue({
+      tenantId: 42,
+      resourceType: 'ai_calls',
+      totalQuota: 3,
+      usedQuota: 3,
+      status: 1,
+    });
+
+    await expect(
+      service.assertTenantQuotaAvailable(42, 'ai_calls', 1, 'AI 调用次数额度不足'),
+    ).rejects.toThrow('AI 调用次数额度不足');
+  });
+
+  it('treats non-positive total quota as unlimited', async () => {
+    tenantResourceRepo.findOne.mockResolvedValue({
+      tenantId: 42,
+      resourceType: 'tokens',
+      totalQuota: 0,
+      usedQuota: 999999,
+      status: 1,
+    });
+
+    await expect(service.assertTenantQuotaAvailable(42, 'tokens', 500)).resolves.toBeUndefined();
+  });
+
+  it('increments tenant quota usage when amount is positive', async () => {
+    tenantResourceRepo.increment.mockResolvedValue({ affected: 1 });
+
+    await service.consumeTenantQuota(42, 'tokens', 123);
+
+    expect(tenantResourceRepo.increment).toHaveBeenCalledWith(
+      { tenantId: 42, resourceType: 'tokens', status: 1 },
+      'usedQuota',
+      123,
+    );
+  });
+
+  it('checks and consumes AI call and token usage', async () => {
+    tenantResourceRepo.findOne
+      .mockResolvedValueOnce({
+        tenantId: 42,
+        resourceType: 'ai_calls',
+        totalQuota: 10,
+        usedQuota: 2,
+        status: 1,
+      })
+      .mockResolvedValueOnce({
+        tenantId: 42,
+        resourceType: 'tokens',
+        totalQuota: 1000,
+        usedQuota: 200,
+        status: 1,
+      });
+    tenantResourceRepo.increment.mockResolvedValue({ affected: 1 });
+
+    await service.consumeAiUsage(42, { totalTokens: 321 });
+
+    expect(tenantResourceRepo.increment).toHaveBeenCalledWith(
+      { tenantId: 42, resourceType: 'ai_calls', status: 1 },
+      'usedQuota',
+      1,
+    );
+    expect(tenantResourceRepo.increment).toHaveBeenCalledWith(
+      { tenantId: 42, resourceType: 'tokens', status: 1 },
+      'usedQuota',
+      321,
+    );
+  });
+});

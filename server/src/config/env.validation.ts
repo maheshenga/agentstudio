@@ -21,6 +21,7 @@ export const envValidationSchema = Joi.object({
 
   JWT_SECRET: Joi.string().min(32).required(),
   JWT_EXPIRES_IN: Joi.string().default('2h'),
+  LOGIN_CAPTCHA_ENABLED: Joi.boolean().truthy('true').falsy('false').default(true),
 
   REDIS_HOST: Joi.string().required(),
   REDIS_PORT: Joi.number().port().default(6379),
@@ -34,6 +35,14 @@ export const envValidationSchema = Joi.object({
     otherwise: Joi.string().allow('').default(''),
   }),
   CORS_CREDENTIALS: Joi.boolean().truthy('true').falsy('false').default(false),
+
+  ALIPAY_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
+  ALIPAY_APP_ID: Joi.string().allow('').optional(),
+  ALIPAY_PRIVATE_KEY: Joi.string().allow('').optional(),
+  ALIPAY_PUBLIC_KEY: Joi.string().allow('').optional(),
+  ALIPAY_NOTIFY_URL: Joi.string().allow('').optional(),
+  ALIPAY_RETURN_URL: Joi.string().allow('').optional(),
+  ALIPAY_GATEWAY_URL: Joi.string().uri().default('https://openapi-sandbox.dl.alipaydev.com/gateway.do'),
 
   SWAGGER_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
   SWAGGER_USERNAME: Joi.string().allow('').optional(),

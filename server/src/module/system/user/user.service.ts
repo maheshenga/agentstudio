@@ -516,12 +516,14 @@ export class UserService {
     const token = this.createToken({ uuid: uuid, userId: userData.id });
     const refreshToken = await this.createRefreshToken(userData.id);
     const permissions = await this.getUserPermissions(userData.id);
-    const deptData = await this.sysDeptEntityRep.findOne({
-      where: {
-        id: userData.deptId,
-      },
-      select: { name: true },
-    });
+    const deptData = userData.deptId
+      ? await this.sysDeptEntityRep.findOne({
+          where: {
+            id: userData.deptId,
+          },
+          select: { name: true },
+        })
+      : null;
 
     /**
      * 设置公司名称

@@ -21,6 +21,12 @@ export function fetchCaptcha() {
   })
 }
 
+export function fetchLoginCaptchaStatus() {
+  return request.get<Api.Auth.LoginCaptchaStatus>({
+    url: '/api/core/login-captcha'
+  })
+}
+
 /**
  * 登录
  * @param params 登录参数

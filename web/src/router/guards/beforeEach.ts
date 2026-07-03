@@ -215,6 +215,10 @@ function handleLoginStatus(
 function isStaticRoute(path: string): boolean {
   const checkRoute = (routes: any[], targetPath: string): boolean => {
     return routes.some((route) => {
+      if (String(route.path || '').includes(':pathMatch')) {
+        return false
+      }
+
       // 处理动态路由参数匹配
       const routePath = route.path
       const pattern = routePath.replace(/:[^/]+/g, '[^/]+').replace(/\*/g, '.*')
