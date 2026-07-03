@@ -54,13 +54,19 @@ export class SeedSaasModules1760000000017 implements MigrationInterface {
       FROM \`sa_system_role_menu\` \`role_menu\`
       INNER JOIN \`sa_system_menu\` \`menu\`
         ON \`menu\`.\`id\` = \`role_menu\`.\`menu_id\`
-      WHERE \`menu\`.\`code\` = 'SaasModule'
-         OR \`menu\`.\`slug\` IN (
-          'saas:module:list',
-          'saas:module:save',
-          'saas:module:update',
-          'saas:module:status',
-          'saas:plan:module:update'
+      WHERE (
+          \`menu\`.\`code\` = 'SaasModule'
+          AND \`menu\`.\`remark\` = 'Seeded SaaS module menu'
+        )
+        OR (
+          \`menu\`.\`slug\` IN (
+            'saas:module:list',
+            'saas:module:save',
+            'saas:module:update',
+            'saas:module:status',
+            'saas:plan:module:update'
+          )
+          AND \`menu\`.\`remark\` = 'Seeded SaaS module permission'
         )
     `);
     await queryRunner.query(`
@@ -72,16 +78,17 @@ export class SeedSaasModules1760000000017 implements MigrationInterface {
         'saas:module:status',
         'saas:plan:module:update'
       )
-      AND \`delete_time\` IS NULL
+      AND \`remark\` = 'Seeded SaaS module permission'
     `);
     await queryRunner.query(`
       DELETE FROM \`sa_system_menu\`
       WHERE \`code\` = 'SaasModule'
-        AND \`delete_time\` IS NULL
+        AND \`remark\` = 'Seeded SaaS module menu'
     `);
     await queryRunner.query(`
       DELETE FROM \`saas_module\`
       WHERE \`code\` IN ('ai_chat', 'rag', 'member_management', 'resource_pack', 'advanced_report')
+        AND \`remark\` = 'Seeded SaaS module'
     `);
   }
 
@@ -99,16 +106,10 @@ export class SeedSaasModules1760000000017 implements MigrationInterface {
           \`sort\`,
           \`remark\`
         )
-        SELECT ?, ?, '', ?, ?, ?, 1, ?, 'Seeded SaaS module'
-        FROM DUAL
-        WHERE NOT EXISTS (
-          SELECT 1
-          FROM \`saas_module\`
-          WHERE \`code\` = ?
-            AND \`delete_time\` IS NULL
-        )
+        VALUES (?, ?, '', ?, ?, ?, 1, ?, 'Seeded SaaS module')
+        ON DUPLICATE KEY UPDATE \`delete_time\` = NULL
       `,
-      [module[0], module[1], module[2], module[3], module[4], module[5], module[0]],
+      [module[0], module[1], module[2], module[3], module[4], module[5]],
     );
   }
 

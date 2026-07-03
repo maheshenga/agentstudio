@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  ArrayUnique,
   IsArray,
   IsIn,
   IsInt,
@@ -8,13 +9,13 @@ import {
   Matches,
   MaxLength,
   Min,
-  ValidateIf,
 } from 'class-validator';
 
 export class SaveSaasModuleDto {
   @ApiProperty({ required: false })
-  @ValidateIf((dto) => dto.code !== undefined)
+  @IsOptional()
   @IsString()
+  @MaxLength(50)
   @Matches(/^[a-z][a-z0-9_:-]{1,49}$/)
   code?: string;
 
@@ -74,6 +75,9 @@ export class UpdateSaasModuleStatusDto {
 export class UpdatePlanModulesDto {
   @ApiProperty({ required: true, type: [String] })
   @IsArray()
+  @ArrayUnique()
   @IsString({ each: true })
+  @MaxLength(50, { each: true })
+  @Matches(/^[a-z][a-z0-9_:-]{1,49}$/, { each: true })
   module_codes: string[];
 }
