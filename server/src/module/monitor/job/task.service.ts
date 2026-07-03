@@ -35,7 +35,7 @@ export class TaskService implements OnModuleInit {
         let serviceInstance = this.serviceInstances.get(classOrigin.name);
         if (!serviceInstance) {
           // 动态获取服务实例
-          serviceInstance = await this.moduleRef.get(classOrigin);
+          serviceInstance = await this.moduleRef.get(classOrigin, { strict: false });
           this.serviceInstances.set(classOrigin.name, serviceInstance);
         }
 
