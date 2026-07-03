@@ -17,6 +17,7 @@ import { SaasQuotaService } from './services/saas-quota.service';
 import { SaasResourcePackOrderService } from './services/saas-resource-pack-order.service';
 import type { SaasResourcePackOrderListQuery } from './services/saas-resource-pack-order.service';
 import { SaasResourcePackService } from './services/saas-resource-pack.service';
+import { SaasSubscriptionLifecycleService } from './services/saas-subscription-lifecycle.service';
 
 @ApiTags('SaaS Tenant')
 @ApiBearerAuth('Authorization')
@@ -34,6 +35,7 @@ export class SaasTenantController {
     private readonly saasPlanService: SaasPlanService,
     private readonly saasResourcePackService: SaasResourcePackService,
     private readonly saasResourcePackOrderService: SaasResourcePackOrderService,
+    private readonly lifecycleService: SaasSubscriptionLifecycleService,
   ) {}
 
   @Get('plans')
@@ -157,6 +159,7 @@ export class SaasTenantController {
       trial_status: trial?.status ?? null,
       trial_end_time: trial?.endTime ?? null,
       is_trial_active: Boolean(trial && trial.status === 'trialing' && (!trial.endTime || trial.endTime.getTime() >= Date.now())),
+      ...this.lifecycleService.decorateSubscription(subscription),
     });
   }
 

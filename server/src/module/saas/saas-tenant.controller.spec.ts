@@ -11,6 +11,7 @@ import { SaasPlanService } from './services/saas-plan.service';
 import { SaasQuotaService } from './services/saas-quota.service';
 import { SaasResourcePackOrderService } from './services/saas-resource-pack-order.service';
 import { SaasResourcePackService } from './services/saas-resource-pack.service';
+import { SaasSubscriptionLifecycleService } from './services/saas-subscription-lifecycle.service';
 
 describe('SaasTenantController', () => {
   let controller: SaasTenantController;
@@ -53,6 +54,13 @@ describe('SaasTenantController', () => {
       status: order.status,
     })),
   };
+  const lifecycleService = {
+    decorateSubscription: jest.fn(() => ({
+      days_until_expiry: 5,
+      is_expiring_soon: true,
+      is_expired_by_time: false,
+    })),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -91,6 +99,10 @@ describe('SaasTenantController', () => {
         {
           provide: SaasResourcePackOrderService,
           useValue: saasResourcePackOrderService,
+        },
+        {
+          provide: SaasSubscriptionLifecycleService,
+          useValue: lifecycleService,
         },
       ],
     }).compile();
@@ -132,6 +144,7 @@ describe('SaasTenantController', () => {
 
     const result = await controller.subscription();
 
+    expect(lifecycleService.decorateSubscription).toHaveBeenCalledWith(expect.objectContaining({ id: 9 }));
     expect(result.data).toEqual({
       tenant_id: 88,
       plan_id: 3,
@@ -144,6 +157,9 @@ describe('SaasTenantController', () => {
       trial_status: 'trialing',
       trial_end_time: trialEnd,
       is_trial_active: true,
+      days_until_expiry: 5,
+      is_expiring_soon: true,
+      is_expired_by_time: false,
     });
   });
 
