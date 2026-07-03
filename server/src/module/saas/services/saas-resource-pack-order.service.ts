@@ -110,7 +110,7 @@ export class SaasResourcePackOrderService {
   async listPlatformOrders(query: SaasResourcePackOrderListQuery = {}) {
     const { page, limit, skip } = this.resolvePagination(query);
     const where: FindOptionsWhere<SaasResourcePackOrderEntity> = {};
-    const tenantId = this.resolvePositiveNumber(query.tenant_id);
+    const tenantId = this.resolvePositiveNumber(query.tenant_id, 'tenant_id', true);
     if (tenantId !== undefined) {
       where.tenantId = tenantId;
     }
@@ -173,7 +173,10 @@ export class SaasResourcePackOrderService {
     return this.dataSource.transaction(async (manager) => {
       const orderRepo = manager.getRepository(SaasResourcePackOrderEntity);
       const tenantResourceRepo = manager.getRepository(SaasTenantResourceEntity);
-      const order = await orderRepo.findOne({ where: options.where });
+      const order = await orderRepo.findOne({
+        where: options.where,
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!order) {
         throw new NotFoundException('Resource pack order not found');
       }
@@ -215,17 +218,39 @@ export class SaasResourcePackOrderService {
   }
 
   private resolvePagination(query: SaasResourcePackOrderListQuery) {
-    const page = Math.max(1, Number(query.page || 1));
-    const limit = Math.min(100, Math.max(1, Number(query.limit || 20)));
+    const page = this.resolvePaginationNumber(query.page, 1);
+    const limit = this.resolvePaginationNumber(query.limit, 20, 100);
     return { page, limit, skip: (page - 1) * limit };
   }
 
-  private resolvePositiveNumber(value: string | number | undefined): number | undefined {
+  private resolvePositiveNumber(
+    value: string | number | undefined,
+    fieldName: string,
+    rejectInvalid: boolean,
+  ): number | undefined {
     if (value === undefined || value === null || value === '') {
       return undefined;
     }
     const numeric = Number(value);
-    return Number.isFinite(numeric) && numeric > 0 ? numeric : undefined;
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric;
+    }
+    if (rejectInvalid) {
+      throw new BadRequestException(`${fieldName} must be a positive number`);
+    }
+    return undefined;
+  }
+
+  private resolvePaginationNumber(value: string | number | undefined, fallback: number, max?: number): number {
+    if (value === undefined || value === null || value === '') {
+      return fallback;
+    }
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return fallback;
+    }
+    const clamped = Math.max(1, Math.floor(numeric));
+    return max ? Math.min(max, clamped) : clamped;
   }
 
   private generateOrderNo(): string {

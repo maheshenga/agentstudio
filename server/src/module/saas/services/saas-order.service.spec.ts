@@ -165,6 +165,13 @@ describe('SaasOrderService', () => {
     const order = await service.confirmDevPayment(12, 'SO20260702000000001000001');
 
     expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+    expect(txOrderRepo.findOne).toHaveBeenCalledWith({
+      where: {
+        tenantId: 12,
+        orderNo: 'SO20260702000000001000001',
+      },
+      lock: { mode: 'pessimistic_write' },
+    });
     expect(txSubscriptionRepo.update).toHaveBeenCalledWith(
       {
         tenantId: 12,
@@ -219,6 +226,7 @@ describe('SaasOrderService', () => {
       where: {
         orderNo: 'SO20260702010000001000001',
       },
+      lock: { mode: 'pessimistic_write' },
     });
     expect(txSubscriptionRepo.update).toHaveBeenCalledWith(
       {
@@ -405,6 +413,34 @@ describe('SaasOrderService', () => {
         },
       }),
     );
+  });
+
+  it('defaults invalid tenant order pagination values without producing NaN offsets', async () => {
+    orderRepo.findAndCount.mockResolvedValue([[{ orderNo: 'SO1', tenantId: 12 }], 1]);
+
+    await expect(service.listTenantOrders(12, { page: 'abc', limit: 'oops' })).resolves.toMatchObject({
+      page: 1,
+      limit: 20,
+    });
+
+    expect(orderRepo.findAndCount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 20,
+      }),
+    );
+  });
+
+  it('rejects invalid platform tenant id filters instead of broadening order queries', async () => {
+    await expect(service.listPlatformOrders({ tenant_id: 'abc' })).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(orderRepo.findAndCount).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid platform plan id filters instead of broadening order queries', async () => {
+    await expect(service.listPlatformOrders({ plan_id: 'abc' })).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(orderRepo.findAndCount).not.toHaveBeenCalled();
   });
 
   it('finds a platform order by order number', async () => {

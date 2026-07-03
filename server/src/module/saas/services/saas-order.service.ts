@@ -95,7 +95,7 @@ export class SaasOrderService {
   async listTenantOrders(tenantId: number, query: SaasOrderListQuery = {}) {
     const { page, limit, skip } = this.resolvePagination(query);
     const where: FindOptionsWhere<SaasOrderEntity> = { tenantId };
-    this.applyOrderFilters(where, query, { allowTenantId: false });
+    this.applyOrderFilters(where, query, { allowTenantId: false, rejectInvalidNumeric: true });
 
     const [list, total] = await this.saasOrderRepo.findAndCount({
       where,
@@ -110,7 +110,7 @@ export class SaasOrderService {
   async listPlatformOrders(query: SaasOrderListQuery = {}) {
     const { page, limit, skip } = this.resolvePagination(query);
     const where: FindOptionsWhere<SaasOrderEntity> = {};
-    this.applyOrderFilters(where, query, { allowTenantId: true });
+    this.applyOrderFilters(where, query, { allowTenantId: true, rejectInvalidNumeric: true });
 
     const [list, total] = await this.saasOrderRepo.findAndCount({
       where,
@@ -156,6 +156,7 @@ export class SaasOrderService {
       const subscriptionRepo = manager.getRepository(SaasSubscriptionEntity);
       const order = await orderRepo.findOne({
         where: options.where,
+        lock: { mode: 'pessimistic_write' },
       });
 
       if (!order) {
@@ -231,10 +232,10 @@ export class SaasOrderService {
   private applyOrderFilters(
     where: FindOptionsWhere<SaasOrderEntity>,
     query: SaasOrderListQuery,
-    options: { allowTenantId: boolean },
+    options: { allowTenantId: boolean; rejectInvalidNumeric: boolean },
   ) {
     if (options.allowTenantId) {
-      const tenantId = this.resolvePositiveNumber(query.tenant_id);
+      const tenantId = this.resolvePositiveNumber(query.tenant_id, 'tenant_id', options.rejectInvalidNumeric);
       if (tenantId !== undefined) {
         where.tenantId = tenantId;
       }
@@ -242,7 +243,7 @@ export class SaasOrderService {
     if (query.order_no) {
       where.orderNo = query.order_no;
     }
-    const planId = this.resolvePositiveNumber(query.plan_id);
+    const planId = this.resolvePositiveNumber(query.plan_id, 'plan_id', options.rejectInvalidNumeric);
     if (planId !== undefined) {
       where.planId = planId;
     }
@@ -258,16 +259,38 @@ export class SaasOrderService {
   }
 
   private resolvePagination(query: SaasOrderListQuery) {
-    const page = Math.max(1, Number(query.page || 1));
-    const limit = Math.min(100, Math.max(1, Number(query.limit || 20)));
+    const page = this.resolvePaginationNumber(query.page, 1);
+    const limit = this.resolvePaginationNumber(query.limit, 20, 100);
     return { page, limit, skip: (page - 1) * limit };
   }
 
-  private resolvePositiveNumber(value: string | number | undefined): number | undefined {
+  private resolvePositiveNumber(
+    value: string | number | undefined,
+    fieldName: string,
+    rejectInvalid: boolean,
+  ): number | undefined {
     if (value === undefined || value === null || value === '') {
       return undefined;
     }
     const numeric = Number(value);
-    return Number.isFinite(numeric) && numeric > 0 ? numeric : undefined;
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric;
+    }
+    if (rejectInvalid) {
+      throw new BadRequestException(`${fieldName} must be a positive number`);
+    }
+    return undefined;
+  }
+
+  private resolvePaginationNumber(value: string | number | undefined, fallback: number, max?: number): number {
+    if (value === undefined || value === null || value === '') {
+      return fallback;
+    }
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return fallback;
+    }
+    const clamped = Math.max(1, Math.floor(numeric));
+    return max ? Math.min(max, clamped) : clamped;
   }
 }

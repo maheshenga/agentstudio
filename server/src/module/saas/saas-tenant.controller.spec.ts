@@ -69,6 +69,8 @@ describe('SaasTenantController', () => {
       order_no: order.orderNo,
       resource_pack_code: order.resourcePackCode,
       status: order.status,
+      closed_at: order.closedAt ?? null,
+      close_reason: order.closeReason ?? null,
     })),
   };
   const lifecycleService = {
@@ -359,6 +361,8 @@ describe('SaasTenantController', () => {
       order_no: 'RPO20260703120000001000001',
       resource_pack_code: 'tokens_1m',
       status: 'pending',
+      closed_at: null,
+      close_reason: null,
     });
   });
 
@@ -377,6 +381,8 @@ describe('SaasTenantController', () => {
       order_no: 'RPO20260703120000001000001',
       resource_pack_code: 'tokens_1m',
       status: 'paid',
+      closed_at: null,
+      close_reason: null,
     });
   });
 
@@ -406,6 +412,7 @@ describe('SaasTenantController', () => {
       orderNo: 'RPO20260703120000001000001',
       resourcePackCode: 'tokens_1m',
       status: 'closed',
+      closedAt: new Date('2026-07-03T01:00:00.000Z'),
       closeReason: 'tenant_cancelled',
     });
 
@@ -419,6 +426,8 @@ describe('SaasTenantController', () => {
       order_no: 'RPO20260703120000001000001',
       resource_pack_code: 'tokens_1m',
       status: 'closed',
+      closed_at: new Date('2026-07-03T01:00:00.000Z'),
+      close_reason: 'tenant_cancelled',
     });
   });
 });

@@ -118,6 +118,10 @@ describe('SaasResourcePackOrderService', () => {
 
     const order = await service.confirmDevPayment(12, 'RPO20260703120000001000001');
 
+    expect(txOrderRepo.findOne).toHaveBeenCalledWith({
+      where: { tenantId: 12, orderNo: 'RPO20260703120000001000001' },
+      lock: { mode: 'pessimistic_write' },
+    });
     expect(txTenantResourceRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({
         tenantId: 12,
@@ -145,6 +149,10 @@ describe('SaasResourcePackOrderService', () => {
 
     await service.confirmAlipayPayment('RPO20260703120000001000002', '2026070322000000000001');
 
+    expect(txOrderRepo.findOne).toHaveBeenCalledWith({
+      where: { orderNo: 'RPO20260703120000001000002' },
+      lock: { mode: 'pessimistic_write' },
+    });
     expect(txTenantResourceRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({
         tenantId: 12,
@@ -283,6 +291,28 @@ describe('SaasResourcePackOrderService', () => {
         where: { orderNo: 'RPO20260703120000001000001', closeReason: 'timeout' },
       }),
     );
+  });
+
+  it('defaults invalid tenant resource pack order pagination values without producing NaN offsets', async () => {
+    orderRepo.findAndCount.mockResolvedValue([[{ orderNo: 'RPO1', tenantId: 12 }], 1]);
+
+    await expect(service.listTenantOrders(12, { page: 'abc', limit: 'oops' })).resolves.toMatchObject({
+      page: 1,
+      limit: 20,
+    });
+
+    expect(orderRepo.findAndCount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 20,
+      }),
+    );
+  });
+
+  it('rejects invalid platform tenant id filters instead of broadening resource pack order queries', async () => {
+    await expect(service.listPlatformOrders({ tenant_id: 'abc' })).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(orderRepo.findAndCount).not.toHaveBeenCalled();
   });
 
   it('finds a platform resource pack order by order number', async () => {
