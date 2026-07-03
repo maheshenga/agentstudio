@@ -96,6 +96,61 @@
           </ElButton>
         </div>
       </section>
+
+      <section class="tenant-plan-page__orders">
+        <div class="tenant-plan-page__section-header">
+          <div>
+            <h2 class="tenant-plan-page__section-title">套餐订单记录</h2>
+            <p class="tenant-plan-page__order-meta">查看历史升级、支付和关闭状态。</p>
+          </div>
+          <ElButton :loading="orderHistoryLoading" @click="loadOrderHistory">刷新</ElButton>
+        </div>
+
+        <ElTable v-loading="orderHistoryLoading" :data="orderHistory" border>
+          <ElTableColumn prop="order_no" label="订单号" min-width="230" show-overflow-tooltip />
+          <ElTableColumn prop="plan_code" label="套餐" width="140" show-overflow-tooltip />
+          <ElTableColumn label="金额" width="130">
+            <template #default="{ row }">{{ formatMoney(row.amount_cents) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="状态" width="110">
+            <template #default="{ row }">
+              <ElTag :type="getOrderStatusTagType(row.status)" effect="light">
+                {{ formatOrderStatus(row.status) }}
+              </ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="关闭原因" min-width="130">
+            <template #default="{ row }">{{ formatCloseReason(row.close_reason) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="创建时间" min-width="180">
+            <template #default="{ row }">{{ formatDateTime(row.create_time) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="关闭时间" min-width="180">
+            <template #default="{ row }">{{ formatDateTime(row.closed_at) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="操作" width="180" fixed="right">
+            <template #default="{ row }">
+              <ElButton v-if="row.status === 'pending'" type="primary" link @click="resumePlanOrderPayment(row)">
+                继续支付
+              </ElButton>
+              <ElButton v-if="row.status === 'pending'" type="danger" link @click="cancelPlanOrder(row)">
+                取消
+              </ElButton>
+            </template>
+          </ElTableColumn>
+        </ElTable>
+
+        <ElPagination
+          v-model:current-page="orderPager.page"
+          v-model:page-size="orderPager.limit"
+          class="tenant-plan-page__pagination"
+          layout="total, sizes, prev, pager, next"
+          :page-sizes="[10, 20, 50]"
+          :total="orderPager.total"
+          @current-change="loadOrderHistory"
+          @size-change="handleOrderHistorySizeChange"
+        />
+      </section>
     </template>
   </div>
 </template>
@@ -103,15 +158,18 @@
 <script setup lang="ts">
   import { ElMessage } from 'element-plus'
   import {
+    cancelTenantSaasOrder,
     createAlipayPayment,
     createTenantUpgradeOrder,
     devConfirmTenantPayment,
     fetchAlipayConfigStatus,
     fetchTenantOrder,
     fetchTenantPlans,
+    fetchTenantSaasOrders,
     fetchTenantSubscription,
     type AlipayConfigStatus,
     type SaasOrderRecord,
+    type SaasPlatformOrderRecord,
     type SaasPlanOption,
     type SaasPlanQuotaRecord,
     type TenantSubscriptionSummary
@@ -126,13 +184,20 @@
   const subscriptionInfo = ref<TenantSubscriptionSummary | null>(null)
   const alipayConfigStatus = ref<AlipayConfigStatus | null>(null)
   const plans = ref<SaasPlanOption[]>([])
-  const currentOrder = ref<SaasOrderRecord | null>(null)
+  const currentOrder = ref<SaasOrderRecord | SaasPlatformOrderRecord | null>(null)
   const billingCycle = ref<'monthly' | 'yearly'>('yearly')
   const loading = ref(false)
   const creatingPlanCode = ref('')
   const creatingAlipayPayment = ref(false)
   const confirmingPayment = ref(false)
   const pollingPayment = ref(false)
+  const orderHistory = ref<SaasPlatformOrderRecord[]>([])
+  const orderHistoryLoading = ref(false)
+  const orderPager = reactive({
+    page: 1,
+    limit: 10,
+    total: 0
+  })
   const errorMessage = ref('')
   let paymentPollingTimer: number | undefined
   let paymentPollingStartedAt = 0
@@ -267,6 +332,7 @@
       plans.value = normalizePayload<SaasPlanOption[]>(planPayload) || []
       alipayConfigStatus.value = normalizePayload<AlipayConfigStatus>(alipayConfigPayload)
       await restoreLastOrder()
+      await loadOrderHistory()
     } catch (error) {
       console.error('[SaasTenantPlanPage] load page data failed:', error)
       errorMessage.value = '加载套餐信息失败'
@@ -284,6 +350,7 @@
     try {
       currentOrder.value = await createTenantUpgradeOrder({ plan_code: plan.code, billing_cycle: billingCycle.value, payment_method: 'alipay' })
       rememberOrder(currentOrder.value)
+      await loadOrderHistory()
       ElMessage.success('升级订单已创建')
     } catch (error) {
       console.error('[SaasTenantPlanPage] create order failed:', error)
@@ -328,6 +395,46 @@
     }
   }
 
+  async function loadOrderHistory() {
+    orderHistoryLoading.value = true
+    try {
+      const result = await fetchTenantSaasOrders({
+        page: orderPager.page,
+        limit: orderPager.limit
+      })
+      orderHistory.value = result.list || []
+      orderPager.total = Number(result.total) || 0
+    } finally {
+      orderHistoryLoading.value = false
+    }
+  }
+
+  function handleOrderHistorySizeChange() {
+    orderPager.page = 1
+    loadOrderHistory()
+  }
+
+  async function resumePlanOrderPayment(order: SaasPlatformOrderRecord) {
+    currentOrder.value = order
+    await startAlipayPayment()
+  }
+
+  async function cancelPlanOrder(order: SaasPlatformOrderRecord) {
+    if (order.status !== 'pending') return
+    try {
+      await cancelTenantSaasOrder(order.order_no)
+      if (currentOrder.value?.order_no === order.order_no) {
+        stopPaymentPolling()
+        currentOrder.value = null
+        sessionStorage.removeItem(LAST_UPGRADE_ORDER_KEY)
+      }
+      ElMessage.success('订单已取消')
+      await loadOrderHistory()
+    } catch (error) {
+      console.error('[SaasTenantPlanPage] cancel order failed:', error)
+    }
+  }
+
   async function restoreLastOrder() {
     const orderNo = currentOrder.value?.order_no || sessionStorage.getItem(LAST_UPGRADE_ORDER_KEY)
     if (!orderNo) return
@@ -342,12 +449,12 @@
     }
   }
 
-  function rememberOrder(order: SaasOrderRecord | null) {
+  function rememberOrder(order: SaasOrderRecord | SaasPlatformOrderRecord | null) {
     if (!order?.order_no || order.status === 'paid') return
     sessionStorage.setItem(LAST_UPGRADE_ORDER_KEY, order.order_no)
   }
 
-  function forgetRememberedOrder(order: SaasOrderRecord | null) {
+  function forgetRememberedOrder(order: SaasOrderRecord | SaasPlatformOrderRecord | null) {
     if (order?.status === 'paid') sessionStorage.removeItem(LAST_UPGRADE_ORDER_KEY)
   }
 
@@ -383,6 +490,32 @@
     } catch (error) {
       console.error('[SaasTenantPlanPage] poll payment status failed:', error)
     }
+  }
+
+  function formatOrderStatus(status: string) {
+    const labels: Record<string, string> = {
+      pending: '待支付',
+      paid: '已支付',
+      closed: '已关闭'
+    }
+    return labels[status] || status
+  }
+
+  function getOrderStatusTagType(status: string) {
+    if (status === 'paid') return 'success'
+    if (status === 'pending') return 'warning'
+    if (status === 'closed') return 'info'
+    return 'info'
+  }
+
+  function formatCloseReason(value: unknown) {
+    const labels: Record<string, string> = {
+      timeout: '超时关闭',
+      tenant_cancelled: '租户取消'
+    }
+    if (!value) return '-'
+    const normalized = String(value)
+    return labels[normalized] || normalized
   }
 
   onMounted(() => loadPageData())
@@ -429,7 +562,8 @@
 
   .tenant-plan-page__summary,
   .tenant-plan-page__plans,
-  .tenant-plan-page__order {
+  .tenant-plan-page__order,
+  .tenant-plan-page__orders {
     border: 1px solid var(--el-border-color-light);
     border-radius: 8px;
     background: var(--el-bg-color);
@@ -437,9 +571,22 @@
   }
 
   .tenant-plan-page__plans,
-  .tenant-plan-page__plan-main {
+  .tenant-plan-page__plan-main,
+  .tenant-plan-page__orders {
     display: grid;
     gap: 16px;
+  }
+
+  .tenant-plan-page__section-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .tenant-plan-page__pagination {
+    justify-content: flex-end;
   }
 
   .tenant-plan-page__section-title {

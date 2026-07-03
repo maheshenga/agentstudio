@@ -127,16 +127,25 @@
             </ElTag>
           </template>
         </ElTableColumn>
+        <ElTableColumn label="关闭原因" min-width="130">
+          <template #default="{ row }">{{ formatCloseReason(row.close_reason) }}</template>
+        </ElTableColumn>
         <ElTableColumn label="创建时间" min-width="180">
           <template #default="{ row }">{{ formatDateTime(row.create_time) }}</template>
         </ElTableColumn>
-        <ElTableColumn label="操作" width="180" fixed="right">
+        <ElTableColumn label="关闭时间" min-width="180">
+          <template #default="{ row }">{{ formatDateTime(row.closed_at) }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <ElButton v-if="row.status === 'pending'" type="primary" link @click="resumeOrderPayment(row)">
               继续支付
             </ElButton>
             <ElButton v-if="row.status === 'pending'" type="success" link @click="confirmHistoryOrder(row)">
               模拟确认
+            </ElButton>
+            <ElButton v-if="row.status === 'pending'" type="danger" link @click="cancelOrder(row)">
+              取消
             </ElButton>
           </template>
         </ElTableColumn>
@@ -159,6 +168,7 @@
 <script setup lang="ts">
   import { ElMessage } from 'element-plus'
   import {
+    cancelTenantResourcePackOrder,
     createAlipayPayment,
     createTenantResourcePackOrder,
     devConfirmTenantPayment,
@@ -366,6 +376,21 @@
     await confirmDevPayment()
   }
 
+  async function cancelOrder(order: SaasResourcePackOrderRecord) {
+    if (order.status !== 'pending') return
+    try {
+      await cancelTenantResourcePackOrder(order.order_no)
+      if (currentOrder.value?.order_no === order.order_no) {
+        stopPaymentPolling()
+        currentOrder.value = null
+      }
+      ElMessage.success('订单已取消')
+      await loadOrderHistory()
+    } catch (error) {
+      console.error('[SaasTenantResourcePackPage] cancel order failed:', error)
+    }
+  }
+
   function formatOrderStatus(status: string) {
     const labels: Record<string, string> = {
       pending: '待支付',
@@ -373,6 +398,16 @@
       closed: '已关闭'
     }
     return labels[status] || status
+  }
+
+  function formatCloseReason(value: unknown) {
+    const labels: Record<string, string> = {
+      timeout: '超时关闭',
+      tenant_cancelled: '租户取消'
+    }
+    if (!value) return '-'
+    const normalized = String(value)
+    return labels[normalized] || normalized
   }
 
   function getOrderStatusTagType(status: string) {
