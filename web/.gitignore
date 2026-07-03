@@ -7,6 +7,8 @@ dist
 dist-ssr
 *.local
 *.zip
+logs
+*.log
 .cursorrules
 
 # Auto-generated files
