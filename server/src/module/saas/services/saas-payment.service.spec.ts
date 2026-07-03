@@ -202,6 +202,32 @@ describe('SaasPaymentService', () => {
     );
   });
 
+  it('does not mark payment requested when Alipay URL signing fails', async () => {
+    saasOrderService.findTenantOrder.mockResolvedValue({
+      orderNo: 'SO20260702000000001000005',
+      tenantId: 12,
+      status: SAAS_ORDER_PENDING,
+      planCode: 'pro',
+      amountCents: 99000,
+    });
+    configService.get.mockImplementation((key: string) => {
+      const values: Record<string, string | boolean> = {
+        'payment.alipay.enabled': true,
+        'payment.alipay.appId': '2026070200000001',
+        'payment.alipay.privateKey': 'not-a-valid-private-key',
+        'payment.alipay.publicKey': 'public-key-present',
+        'payment.alipay.notifyUrl': 'http://127.0.0.1:8181/api/saas/payment/alipay/notify',
+        'payment.alipay.returnUrl': 'http://127.0.0.1:5731/#/tenant-saas/plan',
+        'payment.alipay.gatewayUrl': 'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+      };
+      return values[key];
+    });
+
+    await expect(service.createAlipayPayment(12, 'SO20260702000000001000005')).rejects.toThrow();
+
+    expect(saasOrderService.markTenantPaymentRequested).not.toHaveBeenCalled();
+  });
+
   it('uses database Alipay config before environment config', async () => {
     const { privateKey, publicKey } = generateKeyPairSync('rsa', {
       modulusLength: 2048,

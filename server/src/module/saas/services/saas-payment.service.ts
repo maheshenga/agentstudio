@@ -76,13 +76,14 @@ export class SaasPaymentService {
       };
     }
 
+    const payUrl = this.buildSignedPagePayUrl(config, order);
     await this.markPaymentRequested(tenantId, order.orderNo, orderType, new Date());
 
     return {
       configured: true,
       provider: SAAS_PAYMENT_ALIPAY,
       order_no: order.orderNo,
-      pay_url: this.buildSignedPagePayUrl(config, order),
+      pay_url: payUrl,
       message: ALIPAY_PAGE_PAY_READY_MESSAGE,
     };
   }
