@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, Like, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Like, Repository } from 'typeorm';
 
 import { SaveSaasModuleDto } from '../dto/save-saas-module.dto';
 import { SaasModuleEntity } from '../entities/saas-module.entity';
@@ -16,6 +16,7 @@ export interface SaasModuleListQuery {
 @Injectable()
 export class SaasModuleService {
   constructor(
+    private readonly dataSource: DataSource,
     @InjectRepository(SaasModuleEntity)
     private readonly moduleRepo: Repository<SaasModuleEntity>,
     @InjectRepository(SaasPlanEntity)
@@ -53,7 +54,7 @@ export class SaasModuleService {
       throw new BadRequestException('Module code is required');
     }
 
-    const existing = await this.moduleRepo.findOne({ where: { code, deleteTime: IsNull() } });
+    const existing = await this.moduleRepo.findOne({ where: { code } });
     if (existing) {
       throw new BadRequestException(`Module ${code} already exists`);
     }
@@ -116,10 +117,13 @@ export class SaasModuleService {
       throw new BadRequestException(`Unknown or disabled module: ${missingCodes.join(', ')}`);
     }
 
-    await this.planFeatureRepo.delete({ planId: plan.id });
-    if (modules.length) {
-      await this.planFeatureRepo.save(modules.map((module) => ({ planId: plan.id, featureKey: module.code, enabled: 1 })));
-    }
+    await this.dataSource.transaction(async (manager) => {
+      const planFeatureRepo = manager.getRepository(SaasPlanFeatureEntity);
+      await planFeatureRepo.delete({ planId: plan.id });
+      if (modules.length) {
+        await planFeatureRepo.save(modules.map((module) => ({ planId: plan.id, featureKey: module.code, enabled: 1 })));
+      }
+    });
 
     return { code: plan.code, module_codes: modules.map((module) => module.code) };
   }

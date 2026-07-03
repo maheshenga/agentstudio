@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 
 import { SaasModuleEntity } from '../entities/saas-module.entity';
 import { SaasPlanFeatureEntity } from '../entities/saas-plan-feature.entity';
@@ -25,6 +26,13 @@ describe('SaasModuleService', () => {
     find: jest.fn(),
     save: jest.fn(),
   };
+  const transactionPlanFeatureRepo = {
+    delete: jest.fn(),
+    save: jest.fn(),
+  };
+  const dataSource = {
+    transaction: jest.fn(),
+  };
   const subscriptionRepo = {
     findOne: jest.fn(),
   };
@@ -34,10 +42,20 @@ describe('SaasModuleService', () => {
     moduleRepo.create.mockImplementation((value) => value);
     moduleRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 1, ...value }));
     planFeatureRepo.save.mockImplementation(async (value) => value);
+    transactionPlanFeatureRepo.save.mockImplementation(async (value) => value);
+    dataSource.transaction.mockImplementation((callback) =>
+      callback({
+        getRepository: jest.fn((entity) => {
+          if (entity === SaasPlanFeatureEntity) return transactionPlanFeatureRepo;
+          throw new Error('Unexpected transaction repository');
+        }),
+      }),
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SaasModuleService,
+        { provide: DataSource, useValue: dataSource },
         { provide: getRepositoryToken(SaasModuleEntity), useValue: moduleRepo },
         { provide: getRepositoryToken(SaasPlanEntity), useValue: planRepo },
         { provide: getRepositoryToken(SaasPlanFeatureEntity), useValue: planFeatureRepo },
@@ -62,6 +80,14 @@ describe('SaasModuleService', () => {
     await expect(service.createPlatformModule({ code: 'crm', name: 'CRM' })).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('rejects duplicate platform module code even when the existing row is soft-deleted', async () => {
+    moduleRepo.findOne.mockResolvedValue({ id: 1, code: 'crm', deleteTime: new Date() });
+
+    await expect(service.createPlatformModule({ code: 'crm', name: 'CRM' })).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(moduleRepo.findOne).toHaveBeenCalledWith({ where: { code: 'crm' } });
+  });
+
   it('updates platform module status and returns the updated object', async () => {
     moduleRepo.findOne.mockResolvedValue({ id: 2, code: 'crm', name: 'CRM', status: 1 });
 
@@ -82,8 +108,9 @@ describe('SaasModuleService', () => {
       module_codes: ['crm', 'analytics'],
     });
 
-    expect(planFeatureRepo.delete).toHaveBeenCalledWith({ planId: 8 });
-    expect(planFeatureRepo.save).toHaveBeenCalledWith([
+    expect(dataSource.transaction).toHaveBeenCalled();
+    expect(transactionPlanFeatureRepo.delete).toHaveBeenCalledWith({ planId: 8 });
+    expect(transactionPlanFeatureRepo.save).toHaveBeenCalledWith([
       { planId: 8, featureKey: 'crm', enabled: 1 },
       { planId: 8, featureKey: 'analytics', enabled: 1 },
     ]);
