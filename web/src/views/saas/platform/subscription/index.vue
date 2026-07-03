@@ -35,7 +35,7 @@
         <ElInput v-model="filters.plan_id" class="saas-platform-page__filter-item" clearable placeholder="套餐 ID" @keyup.enter="refreshCurrentTab" />
         <ElInput v-model="filters.plan_code" class="saas-platform-page__filter-item" clearable placeholder="套餐编码" @keyup.enter="refreshCurrentTab" />
         <ElInput v-if="activeTab === 'orders'" v-model="filters.order_no" class="saas-platform-page__order-input" clearable placeholder="订单号" @keyup.enter="refreshCurrentTab" />
-        <ElSelect v-model="filters.status" class="saas-platform-page__filter-item" clearable placeholder="状态">
+        <ElSelect v-model="filters.status" class="saas-platform-page__filter-item" clearable placeholder="状态" @change="handleStatusFilterChange">
           <ElOption v-for="status in statusOptions" :key="status" :label="status" :value="status" />
         </ElSelect>
         <ElButton type="primary" :loading="loading" @click="refreshCurrentTab">查询</ElButton>
@@ -123,7 +123,7 @@
               { label: '超时关闭', value: 'timeout' },
               { label: '租户取消', value: 'tenant_cancelled' }
             ]"
-            @change="refreshCurrentTab"
+            @change="handleOrderRiskFilterChange"
           />
 
           <ElTable v-loading="loading && activeTab === 'orders'" :data="orders" border>
@@ -328,8 +328,8 @@
 
   function refreshCurrentTab() {
     void loadLifecycleOverview()
-    void loadOrderRiskOverview()
     if (activeTab.value === 'orders') {
+      void loadOrderRiskOverview()
       orderPager.page = 1
       void loadOrders()
       return
@@ -340,10 +340,23 @@
 
   function resetFilters() {
     Object.assign(filters, { tenant_id: '', status: '', order_no: '', plan_code: '', plan_id: '' })
+    orderRiskFilter.value = 'all'
     refreshCurrentTab()
   }
 
   function handleTabChange() {
+    refreshCurrentTab()
+  }
+
+  function handleStatusFilterChange() {
+    orderRiskFilter.value = 'all'
+    refreshCurrentTab()
+  }
+
+  function handleOrderRiskFilterChange() {
+    if (orderRiskFilter.value !== 'all') {
+      filters.status = ''
+    }
     refreshCurrentTab()
   }
 
