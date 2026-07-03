@@ -255,6 +255,63 @@ export interface SaasPlatformUsageOverview {
   recent_plan_orders: SaasPlatformOrderRecord[]
   recent_resource_pack_orders: SaasResourcePackOrderRecord[]
 }
+
+export interface SaasRevenueKpis {
+  today_revenue_cents: number
+  month_revenue_cents: number
+  total_revenue_cents: number
+  plan_revenue_cents: number
+  resource_pack_revenue_cents: number
+  today_paid_order_count: number
+  month_paid_order_count: number
+  total_paid_order_count: number
+  month_paid_tenant_count: number
+  total_paid_tenant_count: number
+  active_subscription_count: number
+  average_order_value_cents: number
+  month_average_order_value_cents: number
+}
+
+export interface SaasRevenueSplitRecord {
+  source: 'plan' | 'resource_pack'
+  revenue_cents: number
+  order_count: number
+  percent: number
+}
+
+export interface SaasRevenueDailyTrendRecord {
+  date: string
+  plan_revenue_cents: number
+  resource_pack_revenue_cents: number
+  total_revenue_cents: number
+  paid_order_count: number
+}
+
+export interface SaasRevenueTopTenantRecord {
+  tenant_id: number
+  tenant_name?: string
+  revenue_cents: number
+  order_count: number
+  last_paid_at?: string | Date
+}
+
+export interface SaasRevenuePaidOrderRecord {
+  order_no: string
+  order_type: 'plan' | 'resource_pack'
+  tenant_id: number
+  label: string
+  amount_cents: number
+  payment_method: string
+  paid_at?: string | Date
+}
+
+export interface SaasRevenueOverview {
+  kpis: SaasRevenueKpis
+  revenue_split: SaasRevenueSplitRecord[]
+  daily_trend: SaasRevenueDailyTrendRecord[]
+  top_tenants: SaasRevenueTopTenantRecord[]
+  recent_paid_orders: SaasRevenuePaidOrderRecord[]
+}
 export interface TenantUsageQuotaRecord {
   resource_type: string
   quota: number
@@ -372,6 +429,10 @@ export function createSaasTenantFromPlatform(params: SaasTenantProvisionParams) 
 
 export function fetchPlatformUsageOverview() {
   return request.get<SaasPlatformUsageOverview>({ url: '/api/saas/platform/usage/overview' })
+}
+
+export function fetchPlatformRevenueOverview() {
+  return request.get<SaasRevenueOverview>({ url: '/api/saas/platform/revenue/overview' })
 }
 
 export function fetchPlatformSubscriptionLifecycleOverview() {
