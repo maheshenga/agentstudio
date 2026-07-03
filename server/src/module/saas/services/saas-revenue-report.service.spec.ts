@@ -134,13 +134,29 @@ describe('SaasRevenueReportService', () => {
       { tenant_id: 10, revenue_cents: 4000, order_count: 2, last_paid_at: newer },
       { tenant_id: 20, revenue_cents: 2000, order_count: 1, last_paid_at: newer },
     ]);
-    expect(result.recent_paid_orders.map((order) => order.order_no)).toEqual(['RPO-1', 'SO-2', 'SO-1']);
+    expect(result.recent_paid_orders.map((order) => order.order_no)).toEqual(['SO-2', 'RPO-1', 'SO-1']);
     expect(result.recent_paid_orders[0]).toMatchObject({
-      order_type: 'resource_pack',
-      tenant_id: 10,
-      label: 'Tokens',
-      amount_cents: 3000,
+      order_type: 'plan',
+      tenant_id: 20,
+      label: 'pro',
+      amount_cents: 2000,
       payment_method: 'alipay',
     });
+  });
+
+  it('sorts recent paid orders by paidAt desc and orderNo desc on ties', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-03T10:00:00.000Z'));
+    const paidAt = new Date('2026-07-03T09:00:00.000Z');
+
+    orderRepo.find.mockResolvedValue([
+      { orderNo: 'SO-001', tenantId: 10, planCode: 'pro', amountCents: 1000, paymentMethod: 'alipay', status: 'paid', paidAt },
+      { orderNo: 'SO-002', tenantId: 11, planCode: 'team', amountCents: 2000, paymentMethod: 'alipay', status: 'paid', paidAt },
+    ]);
+    resourcePackOrderRepo.find.mockResolvedValue([]);
+    subscriptionRepo.count.mockResolvedValue(0);
+
+    const result = await service.getOverview();
+
+    expect(result.recent_paid_orders.map((order) => order.order_no)).toEqual(['SO-002', 'SO-001']);
   });
 });

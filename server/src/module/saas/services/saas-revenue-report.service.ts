@@ -198,7 +198,7 @@ export class SaasRevenueReportService {
       .sort((a, b) => {
         const timeDiff = (b.paidAt?.getTime() || 0) - (a.paidAt?.getTime() || 0);
         if (timeDiff) return timeDiff;
-        return a.orderNo.localeCompare(b.orderNo);
+        return b.orderNo.localeCompare(a.orderNo);
       })
       .slice(0, 10)
       .map((order) => ({
