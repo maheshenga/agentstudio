@@ -15,6 +15,7 @@ describe('SaasPlatformController', () => {
   };
   const platformService = {
     getUsageOverview: jest.fn(),
+    getSubscriptionLifecycleOverview: jest.fn(),
     listOrders: jest.fn(),
     listSubscriptions: jest.fn(),
     findOrder: jest.fn(),
@@ -89,6 +90,25 @@ describe('SaasPlatformController', () => {
 
     expect(platformService.listSubscriptions).toHaveBeenCalledWith({ status: 'active' });
     expect(result.data).toEqual({ list: [{ tenant_id: 12, status: 'active' }], total: 1, page: 1, limit: 20 });
+  });
+
+  it('returns SaaS subscription lifecycle overview outside tenant scope', async () => {
+    platformService.getSubscriptionLifecycleOverview.mockResolvedValue({
+      active_count: 3,
+      expiring_7_days_count: 1,
+      expiring_30_days_count: 2,
+      expired_count: 4,
+    });
+
+    const result = await controller.subscriptionLifecycleOverview({ userId: 1 } as any);
+
+    expect(result.data).toEqual({
+      active_count: 3,
+      expiring_7_days_count: 1,
+      expiring_30_days_count: 2,
+      expired_count: 4,
+    });
+    expect(platformService.getSubscriptionLifecycleOverview).toHaveBeenCalled();
   });
 
   it('lists platform SaaS plans outside tenant scope', async () => {

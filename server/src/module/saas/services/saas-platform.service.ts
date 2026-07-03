@@ -7,6 +7,7 @@ import { SaasPlanEntity } from '../entities/saas-plan.entity';
 import { SaasResourcePackOrderEntity } from '../entities/saas-resource-pack-order.entity';
 import { SaasSubscriptionEntity } from '../entities/saas-subscription.entity';
 import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
+import { SaasSubscriptionLifecycleService } from './saas-subscription-lifecycle.service';
 import { SaasResourcePackOrderService } from './saas-resource-pack-order.service';
 import type { SaasResourcePackOrderListQuery } from './saas-resource-pack-order.service';
 import { SaasResourcePackService } from './saas-resource-pack.service';
@@ -20,6 +21,9 @@ export interface SaasPlatformListQuery {
   order_no?: string;
   plan_code?: string;
   plan_id?: string | number;
+  lifecycle_status?: string;
+  expires_within_days?: string | number;
+  expired_since_days?: string | number;
 }
 
 export interface SaasPlatformPlanOrderOverviewRecord {
@@ -97,6 +101,7 @@ export class SaasPlatformService {
     private readonly resourcePackOrderRepo: Repository<SaasResourcePackOrderEntity>,
     private readonly resourcePackService: SaasResourcePackService,
     private readonly resourcePackOrderService: SaasResourcePackOrderService,
+    private readonly lifecycleService: SaasSubscriptionLifecycleService,
   ) {}
 
   async listOrders(query: SaasPlatformListQuery = {}) {
@@ -136,6 +141,15 @@ export class SaasPlatformService {
       const plan = await this.planRepo.findOne({ where: { code: query.plan_code } });
       if (!plan) return { list: [], total: 0, page, limit };
       where.planId = Number(plan.id);
+    }
+    if (!query.status) {
+      if (query.lifecycle_status === 'active') {
+        where.status = 'active';
+      } else if (query.lifecycle_status === 'expiring') {
+        Object.assign(where, this.lifecycleService.buildExpiringWhere(new Date(), (query.expires_within_days || 7) as any));
+      } else if (query.lifecycle_status === 'expired') {
+        Object.assign(where, this.lifecycleService.buildExpiredSinceWhere(new Date(), (query.expired_since_days || 365) as any));
+      }
     }
 
     const [list, total] = await this.subscriptionRepo.findAndCount({
@@ -185,6 +199,11 @@ export class SaasPlatformService {
       recent_resource_pack_orders: resourcePackOrders.slice(0, 5).map((order) => this.toResourcePackOrderResponse(order)),
     };
   }
+
+  getSubscriptionLifecycleOverview() {
+    return this.lifecycleService.getLifecycleOverview();
+  }
+
   listResourcePacks(query: SaasResourcePackListQuery = {}) {
     return this.resourcePackService.listPlatformResourcePacks(query);
   }
@@ -291,6 +310,7 @@ export class SaasPlatformService {
       cancel_at_period_end: subscription.cancelAtPeriodEnd,
       remark: subscription.remark,
       create_time: subscription.createTime,
+      ...this.lifecycleService.decorateSubscription(subscription),
     };
   }
 

@@ -7,6 +7,7 @@ import { SaasResourcePackOrderEntity } from '../entities/saas-resource-pack-orde
 import { SaasSubscriptionEntity } from '../entities/saas-subscription.entity';
 import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
 import { SaasPlatformService } from './saas-platform.service';
+import { SaasSubscriptionLifecycleService } from './saas-subscription-lifecycle.service';
 import { SaasResourcePackOrderService } from './saas-resource-pack-order.service';
 import { SaasResourcePackService } from './saas-resource-pack.service';
 
@@ -39,6 +40,16 @@ describe('SaasPlatformService', () => {
     listPlatformOrders: jest.fn(),
     findPlatformOrder: jest.fn(),
   };
+  const lifecycleService = {
+    getLifecycleOverview: jest.fn(),
+    decorateSubscription: jest.fn((subscription) => ({
+      days_until_expiry: subscription.endTime ? 10 : null,
+      is_expiring_soon: false,
+      is_expired_by_time: false,
+    })),
+    buildExpiringWhere: jest.fn(() => ({ status: 'active', endTime: expect.any(Object) })),
+    buildExpiredSinceWhere: jest.fn(() => ({ status: 'expired', endTime: expect.any(Object) })),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -53,6 +64,7 @@ describe('SaasPlatformService', () => {
         { provide: getRepositoryToken(SaasResourcePackOrderEntity), useValue: resourcePackOrderRepo },
         { provide: SaasResourcePackService, useValue: resourcePackService },
         { provide: SaasResourcePackOrderService, useValue: resourcePackOrderService },
+        { provide: SaasSubscriptionLifecycleService, useValue: lifecycleService },
       ],
     }).compile();
 
@@ -247,11 +259,87 @@ describe('SaasPlatformService', () => {
           cancel_at_period_end: 0,
           remark: 'Activated by order SO20260702000000001000001',
           create_time: startTime,
+          days_until_expiry: 10,
+          is_expiring_soon: false,
+          is_expired_by_time: false,
         },
       ],
       total: 1,
       page: 1,
       limit: 10,
+    });
+  });
+
+  it('decorates platform subscription list rows with lifecycle fields', async () => {
+    const startTime = new Date('2026-07-02T00:00:00.000Z');
+    const endTime = new Date('2026-07-13T00:00:00.000Z');
+    lifecycleService.decorateSubscription.mockReturnValueOnce({
+      days_until_expiry: 10,
+      is_expiring_soon: false,
+      is_expired_by_time: false,
+    });
+    subscriptionRepo.findAndCount.mockResolvedValue([
+      [{ id: 99, tenantId: 12, planId: 2, billingCycle: 'yearly', status: 'active', startTime, endTime }],
+      1,
+    ]);
+
+    const result = await service.listSubscriptions({ status: 'active' });
+
+    expect(result.list[0]).toMatchObject({
+      id: 99,
+      days_until_expiry: 10,
+      is_expiring_soon: false,
+      is_expired_by_time: false,
+    });
+    expect(lifecycleService.decorateSubscription).toHaveBeenCalledWith(expect.objectContaining({ id: 99 }));
+  });
+
+  it('filters subscriptions by expiring lifecycle status', async () => {
+    subscriptionRepo.findAndCount.mockResolvedValue([[], 0]);
+
+    await service.listSubscriptions({ lifecycle_status: 'expiring', expires_within_days: '14' } as any);
+
+    expect(lifecycleService.buildExpiringWhere).toHaveBeenCalledWith(expect.any(Date), '14');
+    expect(subscriptionRepo.findAndCount).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ status: 'active' }),
+    }));
+  });
+
+  it('filters subscriptions by expired lifecycle status', async () => {
+    subscriptionRepo.findAndCount.mockResolvedValue([[], 0]);
+
+    await service.listSubscriptions({ lifecycle_status: 'expired', expired_since_days: '30' } as any);
+
+    expect(lifecycleService.buildExpiredSinceWhere).toHaveBeenCalledWith(expect.any(Date), '30');
+    expect(subscriptionRepo.findAndCount).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ status: 'expired' }),
+    }));
+  });
+
+  it('lets explicit status override lifecycle status', async () => {
+    subscriptionRepo.findAndCount.mockResolvedValue([[], 0]);
+
+    await service.listSubscriptions({ status: 'frozen', lifecycle_status: 'expiring' } as any);
+
+    expect(lifecycleService.buildExpiringWhere).not.toHaveBeenCalled();
+    expect(subscriptionRepo.findAndCount).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ status: 'frozen' }),
+    }));
+  });
+
+  it('returns lifecycle overview from lifecycle service', async () => {
+    lifecycleService.getLifecycleOverview.mockResolvedValue({
+      active_count: 3,
+      expiring_7_days_count: 1,
+      expiring_30_days_count: 2,
+      expired_count: 4,
+    });
+
+    await expect(service.getSubscriptionLifecycleOverview()).resolves.toEqual({
+      active_count: 3,
+      expiring_7_days_count: 1,
+      expiring_30_days_count: 2,
+      expired_count: 4,
     });
   });
 

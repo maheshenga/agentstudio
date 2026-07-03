@@ -109,6 +109,13 @@ export class SaasPlatformController {
     return this.runOutsideTenant(user, () => this.platformService.listSubscriptions(query).then((data) => ResultData.ok(data)));
   }
 
+  @Get('subscriptions/lifecycle/overview')
+  @ApiOperation({ summary: 'Get SaaS subscription lifecycle overview' })
+  @RequirePermission('saas:subscription:list')
+  subscriptionLifecycleOverview(@User() user: UserDto) {
+    return this.runOutsideTenant(user, () => this.platformService.getSubscriptionLifecycleOverview().then((data) => ResultData.ok(data)));
+  }
+
   @Get('subscriptions/:id')
   @ApiOperation({ summary: 'Get SaaS platform subscription detail' })
   @RequirePermission('saas:subscription:list')
