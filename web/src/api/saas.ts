@@ -46,6 +46,9 @@ export interface SaasPlatformOrderListParams extends SaasPlatformListParams {
 export interface SaasPlatformSubscriptionListParams extends SaasPlatformListParams {
   plan_id?: number | string
   plan_code?: string
+  lifecycle_status?: 'active' | 'expiring' | 'expired' | string
+  expires_within_days?: number | string
+  expired_since_days?: number | string
 }
 
 export interface SaasPlatformOrderRecord {
@@ -75,6 +78,16 @@ export interface SaasPlatformSubscriptionRecord {
   cancel_at_period_end?: number
   remark?: string
   create_time?: string | Date
+  days_until_expiry?: number | null
+  is_expiring_soon?: boolean
+  is_expired_by_time?: boolean
+}
+
+export interface SaasSubscriptionLifecycleOverview {
+  active_count: number
+  expiring_7_days_count: number
+  expiring_30_days_count: number
+  expired_count: number
 }
 
 export interface SaasPlanQuotaRecord {
@@ -260,6 +273,16 @@ export interface TenantSubscriptionSummary {
   subscriptionStatus?: string | number
   subscription_status?: string | number
   status?: string | number
+  startTime?: string | number
+  start_time?: string | number
+  endTime?: string | number
+  end_time?: string | number
+  daysUntilExpiry?: number | null
+  days_until_expiry?: number | null
+  isExpiringSoon?: boolean
+  is_expiring_soon?: boolean
+  isExpiredByTime?: boolean
+  is_expired_by_time?: boolean
   trialEndTime?: string | number
   trial_end_time?: string | number
   [key: string]: any
@@ -350,6 +373,11 @@ export function createSaasTenantFromPlatform(params: SaasTenantProvisionParams) 
 export function fetchPlatformUsageOverview() {
   return request.get<SaasPlatformUsageOverview>({ url: '/api/saas/platform/usage/overview' })
 }
+
+export function fetchPlatformSubscriptionLifecycleOverview() {
+  return request.get<SaasSubscriptionLifecycleOverview>({ url: '/api/saas/platform/subscriptions/lifecycle/overview' })
+}
+
 export function fetchPlatformOrders(params: SaasPlatformOrderListParams) {
   return request.get<SaasPlatformPageResult<SaasPlatformOrderRecord>>({ url: '/api/saas/platform/orders', params })
 }
