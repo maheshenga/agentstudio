@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { DataSource, EntityManager, In, IsNull } from 'typeorm';
@@ -87,7 +87,10 @@ export class SaasProvisioningService {
     const initialPlan = await this.resolveInitialPlan(input.planCode);
     const hashedPassword = bcrypt.hashSync(input.password, bcrypt.genSaltSync(10));
 
-    const result = await this.dataSource.transaction<ProvisioningResult>(async (manager) => {
+    try {
+      const result = await this.dataSource.transaction<ProvisioningResult>(async (manager) => {
+        await this.assertProvisioningInputAvailable(manager, input.username, input.tenantCode);
+
       const user = await manager.save(
         UserEntity,
         manager.create(UserEntity, {
@@ -179,8 +182,47 @@ export class SaasProvisioningService {
         userId: user.id,
         tenantId: tenant.id,
       };
-    });
-    return result;
+      });
+      return result;
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      if (this.isDuplicateKeyError(error)) {
+        throw new BadRequestException('登录账号或租户编码已存在，请更换后重试');
+      }
+      throw error;
+    }
+  }
+
+  private async assertProvisioningInputAvailable(
+    manager: EntityManager,
+    username: string,
+    tenantCode?: string,
+  ): Promise<void> {
+    const existingUser = await manager.findOne(UserEntity, {
+      where: { username, deleteTime: IsNull() },
+      select: { id: true, username: true } as any,
+    } as any);
+    if (existingUser) {
+      throw new BadRequestException('登录账号已存在，请更换账号后重试');
+    }
+
+    if (!tenantCode) {
+      return;
+    }
+
+    const existingTenant = await manager.findOne(TenantEntity, {
+      where: { tenantCode, deleteTime: IsNull() },
+      select: { id: true, tenantCode: true } as any,
+    } as any);
+    if (existingTenant) {
+      throw new BadRequestException('租户编码已存在，请更换编码后重试');
+    }
+  }
+
+  private isDuplicateKeyError(error: any): boolean {
+    return error?.code === 'ER_DUP_ENTRY' || error?.errno === 1062;
   }
 
   private async createDefaultRoles(manager: EntityManager, tenantId: number): Promise<SysRoleEntity[]> {

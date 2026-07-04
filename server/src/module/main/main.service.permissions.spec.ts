@@ -40,3 +40,108 @@ describe('MainService permissions', () => {
     expect(menuService.findMany).not.toHaveBeenCalled();
   });
 });
+
+describe('MainService auth safety', () => {
+  function createService(overrides: { userService?: any; redisService?: any; jwtService?: any } = {}) {
+    return new MainService(
+      overrides.jwtService || {},
+      overrides.redisService || {},
+      overrides.userService || {},
+      {} as any,
+      {} as any,
+      {} as any,
+      { create: jest.fn() } as any,
+      {} as any,
+      {} as any,
+      { findOne: jest.fn(), save: jest.fn() } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+  }
+
+  it('rejects legacy username/password-only registration because SaaS users need a tenant', async () => {
+    const userService = {
+      register: jest.fn(),
+    };
+    const service = createService({ userService });
+
+    const result = await service.register({
+      username: 'standalone',
+      password: 'Secret123!',
+    } as any);
+
+    expect(result.code).toBe(400);
+    expect(result.msg).toContain('SaaS 注册');
+    expect(userService.register).not.toHaveBeenCalled();
+  });
+
+  it('revokes refresh token on logout when the client sends it', async () => {
+    const userService = {
+      deleteRefreshToken: jest.fn().mockResolvedValue(undefined),
+    };
+    const jwtService = {
+      verify: jest.fn().mockReturnValue({ uuid: 'access-uuid' }),
+    };
+    const redisService = {
+      del: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = createService({ userService, jwtService, redisService });
+
+    const result = await service.logout(
+      {
+        headers: { authorization: 'Bearer access-token' },
+        body: { refreshToken: 'refresh-token' },
+      },
+      undefined,
+      'admin',
+    );
+
+    expect(result.code).toBe(200);
+    expect(redisService.del).toHaveBeenCalledWith(expect.stringContaining('access-uuid'));
+    expect(userService.deleteRefreshToken).toHaveBeenCalledWith('refresh-token');
+  });
+
+  it('returns account identity context for the current logged-in user', async () => {
+    const redisService = {
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn().mockResolvedValue(undefined),
+    };
+    const userService = {
+      getUserinfo: jest.fn().mockResolvedValue({
+        id: 7,
+        username: 'founder',
+        realname: 'Founder',
+        email: 'founder@example.com',
+        phone: '13800000000',
+        avatar: '',
+        gender: '0',
+        remark: '',
+        dashboard: 'work',
+        loginTime: null,
+        loginIp: '',
+        isSuper: 0,
+        roles: [{ code: 'tenant:9:owner' }],
+        posts: [],
+      }),
+      getUserPermissions: jest.fn().mockResolvedValue(['tenant:billing:view']),
+      getTenantInfo: jest.fn().mockResolvedValue({
+        id: 9,
+        tenantName: 'Acme',
+        tenantCode: 'acme',
+      }),
+    };
+    const service = createService({ userService, redisService });
+
+    const result = await service.getCurrentUser({ userId: 7, tenantId: 9 });
+
+    expect(result.data).toEqual(
+      expect.objectContaining({
+        tenant_id: 9,
+        account_scope: 'tenant',
+        is_platform_admin: false,
+        is_tenant_owner: true,
+      }),
+    );
+  });
+});

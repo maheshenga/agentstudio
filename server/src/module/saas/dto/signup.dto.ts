@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class SaasSignupDto {
   @ApiProperty({ required: true })
@@ -25,17 +25,17 @@ export class SaasSignupDto {
   @MaxLength(100)
   tenant_name: string;
 
-  @ApiProperty({ required: false })
-  @IsOptional()
+  @ApiProperty({ required: true })
   @IsString()
+  @IsNotEmpty()
   @MaxLength(20)
-  phone?: string;
+  phone: string;
 
-  @ApiProperty({ required: false })
-  @IsOptional()
+  @ApiProperty({ required: true })
+  @IsNotEmpty()
   @IsEmail()
   @MaxLength(128)
-  email?: string;
+  email: string;
 
   @ApiProperty({ required: false })
   @IsOptional()

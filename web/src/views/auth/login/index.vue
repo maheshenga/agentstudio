@@ -37,7 +37,7 @@
             <ElFormItem prop="tenant_id">
               <ElSelect
                 class="w-full custom-height"
-                :placeholder="tenantList.length > 0 ? '请选择租户' : '请先输入用户名'"
+                :placeholder="tenantList.length > 0 ? tenantSelectPlaceholder : tenantInputFirstPlaceholder"
                 v-model="formData.tenant_id"
                 :loading="loadingTenants"
                 :disabled="tenantList.length === 0"
@@ -49,7 +49,7 @@
                   :value="tenant.id"
                 >
                   <span>{{ tenant.name }}</span>
-                  <span v-if="tenant.is_default" style="color: var(--el-color-primary); margin-left: 8px;">(默认)</span>
+                  <span v-if="tenant.is_default" style="color: var(--el-color-primary); margin-left: 8px;">{{ defaultTenantLabel }}</span>
                 </ElOption>
               </ElSelect>
             </ElFormItem>
@@ -124,31 +124,14 @@
     >
       <div class="welcome-dialog">
         <p class="welcome-dialog__intro">
-          本系统后端是基于NestJS11.x, TypeORM1.x, Nestjs Express等，前端是基于Art Pro Design, Vue3, ElementPlus等技术栈的Saas管理系统。
-		  <br /><br />
-		  如果你感兴趣，下面还有php版本的FssAdmin，一套后台适应多个前端的通用Saas后台管理系统
+          当前系统基于 NestJS、Vue 3、Element Plus 和 Art Design Pro 构建，支持租户化后台管理和 SaaS 能力扩展。
         </p>
         <ul class="welcome-dialog__list">
-          <li>
-            适配 Art Design Pro：
-            <a href="https://v3.phpframe.org" target="_blank" rel="noopener noreferrer">https://v3.phpframe.org</a>
-            <span class="welcome-dialog__tag">（已开源）</span>
-          </li>
-          <li>
-            适配 SoyBeanAdmin：
-            <a href="https://v4.phpframe.org" target="_blank" rel="noopener noreferrer">https://v4.phpframe.org</a>
-            <span class="welcome-dialog__tag">（已开源）</span>
-          </li>
-          <li>
-            适配 Vben5-Ele：
-            <a href="https://v5.phpframe.org" target="_blank" rel="noopener noreferrer">https://v5.phpframe.org</a>
-          </li>
+          <li>后端：NestJS、TypeORM、Redis、MySQL</li>
+          <li>前端：Vue 3、Element Plus、Vite</li>
+          <li>SaaS：租户、套餐、额度、订单、支付能力</li>
         </ul>
-        <p class="welcome-dialog__footer">目前php版本FssAdmin基础底座已开源，欢迎 Star：</p>
-        <div class="welcome-dialog__links">
-          <a href="https://gitee.com/fsscms/FssAdmin" target="_blank" rel="noopener noreferrer">Gitee</a>
-          <a href="https://github.com/xuey490/FssAdmin" target="_blank" rel="noopener noreferrer">GitHub</a>
-        </div>
+        <p class="welcome-dialog__footer">该弹窗仅在调试开关开启时展示。</p>
       </div>
       <template #footer>
         <ElButton type="primary" @click="welcomeDialogVisible = false">知道了</ElButton>
@@ -195,6 +178,9 @@
 
   const systemName = ref(AppConfig.systemInfo.name)
   const formRef = ref<FormInstance>()
+  const tenantSelectPlaceholder = '请选择租户'
+  const tenantInputFirstPlaceholder = '请先输入用户名'
+  const defaultTenantLabel = '(默认)'
 
   const formData = reactive({
     username: 'admin',

@@ -28,6 +28,7 @@ describe('SaasProvisioningService', () => {
 
   const manager = {
     create: jest.fn(),
+    findOne: jest.fn(),
     save: jest.fn(),
     find: jest.fn(),
     insert: jest.fn(),
@@ -63,6 +64,7 @@ describe('SaasProvisioningService', () => {
     jest.clearAllMocks();
 
     manager.create.mockImplementation((_entity, payload) => payload);
+    manager.findOne.mockResolvedValue(null);
     manager.find.mockImplementation(async (entity) => {
       if (entity === SysMenuEntity) {
         return tenantMenuRecords;
@@ -304,5 +306,48 @@ describe('SaasProvisioningService', () => {
       }),
     );
     expect(saasQuotaService.initializeTenantQuota).toHaveBeenCalledWith(202, 19, manager);
+  });
+
+  it('rejects signup with an existing username before creating tenant records', async () => {
+    manager.findOne.mockImplementation(async (_entity, options) => {
+      if (options?.where?.username === 'founder') {
+        return { id: 88, username: 'founder' };
+      }
+      return null;
+    });
+
+    await expect(
+      service.signup({
+        username: 'founder',
+        password: 'Secret123!',
+        tenant_name: 'Acme AI',
+        phone: '13800000000',
+        email: 'founder@example.com',
+      }),
+    ).rejects.toThrow('登录账号已存在');
+
+    expect(manager.save).not.toHaveBeenCalled();
+    expect(saasQuotaService.initializeTenantQuota).not.toHaveBeenCalled();
+  });
+
+  it('rejects platform tenant creation with an existing tenant code before saving records', async () => {
+    manager.findOne.mockImplementation(async (_entity, options) => {
+      if (options?.where?.tenantCode === 'acme') {
+        return { id: 99, tenantCode: 'acme' };
+      }
+      return null;
+    });
+
+    await expect(
+      service.createTenantFromPlatform({
+        tenant_name: 'Acme AI',
+        tenant_code: 'acme',
+        owner_username: 'new-owner',
+        owner_password: 'Secret123!',
+      }),
+    ).rejects.toThrow('租户编码已存在');
+
+    expect(manager.save).not.toHaveBeenCalled();
+    expect(saasQuotaService.initializeTenantQuota).not.toHaveBeenCalled();
   });
 });

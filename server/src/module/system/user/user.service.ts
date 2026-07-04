@@ -486,16 +486,16 @@ export class UserService {
     });
 
     if (!data || !bcrypt.compareSync(password, data.password)) {
-      return ResultData.fail(500, '帐号或密码错误');
+      return ResultData.fail(500, '账号或密码错误');
     }
 
     const userData = await this.getUserinfo(data.id);
 
     if (userData.deleteTime) {
-      return ResultData.fail(500, `您已被禁用，如需正常使用请联系管理员`);
+      return ResultData.fail(500, '您已被禁用，如需正常使用请联系管理员');
     }
     if (userData.status === 0) {
-      return ResultData.fail(500, `您已被停用，如需正常使用请联系管理员`);
+      return ResultData.fail(500, '您已被停用，如需正常使用请联系管理员');
     }
 
     /**
@@ -1337,11 +1337,12 @@ export class UserService {
    * 根据用户名获取租户列表
    */
   async getTenantsByUsername(username: string) {
-    if (!username) {
+    const normalizedUsername = String(username || '').trim();
+    if (normalizedUsername.length < 2) {
       return ResultData.ok([]);
     }
     // Find user by username
-    const user: any = await this.userRepo.findOne({ where: { username } });
+    const user: any = await this.userRepo.findOne({ where: { username: normalizedUsername } });
     if (!user) {
       return ResultData.ok([]);
     }

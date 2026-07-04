@@ -166,6 +166,10 @@ export class MainService {
         // token 无效时忽略
       }
     }
+    const refreshToken = req.body?.refreshToken;
+    if (refreshToken) {
+      await this.userService.deleteRefreshToken(refreshToken);
+    }
     return ResultData.ok();
   }
 
@@ -177,21 +181,7 @@ export class MainService {
    */
   async register(body: RegisterDto | any): Promise<ResultData> {
     if (body.username && body.password && !body.realname) {
-      const { username, password } = body;
-      const existing = await this.userRepo.findOne({
-        where: { username, deleteTime: IsNull() },
-      });
-      if (existing) return ResultData.fail(500, '用户名已存在');
-
-      const salt = bcrypt.genSaltSync(10);
-      const hash = bcrypt.hashSync(password, salt);
-      await this.userRepo.save({
-        username,
-        password: hash,
-        realname: username,
-        status: 1,
-      });
-      return ResultData.ok();
+      return ResultData.fail(400, '当前系统已启用租户化登录，请使用 SaaS 注册入口创建账号和租户');
     }
     return this.userService.register(body);
   }
@@ -238,12 +228,14 @@ export class MainService {
     const userData = await this.userService.getUserinfo(userId);
     const roles = userData.roles?.map((r: any) => r.code) || [];
     const isAdmin = userData.isSuper === 1;
+    const tenantId = (user as any).tenantId || 0;
+    const isTenantOwner = roles.some((role: string) => role.endsWith(':owner'));
+    const accountScope = isAdmin ? 'platform' : tenantId ? 'tenant' : 'user';
     const buttons = isAdmin ? ['*'] : await this.userService.getUserPermissions(userId);
     const dept = (userData as any).dept;
     const department = dept ? { id: dept.id, name: dept.name } : null;
     const posts = (userData.posts || []).map((p: any) => ({ id: p.id, name: p.name }));
 
-    const tenantId = (user as any).tenantId || 0;
     let tenant = null;
     if (tenantId) {
       const tenantEntity = await this.userService.getTenantInfo(tenantId);
@@ -271,6 +263,10 @@ export class MainService {
       login_time: userData.loginTime,
       login_ip: userData.loginIp || '',
       is_admin: isAdmin,
+      is_platform_admin: isAdmin,
+      is_tenant_owner: isTenantOwner,
+      account_scope: accountScope,
+      tenant_id: tenantId,
       buttons,
       roles,
       department,

@@ -267,3 +267,67 @@ describe('UserService query filters', () => {
     expectParameterizedLike(qb, 'user.phone', 'phone', `137%" OR 1=1 --`);
   });
 });
+
+describe('UserService tenant lookup before login', () => {
+  function createTenantLookupService(userRepo: any, userTenantRepo: any, tenantRepo: any) {
+    return new UserService(
+      userRepo as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      userTenantRepo as any,
+      tenantRepo as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+  }
+
+  it('does not query the database for blank or one-character usernames', async () => {
+    const userRepo = {
+      findOne: jest.fn(),
+    };
+    const service = createTenantLookupService(userRepo, {}, {});
+
+    const blank = await service.getTenantsByUsername(' ');
+    const short = await service.getTenantsByUsername('a');
+
+    expect(blank.code).toBe(200);
+    expect(blank.data).toEqual([]);
+    expect(short.data).toEqual([]);
+    expect(userRepo.findOne).not.toHaveBeenCalled();
+  });
+
+  it('trims usernames before tenant lookup', async () => {
+    const userRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 7, username: 'founder' }),
+    };
+    const userTenantRepo = {
+      find: jest.fn().mockResolvedValue([{ userId: 7, tenantId: 9, isDefault: 1 }]),
+    };
+    const tenantRepo = {
+      find: jest.fn().mockResolvedValue([{ id: 9, tenantName: 'Acme', tenantCode: 'acme', status: 1 }]),
+    };
+    const service = createTenantLookupService(userRepo, userTenantRepo, tenantRepo);
+
+    const result = await service.getTenantsByUsername(' founder ');
+
+    expect(result.data).toEqual([
+      {
+        id: 9,
+        name: 'Acme',
+        code: 'acme',
+        is_default: true,
+        status: 1,
+      },
+    ]);
+    expect(userRepo.findOne).toHaveBeenCalledWith({ where: { username: 'founder' } });
+  });
+});

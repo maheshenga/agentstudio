@@ -140,6 +140,11 @@ declare namespace Api {
       remark?: string
       login_time?: string
       login_ip?: string
+      is_admin?: boolean
+      is_platform_admin?: boolean
+      is_tenant_owner?: boolean
+      account_scope?: 'platform' | 'tenant' | 'user'
+      tenant_id?: number
       department?: {
         id: number
         name: string

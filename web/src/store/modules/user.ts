@@ -164,7 +164,7 @@ export const useUserStore = defineStore(
       }
 
       // 调用后端 logout API，吊销 token 并清除 cookie（不阻塞前端清理流程）
-      fetchLogout({ username: info.value.username }).catch(() => {})
+      fetchLogout({ username: info.value.username, refreshToken: refreshToken.value }).catch(() => {})
 
       // 清空用户信息
       info.value = {}

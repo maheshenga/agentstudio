@@ -104,6 +104,17 @@ async function bootstrap(): Promise<void> {
     // CORS 配置
     configureCors(app, configService);
 
+    // Tighter limits for public auth surfaces to reduce brute-force signup/login and tenant enumeration.
+    app.use(
+      ['/api/core/login', '/api/core/tenants-by-username', '/api/saas/signup'],
+      rateLimit({
+        windowMs: 15 * 60 * 1000,
+        max: 60,
+        standardHeaders: true,
+        legacyHeaders: false,
+      }),
+    );
+
     // 静态文件目录
     const uploadDir = configService.get<string>('file.uploadDir', '../upload');
     const uploadPath = path.resolve(process.cwd(), uploadDir);
