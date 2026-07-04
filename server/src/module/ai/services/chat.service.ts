@@ -20,6 +20,7 @@ import { ContextBuilderService } from './context-builder.service';
 import { SessionSummaryService } from './session-summary.service';
 import { buildProviderExtraBody } from '../providers/llm-provider.util';
 import { SAAS_QUOTA_AI_CALLS, SAAS_QUOTA_TOKENS } from '../../saas/constants';
+import { SaasModuleService } from '../../saas/services/saas-module.service';
 import { SaasQuotaService } from '../../saas/services/saas-quota.service';
 import type {
   AiWsChatSendData,
@@ -50,6 +51,7 @@ export class ChatService {
     private readonly contextBuilder: ContextBuilderService,
     private readonly sessionSummaryService: SessionSummaryService,
     private readonly saasQuotaService: SaasQuotaService,
+    private readonly saasModuleService: SaasModuleService,
   ) {}
 
   private authCtx(session: UserType) {
@@ -285,6 +287,7 @@ export class ChatService {
     if (!content) throw new BadRequestException('消息内容不能为空');
 
     const owned = await this.getOwnedSession(session, payload.session_uuid);
+    await this.saasModuleService.assertTenantModuleEnabled(owned.tenantId, 'ai_chat');
     await this.saasQuotaService.assertTenantQuotaAvailable(
       owned.tenantId,
       SAAS_QUOTA_AI_CALLS,

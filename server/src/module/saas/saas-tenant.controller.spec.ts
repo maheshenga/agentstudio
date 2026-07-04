@@ -6,6 +6,7 @@ import { SaasPlanEntity } from './entities/saas-plan.entity';
 import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
 import { SaasTrialEntity } from './entities/saas-trial.entity';
 import { SaasTenantController } from './saas-tenant.controller';
+import { SaasModuleService } from './services/saas-module.service';
 import { SaasOrderService } from './services/saas-order.service';
 import { SaasOrderRiskService } from './services/saas-order-risk.service';
 import { SaasPlanService } from './services/saas-plan.service';
@@ -58,6 +59,10 @@ describe('SaasTenantController', () => {
 
   const saasPlanService = {
     listTenantPlans: jest.fn(),
+  };
+  const moduleService = {
+    listTenantModules: jest.fn(),
+    assertTenantModuleEnabled: jest.fn(),
   };
   const saasResourcePackService = {
     listTenantResourcePacks: jest.fn(),
@@ -119,6 +124,10 @@ describe('SaasTenantController', () => {
         {
           provide: SaasPlanService,
           useValue: saasPlanService,
+        },
+        {
+          provide: SaasModuleService,
+          useValue: moduleService,
         },
         {
           provide: SaasResourcePackService,
@@ -271,6 +280,7 @@ describe('SaasTenantController', () => {
 
     const result = await controller.members({ page: '1' });
 
+    expect(moduleService.assertTenantModuleEnabled).toHaveBeenCalledWith(88, 'member_management');
     expect(tenantMemberService.listMembers).toHaveBeenCalledWith(88, { page: '1' });
     expect(result.data).toEqual({
       list: [{ user_id: 7, username: 'alice', role: 'admin' }],
@@ -287,8 +297,28 @@ describe('SaasTenantController', () => {
 
     const result = await controller.createMember(body);
 
+    expect(moduleService.assertTenantModuleEnabled).toHaveBeenCalledWith(88, 'member_management');
     expect(tenantMemberService.createMember).toHaveBeenCalledWith(88, body);
     expect(result.data).toEqual({ user_id: 8, username: 'bob', role: 'member' });
+  });
+
+  it('returns current tenant modules', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
+    moduleService.listTenantModules.mockResolvedValue([{ code: 'member_management', enabled: true }]);
+
+    const result = await controller.modules();
+
+    expect(moduleService.listTenantModules).toHaveBeenCalledWith(88);
+    expect(result.data).toEqual([{ code: 'member_management', enabled: true }]);
+  });
+
+  it('rejects tenant modules without tenant context', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(undefined);
+
+    const result = await controller.modules();
+
+    expect(moduleService.listTenantModules).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ code: 401, message: 'Tenant context is required' });
   });
 
   it('returns a tenant order by order number', async () => {

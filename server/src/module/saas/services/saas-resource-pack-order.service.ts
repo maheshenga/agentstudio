@@ -7,6 +7,7 @@ import { CreateResourcePackOrderDto } from '../dto/create-resource-pack-order.dt
 import { SaasResourcePackOrderEntity } from '../entities/saas-resource-pack-order.entity';
 import { SaasResourcePackEntity } from '../entities/saas-resource-pack.entity';
 import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
+import { SaasModuleService } from './saas-module.service';
 
 export interface SaasResourcePackOrderListQuery {
   page?: string | number;
@@ -27,9 +28,12 @@ export class SaasResourcePackOrderService {
     @InjectRepository(SaasResourcePackOrderEntity)
     private readonly resourcePackOrderRepo: Repository<SaasResourcePackOrderEntity>,
     private readonly dataSource: DataSource,
+    private readonly saasModuleService: SaasModuleService,
   ) {}
 
   async createTenantOrder(tenantId: number, dto: CreateResourcePackOrderDto): Promise<SaasResourcePackOrderEntity> {
+    await this.saasModuleService.assertTenantModuleEnabled(tenantId, 'resource_pack');
+
     const pack = await this.resourcePackRepo.findOne({
       where: {
         code: dto.resource_pack_code,

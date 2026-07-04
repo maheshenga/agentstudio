@@ -5,6 +5,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { AiChatMessageEntity } from '../entities/ai-chat-message.entity';
 import { AiChatSessionEntity } from '../entities/ai-chat-session.entity';
 import { SAAS_QUOTA_AI_CALLS, SAAS_QUOTA_TOKENS } from '../../saas/constants';
+import { SaasModuleService } from '../../saas/services/saas-module.service';
 import { SaasQuotaService } from '../../saas/services/saas-quota.service';
 import { streamOpenAiChatCompletions } from '../providers/openai-stream.util';
 import { AiConfigService } from './ai-config.service';
@@ -50,6 +51,9 @@ describe('ChatService SaaS quota integration', () => {
     assertTenantQuotaAvailable: jest.fn(),
     consumeAiUsage: jest.fn(),
   };
+  const saasModuleService = {
+    assertTenantModuleEnabled: jest.fn(),
+  };
 
   let service: ChatService;
 
@@ -66,10 +70,36 @@ describe('ChatService SaaS quota integration', () => {
         { provide: ContextBuilderService, useValue: contextBuilder },
         { provide: SessionSummaryService, useValue: sessionSummaryService },
         { provide: SaasQuotaService, useValue: saasQuotaService },
+        { provide: SaasModuleService, useValue: saasModuleService },
       ],
     }).compile();
 
     service = module.get(ChatService);
+  });
+
+  it('checks AI chat module before quota and message writes', async () => {
+    aiConfigService.isAiEnabled.mockResolvedValue(true);
+    sessionRepo.findOne.mockResolvedValue({
+      id: 'session-db-id',
+      sessionUuid: 'session-uuid',
+      userId: 7,
+      tenantId: 42,
+      defaultModelId: 'model-1',
+      messageCount: 0,
+    });
+    saasModuleService.assertTenantModuleEnabled.mockRejectedValueOnce(new BadRequestException('Module disabled'));
+
+    await expect(
+      service.handleChatSend(
+        { userId: 7, tenantId: 42, userName: 'owner' } as any,
+        { session_uuid: 'session-uuid', content: 'hello' } as any,
+        jest.fn(),
+      ),
+    ).rejects.toThrow('Module disabled');
+
+    expect(saasModuleService.assertTenantModuleEnabled).toHaveBeenCalledWith(42, 'ai_chat');
+    expect(saasQuotaService.assertTenantQuotaAvailable).not.toHaveBeenCalled();
+    expect(messageRepo.save).not.toHaveBeenCalled();
   });
 
   it('checks AI call quota before creating chat messages', async () => {

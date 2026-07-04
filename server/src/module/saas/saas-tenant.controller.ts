@@ -13,6 +13,7 @@ import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
 import { SaasTrialEntity } from './entities/saas-trial.entity';
 import { SaasOrderRiskService } from './services/saas-order-risk.service';
 import { SaasOrderService } from './services/saas-order.service';
+import { SaasModuleService } from './services/saas-module.service';
 import type { SaasOrderListQuery } from './services/saas-order.service';
 import { SaasPlanService } from './services/saas-plan.service';
 import { SaasQuotaService } from './services/saas-quota.service';
@@ -37,6 +38,7 @@ export class SaasTenantController {
     private readonly saasOrderService: SaasOrderService,
     private readonly saasOrderRiskService: SaasOrderRiskService,
     private readonly saasPlanService: SaasPlanService,
+    private readonly moduleService: SaasModuleService,
     private readonly saasResourcePackService: SaasResourcePackService,
     private readonly saasResourcePackOrderService: SaasResourcePackOrderService,
     private readonly lifecycleService: SaasSubscriptionLifecycleService,
@@ -65,6 +67,17 @@ export class SaasTenantController {
     return ResultData.ok(await this.saasQuotaService.getTenantUsageSummary(tenantId));
   }
 
+  @Get('modules')
+  @ApiOperation({ summary: 'Get current tenant SaaS modules' })
+  async modules() {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    return ResultData.ok(await this.moduleService.listTenantModules(tenantId));
+  }
+
   @Get('members')
   @ApiOperation({ summary: 'List current tenant SaaS members' })
   async members(@Query() query: SaasTenantMemberListQuery) {
@@ -73,6 +86,7 @@ export class SaasTenantController {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
+    await this.moduleService.assertTenantModuleEnabled(tenantId, 'member_management');
     return ResultData.ok(await this.tenantMemberService.listMembers(tenantId, query));
   }
 
@@ -84,6 +98,7 @@ export class SaasTenantController {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
+    await this.moduleService.assertTenantModuleEnabled(tenantId, 'member_management');
     return ResultData.ok(await this.tenantMemberService.createMember(tenantId, body));
   }
 
