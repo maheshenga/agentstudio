@@ -171,6 +171,11 @@ export interface SaveSaasModuleParams {
   remark?: string
 }
 
+export interface SaasPlanModulesUpdateResult {
+  code: string
+  module_codes: string[]
+}
+
 export interface SaasPlatformPlanListParams {
   page?: number
   limit?: number
@@ -609,7 +614,7 @@ export function updatePlatformModuleStatus(code: string, status: number) {
 }
 
 export function updatePlatformPlanModules(code: string, moduleCodes: string[]) {
-  return request.put<SaasPlatformPlanRecord>({ url: `/api/saas/platform/plans/${code}/modules`, data: { module_codes: moduleCodes } })
+  return request.put<SaasPlanModulesUpdateResult>({ url: `/api/saas/platform/plans/${code}/modules`, data: { module_codes: moduleCodes } })
 }
 
 export function fetchTenantModules() {

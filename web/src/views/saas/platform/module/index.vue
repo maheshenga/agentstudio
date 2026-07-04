@@ -129,8 +129,14 @@
     remark: ''
   })
   const moduleRules: FormRules = {
-    code: [{ required: true, message: 'Code is required', trigger: 'blur' }],
-    name: [{ required: true, message: 'Name is required', trigger: 'blur' }]
+    code: [
+      { required: true, message: 'Code is required', trigger: 'blur' },
+      { pattern: /\S/, message: 'Code cannot be blank', trigger: 'blur' }
+    ],
+    name: [
+      { required: true, message: 'Name is required', trigger: 'blur' },
+      { pattern: /\S/, message: 'Name cannot be blank', trigger: 'blur' }
+    ]
   }
   const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
     year: 'numeric',
