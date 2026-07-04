@@ -6,8 +6,8 @@ import { SAAS_ORDER_PAID, SAAS_ORDER_PENDING, SAAS_PAYMENT_ALIPAY } from '../con
 import { CreateResourcePackOrderDto } from '../dto/create-resource-pack-order.dto';
 import { SaasResourcePackOrderEntity } from '../entities/saas-resource-pack-order.entity';
 import { SaasResourcePackEntity } from '../entities/saas-resource-pack.entity';
-import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
 import { SaasModuleService } from './saas-module.service';
+import { SaasQuotaService } from './saas-quota.service';
 
 export interface SaasResourcePackOrderListQuery {
   page?: string | number;
@@ -29,6 +29,7 @@ export class SaasResourcePackOrderService {
     private readonly resourcePackOrderRepo: Repository<SaasResourcePackOrderEntity>,
     private readonly dataSource: DataSource,
     private readonly saasModuleService: SaasModuleService,
+    private readonly saasQuotaService: SaasQuotaService,
   ) {}
 
   async createTenantOrder(tenantId: number, dto: CreateResourcePackOrderDto): Promise<SaasResourcePackOrderEntity> {
@@ -199,7 +200,6 @@ export class SaasResourcePackOrderService {
   }): Promise<SaasResourcePackOrderEntity> {
     return this.dataSource.transaction(async (manager) => {
       const orderRepo = manager.getRepository(SaasResourcePackOrderEntity);
-      const tenantResourceRepo = manager.getRepository(SaasTenantResourceEntity);
       const order = await orderRepo.findOne({
         where: options.where,
         lock: { mode: 'pessimistic_write' },
@@ -220,25 +220,17 @@ export class SaasResourcePackOrderService {
       order.deliveredAt = paidAt;
       order.alipayTradeNo = options.resolveTradeNo(order);
 
-      const resource = await tenantResourceRepo.findOne({
-        where: {
-          tenantId: order.tenantId,
-          resourceType: order.resourceType,
+      await this.saasQuotaService.grantTenantQuota(
+        order.tenantId,
+        order.resourceType,
+        Number(order.quotaAmount) || 0,
+        {
+          sourceType: 'resource_pack_order',
+          sourceId: order.orderNo,
+          remark: `Resource pack ${order.resourcePackCode} paid`,
         },
-      });
-      if (resource) {
-        resource.totalQuota = Number(resource.totalQuota || 0) + Number(order.quotaAmount || 0);
-        resource.status = 1;
-        await tenantResourceRepo.save(resource);
-      } else {
-        await tenantResourceRepo.save({
-          tenantId: order.tenantId,
-          resourceType: order.resourceType,
-          totalQuota: Number(order.quotaAmount) || 0,
-          usedQuota: 0,
-          status: 1,
-        });
-      }
+        manager,
+      );
 
       return orderRepo.save(order);
     });

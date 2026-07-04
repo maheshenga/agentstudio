@@ -6,8 +6,8 @@ import { DataSource } from 'typeorm';
 import { SAAS_ORDER_PAID, SAAS_ORDER_PENDING, SAAS_PAYMENT_ALIPAY } from '../constants';
 import { SaasResourcePackOrderEntity } from '../entities/saas-resource-pack-order.entity';
 import { SaasResourcePackEntity } from '../entities/saas-resource-pack.entity';
-import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
 import { SaasModuleService } from './saas-module.service';
+import { SaasQuotaService } from './saas-quota.service';
 import { SaasResourcePackOrderService } from './saas-resource-pack-order.service';
 
 describe('SaasResourcePackOrderService', () => {
@@ -24,18 +24,17 @@ describe('SaasResourcePackOrderService', () => {
   const dataSource = { transaction: jest.fn() };
   const manager = { getRepository: jest.fn() };
   const txOrderRepo = { findOne: jest.fn(), save: jest.fn() };
-  const txTenantResourceRepo = { findOne: jest.fn(), save: jest.fn() };
   const saasModuleService = { assertTenantModuleEnabled: jest.fn() };
+  const saasQuotaService = { grantTenantQuota: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
     orderRepo.create.mockImplementation((payload) => payload);
     orderRepo.save.mockImplementation(async (payload) => ({ id: 88, ...payload }));
     txOrderRepo.save.mockImplementation(async (payload) => payload);
-    txTenantResourceRepo.save.mockImplementation(async (payload) => payload);
+    saasQuotaService.grantTenantQuota.mockResolvedValue(undefined);
     manager.getRepository.mockImplementation((entity) => {
       if (entity === SaasResourcePackOrderEntity) return txOrderRepo;
-      if (entity === SaasTenantResourceEntity) return txTenantResourceRepo;
       throw new Error(`Unexpected repository ${entity?.name}`);
     });
     dataSource.transaction.mockImplementation(async (callback) => callback(manager));
@@ -47,6 +46,7 @@ describe('SaasResourcePackOrderService', () => {
         { provide: getRepositoryToken(SaasResourcePackOrderEntity), useValue: orderRepo },
         { provide: DataSource, useValue: dataSource },
         { provide: SaasModuleService, useValue: saasModuleService },
+        { provide: SaasQuotaService, useValue: saasQuotaService },
       ],
     }).compile();
 
@@ -101,7 +101,7 @@ describe('SaasResourcePackOrderService', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('confirms payment and increments existing tenant resource quota once', async () => {
+  it('confirms payment and grants quota through the quota ledger service', async () => {
     const paidAt = new Date('2026-07-03T12:00:00.000Z');
     jest.useFakeTimers().setSystemTime(paidAt);
     txOrderRepo.findOne.mockResolvedValue({
@@ -113,13 +113,6 @@ describe('SaasResourcePackOrderService', () => {
       status: SAAS_ORDER_PENDING,
       paymentMethod: SAAS_PAYMENT_ALIPAY,
     });
-    txTenantResourceRepo.findOne.mockResolvedValue({
-      tenantId: 12,
-      resourceType: 'tokens',
-      totalQuota: 5000000,
-      usedQuota: 100,
-      status: 1,
-    });
 
     const order = await service.confirmDevPayment(12, 'RPO20260703120000001000001');
 
@@ -127,14 +120,15 @@ describe('SaasResourcePackOrderService', () => {
       where: { tenantId: 12, orderNo: 'RPO20260703120000001000001' },
       lock: { mode: 'pessimistic_write' },
     });
-    expect(txTenantResourceRepo.save).toHaveBeenCalledWith(
+    expect(saasQuotaService.grantTenantQuota).toHaveBeenCalledWith(
+      12,
+      'tokens',
+      1000000,
       expect.objectContaining({
-        tenantId: 12,
-        resourceType: 'tokens',
-        totalQuota: 6000000,
-        usedQuota: 100,
-        status: 1,
+        sourceType: 'resource_pack_order',
+        sourceId: 'RPO20260703120000001000001',
       }),
+      manager,
     );
     expect(order.status).toBe(SAAS_ORDER_PAID);
     expect(order.alipayTradeNo).toBe('DEV-RPO20260703120000001000001');
@@ -142,7 +136,7 @@ describe('SaasResourcePackOrderService', () => {
     expect(order.deliveredAt).toEqual(paidAt);
   });
 
-  it('creates tenant resource row when delivering a new resource type', async () => {
+  it('grants quota for a new tenant resource type', async () => {
     txOrderRepo.findOne.mockResolvedValue({
       orderNo: 'RPO20260703120000001000002',
       tenantId: 12,
@@ -150,22 +144,21 @@ describe('SaasResourcePackOrderService', () => {
       quotaAmount: 1000,
       status: SAAS_ORDER_PENDING,
     });
-    txTenantResourceRepo.findOne.mockResolvedValue(null);
-
     await service.confirmAlipayPayment('RPO20260703120000001000002', '2026070322000000000001');
 
     expect(txOrderRepo.findOne).toHaveBeenCalledWith({
       where: { orderNo: 'RPO20260703120000001000002' },
       lock: { mode: 'pessimistic_write' },
     });
-    expect(txTenantResourceRepo.save).toHaveBeenCalledWith(
+    expect(saasQuotaService.grantTenantQuota).toHaveBeenCalledWith(
+      12,
+      'rag_documents',
+      1000,
       expect.objectContaining({
-        tenantId: 12,
-        resourceType: 'rag_documents',
-        totalQuota: 1000,
-        usedQuota: 0,
-        status: 1,
+        sourceType: 'resource_pack_order',
+        sourceId: 'RPO20260703120000001000002',
       }),
+      manager,
     );
   });
 
@@ -184,8 +177,7 @@ describe('SaasResourcePackOrderService', () => {
     const order = await service.confirmAlipayPayment('RPO20260703120000001000003', '2026070322000000000001');
 
     expect(order.status).toBe(SAAS_ORDER_PAID);
-    expect(txTenantResourceRepo.findOne).not.toHaveBeenCalled();
-    expect(txTenantResourceRepo.save).not.toHaveBeenCalled();
+    expect(saasQuotaService.grantTenantQuota).not.toHaveBeenCalled();
     expect(txOrderRepo.save).not.toHaveBeenCalled();
   });
 

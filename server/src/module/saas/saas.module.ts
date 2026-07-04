@@ -7,6 +7,7 @@ import { SaasPlanQuotaEntity } from './entities/saas-plan-quota.entity';
 import { SaasOrderEntity } from './entities/saas-order.entity';
 import { SaasPlanEntity } from './entities/saas-plan.entity';
 import { SaasPaymentConfigEntity } from './entities/saas-payment-config.entity';
+import { SaasQuotaLedgerEntity } from './entities/saas-quota-ledger.entity';
 import { SaasResourcePackOrderEntity } from './entities/saas-resource-pack-order.entity';
 import { SaasResourcePackEntity } from './entities/saas-resource-pack.entity';
 import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
@@ -40,6 +41,7 @@ import { SaasTenantMemberService } from './services/saas-tenant-member.service';
       SaasPlanQuotaEntity,
       SaasPlanFeatureEntity,
       SaasPaymentConfigEntity,
+      SaasQuotaLedgerEntity,
       SaasResourcePackEntity,
       SaasResourcePackOrderEntity,
       SaasSubscriptionEntity,

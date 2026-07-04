@@ -1,10 +1,18 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 
-import { SaasPlanQuotaEntity } from '../entities/saas-plan-quota.entity';
-import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
 import { SAAS_QUOTA_AI_CALLS, SAAS_QUOTA_TOKENS } from '../constants';
+import { SaasPlanQuotaEntity } from '../entities/saas-plan-quota.entity';
+import { SaasQuotaLedgerEntity } from '../entities/saas-quota-ledger.entity';
+import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
+
+export interface SaasQuotaLedgerOptions {
+  sourceType?: string;
+  sourceId?: string;
+  remark?: string;
+  message?: string;
+}
 
 @Injectable()
 export class SaasQuotaService {
@@ -13,6 +21,9 @@ export class SaasQuotaService {
     private readonly saasPlanQuotaRepo: Repository<SaasPlanQuotaEntity>,
     @InjectRepository(SaasTenantResourceEntity)
     private readonly saasTenantResourceRepo: Repository<SaasTenantResourceEntity>,
+    @InjectRepository(SaasQuotaLedgerEntity)
+    private readonly saasQuotaLedgerRepo: Repository<SaasQuotaLedgerEntity>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async initializeTenantQuota(tenantId: number, planId: number, manager?: EntityManager): Promise<void> {
@@ -43,14 +54,6 @@ export class SaasQuotaService {
       })),
       ['tenantId', 'resourceType'],
     );
-  }
-
-  private resolvePlanQuotaRepo(manager?: EntityManager) {
-    return manager ? manager.getRepository(SaasPlanQuotaEntity) : this.saasPlanQuotaRepo;
-  }
-
-  private resolveTenantResourceRepo(manager?: EntityManager) {
-    return manager ? manager.getRepository(SaasTenantResourceEntity) : this.saasTenantResourceRepo;
   }
 
   async getTenantUsageSummary(tenantId: number): Promise<Array<{ resource_type: string; quota: number; used: number; remaining: number }>> {
@@ -109,7 +112,13 @@ export class SaasQuotaService {
     }
   }
 
-  async consumeTenantQuota(tenantId: number, resourceType: string, amount: number): Promise<void> {
+  async consumeTenantQuota(
+    tenantId: number,
+    resourceType: string,
+    amount: number,
+    options: SaasQuotaLedgerOptions = {},
+    manager?: EntityManager,
+  ): Promise<void> {
     const normalizedAmount = Math.max(Number(amount || 0), 0);
     if (normalizedAmount <= 0) {
       return;
@@ -118,24 +127,157 @@ export class SaasQuotaService {
       throw new BadRequestException('缺少租户上下文');
     }
 
-    await this.saasTenantResourceRepo.increment(
-      {
+    const tenantResourceRepo = this.resolveTenantResourceRepo(manager);
+    const updateResult = await tenantResourceRepo
+      .createQueryBuilder()
+      .update(SaasTenantResourceEntity)
+      .set({ usedQuota: () => 'used_quota + :amount' })
+      .where('tenant_id = :tenantId', { tenantId })
+      .andWhere('resource_type = :resourceType', { resourceType })
+      .andWhere('status = 1')
+      .andWhere('(total_quota <= 0 OR total_quota - used_quota >= :amount)')
+      .setParameters({ amount: normalizedAmount })
+      .execute();
+
+    if ((updateResult.affected ?? 0) <= 0) {
+      throw new BadRequestException(options.message || '资源额度不足');
+    }
+
+    const resource = await tenantResourceRepo.findOne({
+      where: {
         tenantId,
         resourceType,
         status: 1,
       },
-      'usedQuota',
+    });
+    await this.writeLedger(
+      tenantId,
+      resourceType,
+      'consume',
+      0,
       normalizedAmount,
+      Number(resource?.totalQuota || 0),
+      Number(resource?.usedQuota || 0),
+      options,
+      manager,
+    );
+  }
+
+  async grantTenantQuota(
+    tenantId: number,
+    resourceType: string,
+    amount: number,
+    options: SaasQuotaLedgerOptions = {},
+    manager?: EntityManager,
+  ): Promise<void> {
+    const normalizedAmount = Math.max(Number(amount || 0), 0);
+    if (normalizedAmount <= 0) {
+      return;
+    }
+    if (!tenantId) {
+      throw new BadRequestException('缺少租户上下文');
+    }
+
+    const tenantResourceRepo = this.resolveTenantResourceRepo(manager);
+    const updateResult = await tenantResourceRepo
+      .createQueryBuilder()
+      .update(SaasTenantResourceEntity)
+      .set({
+        totalQuota: () => 'total_quota + :amount',
+        status: 1,
+      })
+      .where('tenant_id = :tenantId', { tenantId })
+      .andWhere('resource_type = :resourceType', { resourceType })
+      .setParameters({ amount: normalizedAmount })
+      .execute();
+
+    if ((updateResult.affected ?? 0) <= 0) {
+      await tenantResourceRepo.save({
+        tenantId,
+        resourceType,
+        totalQuota: normalizedAmount,
+        usedQuota: 0,
+        status: 1,
+      });
+    }
+
+    const resource = await tenantResourceRepo.findOne({
+      where: {
+        tenantId,
+        resourceType,
+      },
+    });
+    await this.writeLedger(
+      tenantId,
+      resourceType,
+      'grant',
+      normalizedAmount,
+      0,
+      Number(resource?.totalQuota || normalizedAmount),
+      Number(resource?.usedQuota || 0),
+      options,
+      manager,
     );
   }
 
   async consumeAiUsage(tenantId: number, usage: { totalTokens?: number }): Promise<void> {
     const totalTokens = Math.max(Number(usage.totalTokens || 0), 0);
 
-    await this.assertTenantQuotaAvailable(tenantId, SAAS_QUOTA_AI_CALLS, 1, 'AI 调用次数额度不足');
-    await this.assertTenantQuotaAvailable(tenantId, SAAS_QUOTA_TOKENS, totalTokens, 'Token 额度不足');
+    await this.dataSource.transaction(async (manager) => {
+      await this.consumeTenantQuota(
+        tenantId,
+        SAAS_QUOTA_AI_CALLS,
+        1,
+        { message: 'AI 调用次数额度不足', sourceType: 'ai_chat', remark: 'AI chat completed' },
+        manager,
+      );
+      await this.consumeTenantQuota(
+        tenantId,
+        SAAS_QUOTA_TOKENS,
+        totalTokens,
+        { message: 'Token 额度不足', sourceType: 'ai_chat', remark: 'AI chat completed' },
+        manager,
+      );
+    });
+  }
 
-    await this.consumeTenantQuota(tenantId, SAAS_QUOTA_AI_CALLS, 1);
-    await this.consumeTenantQuota(tenantId, SAAS_QUOTA_TOKENS, totalTokens);
+  private resolvePlanQuotaRepo(manager?: EntityManager) {
+    return manager ? manager.getRepository(SaasPlanQuotaEntity) : this.saasPlanQuotaRepo;
+  }
+
+  private resolveTenantResourceRepo(manager?: EntityManager) {
+    return manager ? manager.getRepository(SaasTenantResourceEntity) : this.saasTenantResourceRepo;
+  }
+
+  private resolveQuotaLedgerRepo(manager?: EntityManager) {
+    return manager ? manager.getRepository(SaasQuotaLedgerEntity) : this.saasQuotaLedgerRepo;
+  }
+
+  private async writeLedger(
+    tenantId: number,
+    resourceType: string,
+    changeType: string,
+    quotaDelta: number,
+    usedDelta: number,
+    balanceTotalQuota: number,
+    balanceUsedQuota: number,
+    options: SaasQuotaLedgerOptions,
+    manager?: EntityManager,
+  ) {
+    const ledgerRepo = this.resolveQuotaLedgerRepo(manager);
+    await ledgerRepo.save(
+      ledgerRepo.create({
+        tenantId,
+        resourceType,
+        changeType,
+        quotaDelta,
+        usedDelta,
+        balanceTotalQuota,
+        balanceUsedQuota,
+        sourceType: options.sourceType,
+        sourceId: options.sourceId,
+        remark: options.remark,
+      }),
+    );
   }
 }

@@ -1,7 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 
 import { SaasPlanQuotaEntity } from '../entities/saas-plan-quota.entity';
+import { SaasQuotaLedgerEntity } from '../entities/saas-quota-ledger.entity';
 import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
 import { SaasQuotaService } from './saas-quota.service';
 
@@ -17,6 +19,17 @@ describe('SaasQuotaService', () => {
     find: jest.fn(),
     findOne: jest.fn(),
     increment: jest.fn(),
+    createQueryBuilder: jest.fn(),
+    save: jest.fn(),
+  };
+
+  const quotaLedgerRepo = {
+    create: jest.fn((value) => value),
+    save: jest.fn(),
+  };
+
+  const dataSource = {
+    transaction: jest.fn(async (handler) => handler(txManager)),
   };
 
   const txPlanQuotaRepo = {
@@ -25,6 +38,15 @@ describe('SaasQuotaService', () => {
 
   const txTenantResourceRepo = {
     upsert: jest.fn(),
+    findOne: jest.fn(),
+    increment: jest.fn(),
+    createQueryBuilder: jest.fn(),
+    save: jest.fn(),
+  };
+
+  const txQuotaLedgerRepo = {
+    create: jest.fn((value) => value),
+    save: jest.fn(),
   };
 
   const txManager = {
@@ -41,6 +63,9 @@ describe('SaasQuotaService', () => {
       if (entity === SaasTenantResourceEntity) {
         return txTenantResourceRepo;
       }
+      if (entity === SaasQuotaLedgerEntity) {
+        return txQuotaLedgerRepo;
+      }
       return undefined;
     });
 
@@ -54,6 +79,14 @@ describe('SaasQuotaService', () => {
         {
           provide: getRepositoryToken(SaasTenantResourceEntity),
           useValue: tenantResourceRepo,
+        },
+        {
+          provide: getRepositoryToken(SaasQuotaLedgerEntity),
+          useValue: quotaLedgerRepo,
+        },
+        {
+          provide: DataSource,
+          useValue: dataSource,
         },
       ],
     }).compile();
@@ -184,46 +217,152 @@ describe('SaasQuotaService', () => {
   });
 
   it('increments tenant quota usage when amount is positive', async () => {
-    tenantResourceRepo.increment.mockResolvedValue({ affected: 1 });
+    const execute = jest.fn().mockResolvedValue({ affected: 1 });
+    tenantResourceRepo.createQueryBuilder.mockReturnValue({
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      setParameters: jest.fn().mockReturnThis(),
+      execute,
+    });
+    tenantResourceRepo.findOne.mockResolvedValue({
+      tenantId: 42,
+      resourceType: 'tokens',
+      totalQuota: 1000,
+      usedQuota: 323,
+      status: 1,
+    });
+    quotaLedgerRepo.save.mockResolvedValue(undefined);
 
     await service.consumeTenantQuota(42, 'tokens', 123);
 
-    expect(tenantResourceRepo.increment).toHaveBeenCalledWith(
-      { tenantId: 42, resourceType: 'tokens', status: 1 },
-      'usedQuota',
-      123,
+    expect(execute).toHaveBeenCalled();
+    expect(quotaLedgerRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 42,
+        resourceType: 'tokens',
+        changeType: 'consume',
+        quotaDelta: 0,
+        usedDelta: 123,
+        balanceTotalQuota: 1000,
+        balanceUsedQuota: 323,
+      }),
+    );
+  });
+
+  it('rejects atomic quota consumption when remaining quota is insufficient', async () => {
+    const execute = jest.fn().mockResolvedValue({ affected: 0 });
+    tenantResourceRepo.createQueryBuilder.mockReturnValue({
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      setParameters: jest.fn().mockReturnThis(),
+      execute,
+    });
+    tenantResourceRepo.findOne.mockResolvedValue({
+      tenantId: 42,
+      resourceType: 'tokens',
+      totalQuota: 100,
+      usedQuota: 99,
+      status: 1,
+    });
+
+    await expect(service.consumeTenantQuota(42, 'tokens', 2, { message: 'Token 额度不足' })).rejects.toThrow('Token 额度不足');
+
+    expect(quotaLedgerRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('grants tenant quota and records a quota ledger entry', async () => {
+    const execute = jest.fn().mockResolvedValue({ affected: 1 });
+    tenantResourceRepo.createQueryBuilder.mockReturnValue({
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      setParameters: jest.fn().mockReturnThis(),
+      execute,
+    });
+    tenantResourceRepo.findOne.mockResolvedValue({
+      tenantId: 42,
+      resourceType: 'tokens',
+      totalQuota: 1500,
+      usedQuota: 300,
+      status: 1,
+    });
+    quotaLedgerRepo.save.mockResolvedValue(undefined);
+
+    await service.grantTenantQuota(42, 'tokens', 500, {
+      sourceType: 'resource_pack_order',
+      sourceId: 'RPO1',
+      remark: 'Resource pack paid',
+    });
+
+    expect(execute).toHaveBeenCalled();
+    expect(quotaLedgerRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 42,
+        resourceType: 'tokens',
+        changeType: 'grant',
+        quotaDelta: 500,
+        usedDelta: 0,
+        balanceTotalQuota: 1500,
+        balanceUsedQuota: 300,
+        sourceType: 'resource_pack_order',
+        sourceId: 'RPO1',
+      }),
     );
   });
 
   it('checks and consumes AI call and token usage', async () => {
-    tenantResourceRepo.findOne
+    const execute = jest.fn().mockResolvedValue({ affected: 1 });
+    txTenantResourceRepo.createQueryBuilder.mockReturnValue({
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      setParameters: jest.fn().mockReturnThis(),
+      execute,
+    });
+    txTenantResourceRepo.findOne
       .mockResolvedValueOnce({
         tenantId: 42,
         resourceType: 'ai_calls',
         totalQuota: 10,
-        usedQuota: 2,
+        usedQuota: 3,
         status: 1,
       })
       .mockResolvedValueOnce({
         tenantId: 42,
         resourceType: 'tokens',
         totalQuota: 1000,
-        usedQuota: 200,
+        usedQuota: 521,
         status: 1,
       });
-    tenantResourceRepo.increment.mockResolvedValue({ affected: 1 });
+    txQuotaLedgerRepo.save.mockResolvedValue(undefined);
 
     await service.consumeAiUsage(42, { totalTokens: 321 });
 
-    expect(tenantResourceRepo.increment).toHaveBeenCalledWith(
-      { tenantId: 42, resourceType: 'ai_calls', status: 1 },
-      'usedQuota',
-      1,
+    expect(dataSource.transaction).toHaveBeenCalled();
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(txQuotaLedgerRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 42,
+        resourceType: 'ai_calls',
+        changeType: 'consume',
+        usedDelta: 1,
+        balanceUsedQuota: 3,
+      }),
     );
-    expect(tenantResourceRepo.increment).toHaveBeenCalledWith(
-      { tenantId: 42, resourceType: 'tokens', status: 1 },
-      'usedQuota',
-      321,
+    expect(txQuotaLedgerRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 42,
+        resourceType: 'tokens',
+        changeType: 'consume',
+        usedDelta: 321,
+        balanceUsedQuota: 521,
+      }),
     );
   });
 });
