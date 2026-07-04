@@ -17,6 +17,7 @@ import { SaasModuleService } from './services/saas-module.service';
 import type { SaasOrderListQuery } from './services/saas-order.service';
 import { SaasPlanService } from './services/saas-plan.service';
 import { SaasQuotaService } from './services/saas-quota.service';
+import type { SaasQuotaLedgerListQuery } from './services/saas-quota.service';
 import { SaasResourcePackOrderService } from './services/saas-resource-pack-order.service';
 import type { SaasResourcePackOrderListQuery } from './services/saas-resource-pack-order.service';
 import { SaasResourcePackService } from './services/saas-resource-pack.service';
@@ -65,6 +66,17 @@ export class SaasTenantController {
     }
 
     return ResultData.ok(await this.saasQuotaService.getTenantUsageSummary(tenantId));
+  }
+
+  @Get('quota-ledgers')
+  @ApiOperation({ summary: 'List current tenant SaaS quota ledger records' })
+  async quotaLedgers(@Query() query: SaasQuotaLedgerListQuery) {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    return ResultData.ok(await this.saasQuotaService.listTenantQuotaLedgers(tenantId, query));
   }
 
   @Get('modules')

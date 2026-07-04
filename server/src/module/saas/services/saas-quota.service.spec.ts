@@ -25,6 +25,7 @@ describe('SaasQuotaService', () => {
 
   const quotaLedgerRepo = {
     create: jest.fn((value) => value),
+    findAndCount: jest.fn(),
     save: jest.fn(),
   };
 
@@ -249,6 +250,69 @@ describe('SaasQuotaService', () => {
         balanceUsedQuota: 323,
       }),
     );
+  });
+
+  it('lists tenant quota ledger records with pagination and filters', async () => {
+    const createdAt = new Date('2026-07-04T12:00:00.000Z');
+    quotaLedgerRepo.findAndCount.mockResolvedValue([
+      [
+        {
+          id: 9,
+          tenantId: 42,
+          resourceType: 'tokens',
+          changeType: 'consume',
+          quotaDelta: 0,
+          usedDelta: 321,
+          balanceTotalQuota: 1000,
+          balanceUsedQuota: 521,
+          sourceType: 'ai_chat',
+          sourceId: 'chat-1',
+          remark: 'AI chat completed',
+          createTime: createdAt,
+        },
+      ],
+      1,
+    ]);
+
+    await expect(
+      service.listTenantQuotaLedgers(42, {
+        page: '2',
+        limit: '10',
+        resource_type: 'tokens',
+        change_type: 'consume',
+      }),
+    ).resolves.toEqual({
+      list: [
+        {
+          id: 9,
+          tenant_id: 42,
+          resource_type: 'tokens',
+          change_type: 'consume',
+          quota_delta: 0,
+          used_delta: 321,
+          balance_total_quota: 1000,
+          balance_used_quota: 521,
+          source_type: 'ai_chat',
+          source_id: 'chat-1',
+          remark: 'AI chat completed',
+          create_time: createdAt,
+        },
+      ],
+      total: 1,
+      page: 2,
+      limit: 10,
+    });
+
+    expect(quotaLedgerRepo.findAndCount).toHaveBeenCalledWith({
+      where: {
+        tenantId: 42,
+        resourceType: 'tokens',
+        changeType: 'consume',
+      },
+      order: { createTime: 'DESC', id: 'DESC' },
+      skip: 10,
+      take: 10,
+    });
   });
 
   it('rejects atomic quota consumption when remaining quota is insufficient', async () => {

@@ -35,6 +35,7 @@ describe('SaasTenantController', () => {
 
   const saasQuotaService = {
     getTenantUsageSummary: jest.fn(),
+    listTenantQuotaLedgers: jest.fn(),
   };
 
   const saasOrderService = {
@@ -267,6 +268,26 @@ describe('SaasTenantController', () => {
       paid_at: undefined,
       closed_at: null,
       close_reason: null,
+    });
+  });
+
+  it('lists current tenant quota ledgers', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
+    saasQuotaService.listTenantQuotaLedgers.mockResolvedValue({
+      list: [{ id: 9, resource_type: 'tokens', change_type: 'consume' }],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+
+    const result = await controller.quotaLedgers({ resource_type: 'tokens' });
+
+    expect(saasQuotaService.listTenantQuotaLedgers).toHaveBeenCalledWith(88, { resource_type: 'tokens' });
+    expect(result.data).toEqual({
+      list: [{ id: 9, resource_type: 'tokens', change_type: 'consume' }],
+      total: 1,
+      page: 1,
+      limit: 20,
     });
   });
 

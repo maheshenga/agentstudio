@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, FindOptionsWhere, Repository } from 'typeorm';
 
 import { SAAS_QUOTA_AI_CALLS, SAAS_QUOTA_TOKENS } from '../constants';
 import { SaasPlanQuotaEntity } from '../entities/saas-plan-quota.entity';
@@ -12,6 +12,13 @@ export interface SaasQuotaLedgerOptions {
   sourceId?: string;
   remark?: string;
   message?: string;
+}
+
+export interface SaasQuotaLedgerListQuery {
+  page?: string | number;
+  limit?: string | number;
+  resource_type?: string;
+  change_type?: string;
 }
 
 @Injectable()
@@ -73,6 +80,27 @@ export class SaasQuotaService {
       used: Number(item.usedQuota),
       remaining: Math.max(Number(item.totalQuota) - Number(item.usedQuota), 0),
     }));
+  }
+
+  async listTenantQuotaLedgers(tenantId: number, query: SaasQuotaLedgerListQuery = {}) {
+    const { page, limit, skip } = this.resolvePagination(query);
+    const where: FindOptionsWhere<SaasQuotaLedgerEntity> = { tenantId };
+    if (query.resource_type) where.resourceType = query.resource_type;
+    if (query.change_type) where.changeType = query.change_type;
+
+    const [list, total] = await this.saasQuotaLedgerRepo.findAndCount({
+      where,
+      order: { createTime: 'DESC', id: 'DESC' },
+      skip,
+      take: limit,
+    });
+
+    return {
+      list: list.map((item) => this.toLedgerResponse(item)),
+      total,
+      page,
+      limit,
+    };
   }
 
   async assertTenantQuotaAvailable(
@@ -251,6 +279,30 @@ export class SaasQuotaService {
 
   private resolveQuotaLedgerRepo(manager?: EntityManager) {
     return manager ? manager.getRepository(SaasQuotaLedgerEntity) : this.saasQuotaLedgerRepo;
+  }
+
+  private resolvePagination(query: SaasQuotaLedgerListQuery) {
+    const page = Math.max(1, Number(query.page || 1));
+    const limit = Math.min(100, Math.max(1, Number(query.limit || 20)));
+
+    return { page, limit, skip: (page - 1) * limit };
+  }
+
+  private toLedgerResponse(item: Partial<SaasQuotaLedgerEntity>) {
+    return {
+      id: item.id,
+      tenant_id: item.tenantId,
+      resource_type: item.resourceType,
+      change_type: item.changeType,
+      quota_delta: Number(item.quotaDelta) || 0,
+      used_delta: Number(item.usedDelta) || 0,
+      balance_total_quota: Number(item.balanceTotalQuota) || 0,
+      balance_used_quota: Number(item.balanceUsedQuota) || 0,
+      source_type: item.sourceType,
+      source_id: item.sourceId,
+      remark: item.remark,
+      create_time: item.createTime,
+    };
   }
 
   private async writeLedger(

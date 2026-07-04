@@ -410,6 +410,28 @@ export interface TenantUsageQuotaRecord {
   [key: string]: any
 }
 
+export interface TenantQuotaLedgerListParams {
+  page?: number
+  limit?: number
+  resource_type?: string
+  change_type?: string
+}
+
+export interface TenantQuotaLedgerRecord {
+  id: number
+  tenant_id: number
+  resource_type: string
+  change_type: string
+  quota_delta: number
+  used_delta: number
+  balance_total_quota: number
+  balance_used_quota: number
+  source_type?: string
+  source_id?: string
+  remark?: string
+  create_time?: string | Date
+}
+
 export interface TenantSubscriptionSummary {
   tenantId?: number
   tenant_id?: number
@@ -504,6 +526,10 @@ export function signupTenant(params: SaasSignupParams) {
 
 export function fetchTenantUsage() {
   return request.get<TenantUsageQuotaRecord[]>({ url: '/api/saas/tenant/usage' })
+}
+
+export function fetchTenantQuotaLedgers(params: TenantQuotaLedgerListParams) {
+  return request.get<SaasPlatformPageResult<TenantQuotaLedgerRecord>>({ url: '/api/saas/tenant/quota-ledgers', params })
 }
 
 export function fetchTenantMembers(params: SaasTenantMemberListParams) {
