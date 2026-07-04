@@ -10,7 +10,11 @@ import { TestAiProviderDto } from '../dto/test-ai-provider.dto';
 import { AiProviderEntity } from '../entities/ai-provider.entity';
 import { AiModelEntity } from '../entities/ai-model.entity';
 import type { UserType } from '../../system/user/dto/user';
-import { AI_STATUS_ENABLED } from '../ai.constants';
+import {
+  AI_ADAPTER_OPENAI_COMPATIBLE,
+  AI_STATUS_ENABLED,
+  isSupportedAiAdapter,
+} from '../ai.constants';
 import { LlmProviderService } from './llm-provider.service';
 
 @Injectable()
@@ -73,6 +77,7 @@ export class AiAdminService {
       throw new BadRequestException('api_key 不能为空');
     }
 
+    this.assertAdapterSupported(body.adapter_type);
     await this.assertProviderCodeUnique(tenantId, body.code);
 
     const entity = this.providerRepo.create({
@@ -81,7 +86,7 @@ export class AiAdminService {
       name: body.name,
       baseUrl: this.normalizeBaseUrl(body.base_url),
       apiKeyCipher: encryptAiSecret(body.api_key),
-      adapterType: body.adapter_type || 'openai_compatible',
+      adapterType: body.adapter_type || AI_ADAPTER_OPENAI_COMPATIBLE,
       extraHeaders: body.extra_headers || null,
       status: `${body.status ?? AI_STATUS_ENABLED}`,
       sort: Number(body.sort ?? 0),
@@ -102,14 +107,17 @@ export class AiAdminService {
    * @returns 格式化后的更新后的供应商信息
    */
   async updateProvider(user: UserType, id: string, body: Partial<SaveAiProviderDto>) {
-    const entity = await this.getOwnedProvider(user, id);
+    const entity = await this.getWritableProvider(user, id);
     if (body.code !== undefined && body.code !== entity.code) {
       await this.assertProviderCodeUnique(entity.tenantId, body.code, id);
       entity.code = body.code;
     }
     if (body.name !== undefined) entity.name = body.name;
     if (body.base_url !== undefined) entity.baseUrl = this.normalizeBaseUrl(body.base_url);
-    if (body.adapter_type !== undefined) entity.adapterType = body.adapter_type;
+    if (body.adapter_type !== undefined) {
+      this.assertAdapterSupported(body.adapter_type);
+      entity.adapterType = body.adapter_type;
+    }
     if (body.extra_headers !== undefined) entity.extraHeaders = body.extra_headers;
     if (body.status !== undefined) entity.status = `${body.status}`;
     if (body.sort !== undefined) entity.sort = Number(body.sort);
@@ -131,7 +139,7 @@ export class AiAdminService {
    * @throws BadRequestException 当供应商下存在未删除的模型时
    */
   async deleteProvider(user: UserType, id: string) {
-    await this.getOwnedProvider(user, id);
+    await this.getWritableProvider(user, id);
     const modelCount = await this.modelRepo.count({
       where: { providerId: id, deleteTime: IsNull() },
     });
@@ -193,7 +201,7 @@ export class AiAdminService {
     if (!body.provider_id || !body.model_code || !body.name) {
       throw new BadRequestException('provider_id、model_code、name 不能为空');
     }
-    const provider = await this.getOwnedProvider(user, body.provider_id);
+    const provider = await this.getWritableProvider(user, body.provider_id);
     if (provider.status !== AI_STATUS_ENABLED) throw new BadRequestException('Provider is disabled');
     await this.assertModelCodeUnique(tenantId, body.provider_id, body.model_code);
 
@@ -230,9 +238,9 @@ export class AiAdminService {
    * @returns 格式化后的更新后的模型信息
    */
   async updateModel(user: UserType, id: string, body: Partial<SaveAiModelDto>) {
-    const entity = await this.getOwnedModel(user, id);
+    const entity = await this.getWritableModel(user, id);
     if (body.provider_id !== undefined) {
-      const provider = await this.getOwnedProvider(user, body.provider_id);
+      const provider = await this.getWritableProvider(user, body.provider_id);
       if (provider.status !== AI_STATUS_ENABLED) throw new BadRequestException('Provider is disabled');
       await this.assertModelCodeUnique(
         entity.tenantId,
@@ -267,7 +275,7 @@ export class AiAdminService {
   }
 
   async deleteModel(user: UserType, id: string) {
-    await this.getOwnedModel(user, id);
+    await this.getWritableModel(user, id);
     await this.modelRepo.softDelete({ id });
     return { id };
   }
@@ -285,7 +293,7 @@ export class AiAdminService {
   }
 
   async testProvider(user: UserType, id: string, body: TestAiProviderDto = {}) {
-    const provider = await this.getOwnedProvider(user, id);
+    const provider = await this.getWritableProvider(user, id);
     const modelCode = body.model_code || (await this.findFirstEnabledModelCode(user, id));
     if (!provider.apiKeyCipher) {
       return {
@@ -390,6 +398,15 @@ export class AiAdminService {
     return entity;
   }
 
+  private async getWritableProvider(user: UserType, id: string) {
+    const tenantId = this.tenantId(user);
+    const entity = await this.getOwnedProvider(user, id);
+    if (entity.tenantId !== tenantId) {
+      throw new NotFoundException('无权操作该供应商');
+    }
+    return entity;
+  }
+
   private async getOwnedModel(user: UserType, id: string) {
     const tenantId = this.tenantId(user);
     const entity = await this.modelRepo.findOne({ where: { id, deleteTime: IsNull() } });
@@ -400,8 +417,24 @@ export class AiAdminService {
     return entity;
   }
 
+  private async getWritableModel(user: UserType, id: string) {
+    const tenantId = this.tenantId(user);
+    const entity = await this.getOwnedModel(user, id);
+    if (entity.tenantId !== tenantId) {
+      throw new NotFoundException('无权操作该模型');
+    }
+    return entity;
+  }
+
   private normalizeBaseUrl(baseUrl: string) {
     return `${baseUrl || ''}`.trim().replace(/\/+$/, '');
+  }
+
+  private assertAdapterSupported(adapterType?: string | null) {
+    const next = adapterType || AI_ADAPTER_OPENAI_COMPATIBLE;
+    if (!isSupportedAiAdapter(next)) {
+      throw new BadRequestException(`Unsupported AI adapter ${next}`);
+    }
   }
 
   private async assertProviderCodeUnique(tenantId: number, code: string, excludeId?: string) {

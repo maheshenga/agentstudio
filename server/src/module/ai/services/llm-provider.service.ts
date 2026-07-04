@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 
 import { AiProviderEntity } from '../entities/ai-provider.entity';
+import { AI_ADAPTER_OPENAI_COMPATIBLE, isSupportedAiAdapter } from '../ai.constants';
 import { buildProviderExtraBody } from '../providers/llm-provider.util';
 import {
   completeOpenAiChatCompletions,
@@ -44,7 +45,8 @@ export class LlmProviderService {
   }
 
   private assertSupported(provider: AiProviderEntity) {
-    if ((provider.adapterType || 'openai_compatible') !== 'openai_compatible') {
+    const adapterType = provider.adapterType || AI_ADAPTER_OPENAI_COMPATIBLE;
+    if (!isSupportedAiAdapter(adapterType)) {
       throw new BadRequestException(`Unsupported AI adapter ${provider.adapterType}`);
     }
   }

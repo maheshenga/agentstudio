@@ -5,7 +5,9 @@ import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { TaixuSystemModelEntity } from '../model/entities/taixu-system-model.entity';
 import { TaixuHistoryRecordEntity } from '../history/entities/taixu-history-record.entity';
 import { TaixuSettingService } from '../setting/taixu-setting.service';
+import { decryptAiSecret } from '../../../common/utils/ai-crypto.util';
 import { applyTenantFilter, appendTenantWhere, getTenantId } from '../../../common/utils/tenant.util';
+import { AiConfigService, ResolvedAiModel } from '../../ai/services/ai-config.service';
 import {
   mergeTaixuConfig,
   pickTaixuLlmConnectConfig,
@@ -28,6 +30,7 @@ export class TaixuLlmRuntimeService {
     private readonly historyRepo: Repository<TaixuHistoryRecordEntity>,
     private readonly settingService: TaixuSettingService,
     private readonly llmService: TaixuLlmService,
+    private readonly aiConfigService?: AiConfigService,
   ) {}
 
   private requireTenantId(): number {
@@ -47,7 +50,33 @@ export class TaixuLlmRuntimeService {
       model: entity.modelId || entity.modelName || undefined,
       type: entity.source || undefined,
       baseUrl: entity.baseUrl || undefined,
-      apiKey: entity.apiKey || undefined,
+      apiKey: entity.apiKey ? decryptAiSecret(entity.apiKey) : undefined,
+    };
+  }
+
+  private parseUnifiedAiSourceId(sourceId?: string | null): string | null {
+    const raw = String(sourceId || '').trim();
+    return raw.startsWith('ai:') ? raw.slice(3).trim() || null : null;
+  }
+
+  private async resolveUnifiedAiRuntime(sourceId?: string | null): Promise<TaixuLlmRuntimeConfig | null> {
+    const modelId = this.parseUnifiedAiSourceId(sourceId);
+    if (!modelId) return null;
+    if (!this.aiConfigService) {
+      throw new Error('统一 AI 模型服务未注入，无法解析 ai: 模型');
+    }
+    const tenantId = this.requireTenantId();
+    const resolved = await this.aiConfigService.resolveModel(modelId, tenantId);
+    return this.resolvedAiToRuntimeConfig(resolved);
+  }
+
+  private resolvedAiToRuntimeConfig(resolved: ResolvedAiModel): TaixuLlmRuntimeConfig {
+    return {
+      provider: 'openai',
+      model: resolved.model.modelCode,
+      baseUrl: resolved.provider.baseUrl,
+      apiKey: resolved.apiKey,
+      temperature: 0.2,
     };
   }
 
@@ -110,6 +139,9 @@ export class TaixuLlmRuntimeService {
     llm?: TaixuLlmConnectConfig | Record<string, any>;
   }): Promise<TaixuLlmRuntimeConfig | null> {
     const merged = await this.resolveLlmSettingContent(args.llm);
+    const unified = await this.resolveUnifiedAiRuntime(args.sourceId || merged.sourceId);
+    if (unified) return unified;
+
     const fromRequest = toTaixuLlmRuntimeConfig(merged, this.llmService.getProvider());
     if (fromRequest) return fromRequest;
 
@@ -143,8 +175,11 @@ export class TaixuLlmRuntimeService {
    * @param args - 可选的 RAG 连接配置
    * @returns 运行时配置，无法解析时返回 null
    */
-  async resolveEmbeddings(args?: { rag?: TaixuRagConnectConfig | Record<string, any> }) {
+  async resolveEmbeddings(args?: { sourceId?: string; rag?: TaixuRagConnectConfig | Record<string, any> }) {
     const merged = await this.resolveRagSettingContent(args?.rag);
+    const unified = await this.resolveUnifiedAiRuntime(args?.sourceId || merged.sourceId);
+    if (unified) return unified;
+
     const fromSetting = toTaixuLlmRuntimeConfig(merged, this.llmService.getProvider());
     if (fromSetting?.model) return fromSetting;
 

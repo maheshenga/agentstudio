@@ -669,9 +669,9 @@ CREATE TABLE `sa_ai_provider` (
 -- ----------------------------
 -- Records of sa_ai_provider
 -- ----------------------------
-INSERT INTO `sa_ai_provider` VALUES ('1', '1', 'deepseek', 'DeepSeek', 'https://api.deepseek.com', 'enc:v1:Q/o/YBTw2hGPzBjVV/jSmwouyz3C+Kivy3DzIK94oslmYBWDJczfCWwyru+QeyxxxPEqDeh1', 'openai_compatible', null, '1', '0', '自动初始化', null, '1', '2026-06-21 22:14:10', '2026-06-21 22:29:21');
+INSERT INTO `sa_ai_provider` VALUES ('1', '1', 'deepseek', 'DeepSeek', 'https://api.deepseek.com/v1', 'enc:v1:Q/o/YBTw2hGPzBjVV/jSmwouyz3C+Kivy3DzIK94oslmYBWDJczfCWwyru+QeyxxxPEqDeh1', 'openai_compatible', null, '1', '0', '自动初始化', null, '1', '2026-06-21 22:14:10', '2026-06-21 22:29:21');
 INSERT INTO `sa_ai_provider` VALUES ('2', '1', 'doubao', '豆包', 'https://ark.cn-beijing.volces.com/api/v3', 'enc:v1:FjCbtwbG927oeqDO0J9T0rJgxUS3eEdjqs0zEspSHMoka05xkSgG+Jf/aQpNPZQp5Mexxxx6azHA==', 'openai_compatible', null, '1', '0', '', '1', '1', '2026-06-21 22:42:41', '2026-06-21 22:42:41');
-INSERT INTO `sa_ai_provider` VALUES ('3', '0', 'deepseek', 'DeepSeek', 'https://api.deepseek.com', 'enc:v1:iOb5N6LtyBs0fSoaqlX5s/L1PEOT2E9lmQ5b1383RH12uJ6geEeLnxxxxjmY8t9w1Pp', 'openai_compatible', null, '1', '0', '自动初始化', null, null, '2026-06-23 17:29:52', '2026-06-23 17:29:52');
+INSERT INTO `sa_ai_provider` VALUES ('3', '0', 'deepseek', 'DeepSeek', 'https://api.deepseek.com/v1', 'enc:v1:iOb5N6LtyBs0fSoaqlX5s/L1PEOT2E9lmQ5b1383RH12uJ6geEeLnxxxxjmY8t9w1Pp', 'openai_compatible', null, '1', '0', '自动初始化', null, null, '2026-06-23 17:29:52', '2026-06-23 17:29:52');
 
 -- ----------------------------
 -- Table structure for `sa_article`

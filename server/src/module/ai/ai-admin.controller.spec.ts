@@ -53,4 +53,20 @@ describe('AiAdminController', () => {
     );
     expect(result.data).toMatchObject({ ok: true, model_code: 'gpt-test' });
   });
+
+  it('declares backend permissions for provider and model administration routes', () => {
+    const permissions = (method: keyof AiAdminController) =>
+      Reflect.getMetadata('requirePermission', controller[method] as any);
+
+    expect(permissions('listProviders')).toEqual(['ai:provider:list']);
+    expect(permissions('createProvider')).toEqual(['ai:provider:save']);
+    expect(permissions('updateProvider')).toEqual(['ai:provider:update']);
+    expect(permissions('deleteProvider')).toEqual(['ai:provider:delete']);
+    expect(permissions('providerOptions')).toEqual(['ai:provider:list']);
+    expect(permissions('testProvider')).toEqual(['ai:provider:update']);
+    expect(permissions('listModels')).toEqual(['ai:model:list']);
+    expect(permissions('createModel')).toEqual(['ai:model:save']);
+    expect(permissions('updateModel')).toEqual(['ai:model:update']);
+    expect(permissions('deleteModel')).toEqual(['ai:model:delete']);
+  });
 });

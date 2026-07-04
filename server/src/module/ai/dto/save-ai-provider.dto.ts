@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { AI_ADAPTER_TYPES } from '../ai.constants';
 
 export class SaveAiProviderDto {
   @ApiProperty({ required: true })
@@ -22,9 +23,9 @@ export class SaveAiProviderDto {
   @IsString()
   api_key?: string;
 
-  @ApiProperty({ required: false, enum: ['openai_compatible'] })
+  @ApiProperty({ required: false, enum: AI_ADAPTER_TYPES })
   @IsOptional()
-  @IsIn(['openai_compatible'])
+  @IsIn([...AI_ADAPTER_TYPES])
   adapter_type?: string;
 
   @ApiProperty({ required: false })

@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { User } from '../system/user/user.decorator';
 import type { UserDto } from '../system/user/user.decorator';
 import { ResultData } from '../../common/utils/result';
@@ -17,18 +18,21 @@ export class AiAdminController {
 
   @Get('providers/list')
   @ApiOperation({ summary: '供应商列表' })
+  @RequirePermission('ai:provider:list')
   listProviders(@User() user: UserDto, @Query() query: Record<string, any>) {
     return this.aiAdminService.listProviders(user as any, query).then((d) => ResultData.ok(d));
   }
 
   @Post('providers/create')
   @ApiOperation({ summary: '创建供应商' })
+  @RequirePermission('ai:provider:save')
   createProvider(@User() user: UserDto, @Body() body: SaveAiProviderDto) {
     return this.aiAdminService.createProvider(user as any, body).then((d) => ResultData.ok(d));
   }
 
   @Put('providers/update/:id')
   @ApiOperation({ summary: '更新供应商' })
+  @RequirePermission('ai:provider:update')
   updateProvider(
     @User() user: UserDto,
     @Param('id') id: string,
@@ -39,36 +43,42 @@ export class AiAdminController {
 
   @Delete('providers/delete/:id')
   @ApiOperation({ summary: '删除供应商' })
+  @RequirePermission('ai:provider:delete')
   deleteProvider(@User() user: UserDto, @Param('id') id: string) {
     return this.aiAdminService.deleteProvider(user as any, id).then((d) => ResultData.ok(d));
   }
 
   @Get('providers/options')
   @ApiOperation({ summary: '供应商选项' })
+  @RequirePermission('ai:provider:list')
   providerOptions(@User() user: UserDto) {
     return this.aiAdminService.providerOptions(user as any).then((d) => ResultData.ok({ list: d }));
   }
 
   @Post('providers/test/:id')
   @ApiOperation({ summary: '测试 AI 供应商' })
+  @RequirePermission('ai:provider:update')
   testProvider(@User() user: UserDto, @Param('id') id: string, @Body() body: TestAiProviderDto) {
     return this.aiAdminService.testProvider(user as any, id, body).then((d) => ResultData.ok(d));
   }
 
   @Get('models/list')
   @ApiOperation({ summary: '模型列表' })
+  @RequirePermission('ai:model:list')
   listModels(@User() user: UserDto, @Query() query: Record<string, any>) {
     return this.aiAdminService.listModels(user as any, query).then((d) => ResultData.ok(d));
   }
 
   @Post('models/create')
   @ApiOperation({ summary: '创建模型' })
+  @RequirePermission('ai:model:save')
   createModel(@User() user: UserDto, @Body() body: SaveAiModelDto) {
     return this.aiAdminService.createModel(user as any, body).then((d) => ResultData.ok(d));
   }
 
   @Put('models/update/:id')
   @ApiOperation({ summary: '更新模型' })
+  @RequirePermission('ai:model:update')
   updateModel(
     @User() user: UserDto,
     @Param('id') id: string,
@@ -79,6 +89,7 @@ export class AiAdminController {
 
   @Delete('models/delete/:id')
   @ApiOperation({ summary: '删除模型' })
+  @RequirePermission('ai:model:delete')
   deleteModel(@User() user: UserDto, @Param('id') id: string) {
     return this.aiAdminService.deleteModel(user as any, id).then((d) => ResultData.ok(d));
   }

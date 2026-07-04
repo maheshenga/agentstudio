@@ -31,6 +31,12 @@ export interface LlmStreamUsage {
   promptCacheMissTokens?: number;
 }
 
+export function buildOpenAiChatCompletionsUrl(baseUrl: string): string {
+  const base = `${baseUrl || ''}`.trim().replace(/\/+$/, '');
+  if (/\/chat\/completions$/i.test(base)) return base;
+  return `${base}/chat/completions`;
+}
+
 /** 从 SSE chunk 提取增量文本（兼容豆包 reasoning_content / DeepSeek content） */
 export function extractStreamDelta(json: any): string {
   const delta = json?.choices?.[0]?.delta;
@@ -77,8 +83,7 @@ export function parseLlmUsage(raw: any): LlmStreamUsage | null {
 export async function* streamOpenAiChatCompletions(
   options: LlmStreamOptions,
 ): AsyncGenerator<LlmStreamChunk, LlmStreamUsage, undefined> {
-  const base = options.baseUrl.replace(/\/+$/, '');
-  const res = await fetch(`${base}/chat/completions`, {
+  const res = await fetch(buildOpenAiChatCompletionsUrl(options.baseUrl), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -175,8 +180,7 @@ export async function* streamOpenAiChatCompletions(
 export async function completeOpenAiChatCompletions(
   options: LlmRequestOptions,
 ): Promise<{ content: string; usage: LlmStreamUsage }> {
-  const base = options.baseUrl.replace(/\/+$/, '');
-  const res = await fetch(`${base}/chat/completions`, {
+  const res = await fetch(buildOpenAiChatCompletionsUrl(options.baseUrl), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { formatDateTime, generateUUID } from '../../../common/utils';
+import { decryptAiSecret, encryptAiSecret, maskAiSecret } from '../../../common/utils/ai-crypto.util';
 import { applyTenantFilter, appendTenantWhere, getTenantId, withTenantId } from '../../../common/utils/tenant.util';
 import { TaixuSystemModelEntity } from './entities/taixu-system-model.entity';
 import { TaixuModelCreateDto, TaixuModelDeleteDto, TaixuModelPageDto, TaixuModelUpdateDto } from './dto';
@@ -27,6 +28,7 @@ export class TaixuModelService {
    */
   private toRow(entity: TaixuSystemModelEntity) {
     const modelName = entity.modelName ?? entity.displayName ?? entity.modelId;
+    const apiKey = entity.apiKey ? maskAiSecret(decryptAiSecret(entity.apiKey)) : '';
     return {
       id: entity.id,
       tenant_id: Number(entity.tenantId ?? 0),
@@ -34,7 +36,7 @@ export class TaixuModelService {
       display_name: entity.displayName ?? entity.modelName,
       model_id: entity.modelId ?? entity.modelName,
       base_url: entity.baseUrl,
-      api_key: entity.apiKey,
+      api_key: apiKey,
       type: entity.type,
       source: entity.source,
       create_time: formatDateTime(entity.createTime),
@@ -140,7 +142,7 @@ export class TaixuModelService {
         displayName: modelName,
         modelId: modelName,
         baseUrl: dto.base_url?.trim() || null,
-        apiKey: dto.api_key?.trim() || null,
+        apiKey: dto.api_key?.trim() ? encryptAiSecret(dto.api_key.trim()) : null,
         type,
         source,
         createTime: new Date(),
@@ -166,7 +168,9 @@ export class TaixuModelService {
       patch.modelId = modelName;
     }
     if (dto.base_url !== undefined) patch.baseUrl = dto.base_url?.trim() || null;
-    if (dto.api_key !== undefined) patch.apiKey = dto.api_key?.trim() || null;
+    if (dto.api_key !== undefined && dto.api_key.trim()) {
+      patch.apiKey = encryptAiSecret(dto.api_key.trim());
+    }
     if (dto.type !== undefined) {
       const type = normalizeTaixuModelType(dto.type);
       if (!type) throw new BadRequestException('模型类型无效');

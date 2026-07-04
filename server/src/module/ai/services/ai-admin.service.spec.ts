@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
@@ -84,6 +84,20 @@ describe('AiAdminService', () => {
     expect(result.base_url).toBe('https://api.deepseek.com/v1');
   });
 
+  it('rejects unsupported adapter types in the admin service layer', async () => {
+    providerRepo.findOne.mockResolvedValue(null);
+
+    await expect(
+      service.createProvider(user, {
+        code: 'claude',
+        name: 'Claude',
+        base_url: 'https://api.anthropic.com',
+        api_key: 'secret',
+        adapter_type: 'anthropic',
+      } as any),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('rejects duplicate model code under provider', async () => {
     providerRepo.findOne.mockResolvedValue({ id: '1', tenantId: 42, status: '1' });
     modelRepo.findOne.mockResolvedValue({
@@ -167,5 +181,76 @@ describe('AiAdminService', () => {
       ok: false,
       message: '401 unauthorized',
     });
+  });
+
+  it('prevents tenant admins from updating platform global providers', async () => {
+    providerRepo.findOne.mockResolvedValue({
+      id: 'global-provider',
+      tenantId: 0,
+      code: 'deepseek',
+      name: 'DeepSeek',
+      status: '1',
+    });
+
+    await expect(
+      service.updateProvider(user, 'global-provider', { name: 'Tenant Override' } as any),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('prevents tenant admins from deleting platform global providers', async () => {
+    providerRepo.findOne.mockResolvedValue({
+      id: 'global-provider',
+      tenantId: 0,
+      code: 'deepseek',
+      name: 'DeepSeek',
+      status: '1',
+    });
+
+    await expect(service.deleteProvider(user, 'global-provider')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('prevents tenant admins from creating tenant models under platform global providers', async () => {
+    providerRepo.findOne.mockResolvedValue({
+      id: 'global-provider',
+      tenantId: 0,
+      status: '1',
+    });
+
+    await expect(
+      service.createModel(user, {
+        provider_id: 'global-provider',
+        model_code: 'deepseek-chat',
+        name: 'DeepSeek Chat',
+      } as any),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('allows platform admins to update platform global providers', async () => {
+    providerRepo.findOne.mockResolvedValue({
+      id: 'global-provider',
+      tenantId: 0,
+      code: 'deepseek',
+      name: 'DeepSeek',
+      baseUrl: 'https://api.deepseek.com/v1',
+      apiKeyCipher: 'enc:secret',
+      adapterType: 'openai_compatible',
+      extraHeaders: null,
+      status: '1',
+      sort: 0,
+      remark: '',
+    });
+
+    const result = await service.updateProvider(
+      { userId: 1, tenantId: 0 } as any,
+      'global-provider',
+      { name: 'DeepSeek Global' } as any,
+    );
+
+    expect(result.name).toBe('DeepSeek Global');
+    expect(providerRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'global-provider', tenantId: 0, name: 'DeepSeek Global' }),
+    );
   });
 });
