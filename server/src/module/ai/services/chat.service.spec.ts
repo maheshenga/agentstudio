@@ -7,19 +7,15 @@ import { AiChatSessionEntity } from '../entities/ai-chat-session.entity';
 import { SAAS_QUOTA_AI_CALLS, SAAS_QUOTA_TOKENS } from '../../saas/constants';
 import { SaasModuleService } from '../../saas/services/saas-module.service';
 import { SaasQuotaService } from '../../saas/services/saas-quota.service';
-import { streamOpenAiChatCompletions } from '../providers/openai-stream.util';
 import { AiConfigService } from './ai-config.service';
 import { ChatService } from './chat.service';
 import { ContextBuilderService } from './context-builder.service';
+import { LlmProviderService } from './llm-provider.service';
 import { LlmSemaphoreService } from './llm-semaphore.service';
 import { SessionSummaryService } from './session-summary.service';
 
 jest.mock('../../../common/utils/index', () => ({
   formatDateTime: jest.fn(() => '2026-07-03 00:00:00'),
-}));
-
-jest.mock('../providers/openai-stream.util', () => ({
-  streamOpenAiChatCompletions: jest.fn(),
 }));
 
 describe('ChatService SaaS quota integration', () => {
@@ -54,6 +50,9 @@ describe('ChatService SaaS quota integration', () => {
   const saasModuleService = {
     assertTenantModuleEnabled: jest.fn(),
   };
+  const llmProviderService = {
+    streamChat: jest.fn(),
+  };
 
   let service: ChatService;
 
@@ -71,6 +70,7 @@ describe('ChatService SaaS quota integration', () => {
         { provide: SessionSummaryService, useValue: sessionSummaryService },
         { provide: SaasQuotaService, useValue: saasQuotaService },
         { provide: SaasModuleService, useValue: saasModuleService },
+        { provide: LlmProviderService, useValue: llmProviderService },
       ],
     }).compile();
 
@@ -214,7 +214,7 @@ describe('ChatService SaaS quota integration', () => {
       andWhere: jest.fn().mockReturnThis(),
       getRawOne: jest.fn().mockResolvedValue({ total: '123', prompt: '45' }),
     });
-    (streamOpenAiChatCompletions as jest.Mock).mockReturnValue(
+    llmProviderService.streamChat.mockReturnValue(
       (async function* () {
         yield { delta: 'hi' };
         return { promptTokens: 12, completionTokens: 8, totalTokens: 20 };
@@ -240,6 +240,11 @@ describe('ChatService SaaS quota integration', () => {
       'Token 额度不足',
     );
     expect(saasQuotaService.consumeAiUsage).toHaveBeenCalledWith(42, { totalTokens: 20 });
+    expect(llmProviderService.streamChat).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'provider-1' }),
+      'test-key',
+      expect.objectContaining({ model: 'gpt-test' }),
+    );
     expect(emit).toHaveBeenCalledWith(
       'chat.message_done',
       expect.objectContaining({

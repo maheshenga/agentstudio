@@ -10,7 +10,6 @@ import { randomUUID } from 'node:crypto';
 
 import type { UserType } from '../../system/user/dto/user';
 import { formatDateTime } from '../../../common/utils/index';
-import { streamOpenAiChatCompletions } from '../providers/openai-stream.util';
 import type { LlmStreamChunk, LlmStreamUsage } from '../providers/openai-stream.util';
 import { LlmSemaphoreService } from './llm-semaphore.service';
 import { AiChatSessionEntity } from '../entities/ai-chat-session.entity';
@@ -18,10 +17,10 @@ import { AiChatMessageEntity } from '../entities/ai-chat-message.entity';
 import { AiConfigService } from './ai-config.service';
 import { ContextBuilderService } from './context-builder.service';
 import { SessionSummaryService } from './session-summary.service';
-import { buildProviderExtraBody } from '../providers/llm-provider.util';
 import { SAAS_QUOTA_AI_CALLS, SAAS_QUOTA_TOKENS } from '../../saas/constants';
 import { SaasModuleService } from '../../saas/services/saas-module.service';
 import { SaasQuotaService } from '../../saas/services/saas-quota.service';
+import { LlmProviderService } from './llm-provider.service';
 import type {
   AiWsChatSendData,
   AiWsMessageDoneData,
@@ -52,6 +51,7 @@ export class ChatService {
     private readonly sessionSummaryService: SessionSummaryService,
     private readonly saasQuotaService: SaasQuotaService,
     private readonly saasModuleService: SaasModuleService,
+    private readonly llmProviderService: LlmProviderService,
   ) {}
 
   private authCtx(session: UserType) {
@@ -393,16 +393,12 @@ export class ChatService {
         (agent?.temperature != null ? Number(agent.temperature) : Number(resolved.model.defaultTemperature));
 
       let usage: LlmStreamUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
-      const stream = streamOpenAiChatCompletions({
-        baseUrl: resolved.provider.baseUrl,
-        apiKey: resolved.apiKey,
+      const stream = this.llmProviderService.streamChat(resolved.provider, resolved.apiKey, {
         model: resolved.model.modelCode,
         messages: built.messages,
         temperature,
         maxTokens: resolved.model.maxOutputTokens,
         signal: abort.signal,
-        extraHeaders: resolved.provider.extraHeaders ?? undefined,
-        extraBody: buildProviderExtraBody(resolved.provider),
       });
 
       while (true) {

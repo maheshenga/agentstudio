@@ -6,6 +6,7 @@ import type { UserDto } from '../system/user/user.decorator';
 import { ResultData } from '../../common/utils/result';
 import { SaveAiModelDto } from './dto/save-ai-model.dto';
 import { SaveAiProviderDto } from './dto/save-ai-provider.dto';
+import { TestAiProviderDto } from './dto/test-ai-provider.dto';
 import { AiAdminService } from './services/ai-admin.service';
 
 @ApiTags('AI 管理')
@@ -28,7 +29,11 @@ export class AiAdminController {
 
   @Put('providers/update/:id')
   @ApiOperation({ summary: '更新供应商' })
-  updateProvider(@User() user: UserDto, @Param('id') id: string, @Body() body: Partial<SaveAiProviderDto>) {
+  updateProvider(
+    @User() user: UserDto,
+    @Param('id') id: string,
+    @Body() body: Partial<SaveAiProviderDto>,
+  ) {
     return this.aiAdminService.updateProvider(user as any, id, body).then((d) => ResultData.ok(d));
   }
 
@@ -39,9 +44,15 @@ export class AiAdminController {
   }
 
   @Get('providers/options')
-  @ApiOperation({ summary: '供应商下拉' })
+  @ApiOperation({ summary: '供应商选项' })
   providerOptions(@User() user: UserDto) {
     return this.aiAdminService.providerOptions(user as any).then((d) => ResultData.ok({ list: d }));
+  }
+
+  @Post('providers/test/:id')
+  @ApiOperation({ summary: '测试 AI 供应商' })
+  testProvider(@User() user: UserDto, @Param('id') id: string, @Body() body: TestAiProviderDto) {
+    return this.aiAdminService.testProvider(user as any, id, body).then((d) => ResultData.ok(d));
   }
 
   @Get('models/list')
@@ -58,7 +69,11 @@ export class AiAdminController {
 
   @Put('models/update/:id')
   @ApiOperation({ summary: '更新模型' })
-  updateModel(@User() user: UserDto, @Param('id') id: string, @Body() body: Partial<SaveAiModelDto>) {
+  updateModel(
+    @User() user: UserDto,
+    @Param('id') id: string,
+    @Body() body: Partial<SaveAiModelDto>,
+  ) {
     return this.aiAdminService.updateModel(user as any, id, body).then((d) => ResultData.ok(d));
   }
 
