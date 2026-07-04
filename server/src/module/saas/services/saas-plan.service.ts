@@ -1,11 +1,12 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Like, Repository } from 'typeorm';
+import { In, IsNull, Like, Repository } from 'typeorm';
 
 import { SAAS_PLAN_FREE } from '../constants';
 import { CreateSaasPlanDto } from '../dto/create-saas-plan.dto';
 import { UpdateSaasPlanQuotasDto } from '../dto/update-saas-plan-quotas.dto';
 import { UpdateSaasPlanDto } from '../dto/update-saas-plan.dto';
+import { SaasPlanFeatureEntity } from '../entities/saas-plan-feature.entity';
 import { SaasPlanEntity } from '../entities/saas-plan.entity';
 import { SaasPlanQuotaEntity } from '../entities/saas-plan-quota.entity';
 
@@ -25,6 +26,8 @@ export class SaasPlanService {
     private readonly saasPlanRepo: Repository<SaasPlanEntity>,
     @InjectRepository(SaasPlanQuotaEntity)
     private readonly saasPlanQuotaRepo: Repository<SaasPlanQuotaEntity>,
+    @InjectRepository(SaasPlanFeatureEntity)
+    private readonly saasPlanFeatureRepo: Repository<SaasPlanFeatureEntity>,
   ) {}
 
   async getFreePlan(): Promise<SaasPlanEntity> {
@@ -170,11 +173,23 @@ export class SaasPlanService {
     const quotas = planIds.length
       ? await this.saasPlanQuotaRepo.find({ where: { planId: In(planIds) }, order: { id: 'ASC' } })
       : [];
+    const features = planIds.length
+      ? await this.saasPlanFeatureRepo.find({
+          where: { planId: In(planIds), enabled: 1, deleteTime: IsNull() },
+          order: { id: 'ASC' },
+        })
+      : [];
 
-    return plans.map((plan) => this.toResponse(plan, quotas.filter((quota) => Number(quota.planId) === Number(plan.id))));
+    return plans.map((plan) =>
+      this.toResponse(
+        plan,
+        quotas.filter((quota) => Number(quota.planId) === Number(plan.id)),
+        features.filter((feature) => Number(feature.planId) === Number(plan.id)),
+      ),
+    );
   }
 
-  private toResponse(plan: Partial<SaasPlanEntity>, quotas: Partial<SaasPlanQuotaEntity>[] = []) {
+  private toResponse(plan: Partial<SaasPlanEntity>, quotas: Partial<SaasPlanQuotaEntity>[] = [], features: Partial<SaasPlanFeatureEntity>[] = []) {
     return {
       id: plan.id,
       code: plan.code,
@@ -192,6 +207,11 @@ export class SaasPlanService {
         total_quota: Number(quota.totalQuota) || 0,
         status: quota.status ?? 1,
         remark: quota.remark,
+      })),
+      features: features.map((feature) => ({
+        feature_key: feature.featureKey,
+        enabled: feature.enabled ?? 1,
+        remark: feature.remark,
       })),
     };
   }

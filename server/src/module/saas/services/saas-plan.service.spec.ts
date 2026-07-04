@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
+import { SaasPlanFeatureEntity } from '../entities/saas-plan-feature.entity';
 import { SaasPlanEntity } from '../entities/saas-plan.entity';
 import { SaasPlanQuotaEntity } from '../entities/saas-plan-quota.entity';
 import { SaasPlanService } from './saas-plan.service';
@@ -20,18 +21,23 @@ describe('SaasPlanService', () => {
     find: jest.fn(),
     save: jest.fn(),
   };
+  const planFeatureRepo = {
+    find: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
     planRepo.create.mockImplementation((value) => value);
     planRepo.save.mockImplementation(async (value) => ({ id: 8, ...value }));
     quotaRepo.save.mockImplementation(async (value) => value);
+    planFeatureRepo.find.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SaasPlanService,
         { provide: getRepositoryToken(SaasPlanEntity), useValue: planRepo },
         { provide: getRepositoryToken(SaasPlanQuotaEntity), useValue: quotaRepo },
+        { provide: getRepositoryToken(SaasPlanFeatureEntity), useValue: planFeatureRepo },
       ],
     }).compile();
 
@@ -52,6 +58,42 @@ describe('SaasPlanService', () => {
         expect.objectContaining({ name: expect.any(Object), status: 1 }),
       ],
     }));
+  });
+
+  it('lists platform plans with enabled module feature bindings', async () => {
+    planRepo.findAndCount.mockResolvedValue([[{ id: 1, code: 'pro', name: 'Pro', status: 1 }], 1]);
+    quotaRepo.find.mockResolvedValue([]);
+    planFeatureRepo.find.mockResolvedValue([
+      { planId: 1, featureKey: 'crm', enabled: 1, remark: 'CRM' },
+      { planId: 1, featureKey: 'analytics', enabled: 1 },
+    ]);
+
+    await expect(service.listPlatformPlans()).resolves.toMatchObject({
+      list: [
+        expect.objectContaining({
+          code: 'pro',
+          features: [
+            { feature_key: 'crm', enabled: 1, remark: 'CRM' },
+            { feature_key: 'analytics', enabled: 1, remark: undefined },
+          ],
+        }),
+      ],
+    });
+
+    expect(planFeatureRepo.find).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ enabled: 1 }),
+    }));
+  });
+
+  it('returns platform plan detail with enabled module feature bindings', async () => {
+    planRepo.findOne.mockResolvedValue({ id: 2, code: 'team', name: 'Team', status: 1 });
+    quotaRepo.find.mockResolvedValue([]);
+    planFeatureRepo.find.mockResolvedValue([{ planId: 2, featureKey: 'member_management', enabled: 1 }]);
+
+    await expect(service.findPlatformPlan('team')).resolves.toMatchObject({
+      code: 'team',
+      features: [{ feature_key: 'member_management', enabled: 1, remark: undefined }],
+    });
   });
 
   it('creates a platform plan with backend cents and validates duplicate code', async () => {
