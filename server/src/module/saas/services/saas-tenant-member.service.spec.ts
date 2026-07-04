@@ -10,7 +10,11 @@ describe('SaasTenantMemberService', () => {
 
   const manager = {
     findOne: jest.fn(),
+    query: jest.fn(),
     count: jest.fn(),
+    update: jest.fn(),
+    delete: jest.fn(),
+    softDelete: jest.fn(),
     save: jest.fn(),
     create: jest.fn((_entity, value) => value),
   };
@@ -100,5 +104,65 @@ describe('SaasTenantMemberService', () => {
         role: 'member',
       }),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('changes a tenant member role within the same tenant', async () => {
+    manager.findOne
+      .mockResolvedValueOnce({ id: 70, userId: 8, tenantId: 12 })
+      .mockResolvedValueOnce({ id: 22, code: 'tenant:12:admin' });
+    manager.query.mockResolvedValueOnce([{ role_code: 'tenant:12:member' }]);
+    manager.delete.mockResolvedValue({ affected: 1 });
+    manager.save.mockResolvedValue({ id: 33 });
+
+    await service.changeMemberRole(12, 8, 'admin');
+
+    expect(manager.delete).toHaveBeenCalledWith(expect.any(Function), { tenantId: 12, userId: 8 });
+    expect(manager.save).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({ tenantId: 12, userId: 8, roleId: 22 }));
+  });
+
+  it('does not change the tenant owner through member role management', async () => {
+    manager.findOne.mockResolvedValueOnce({ id: 70, userId: 8, tenantId: 12 });
+    manager.query.mockResolvedValueOnce([{ role_code: 'tenant:12:owner' }]);
+
+    await expect(service.changeMemberRole(12, 8, 'member')).rejects.toThrow('租户负责人不能通过成员管理修改');
+
+    expect(manager.delete).not.toHaveBeenCalled();
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('updates a tenant member status', async () => {
+    manager.findOne.mockResolvedValueOnce({ id: 70, userId: 8, tenantId: 12 });
+    manager.query.mockResolvedValueOnce([{ role_code: 'tenant:12:member' }]);
+    manager.update.mockResolvedValue({ affected: 1 });
+
+    await service.updateMemberStatus(12, 8, 0);
+
+    expect(manager.update).toHaveBeenCalledWith(expect.any(Function), { id: 8 }, { status: 0 });
+  });
+
+  it('removes a tenant member and soft deletes the user when no tenant remains', async () => {
+    manager.findOne.mockResolvedValueOnce({ id: 70, userId: 8, tenantId: 12 });
+    manager.query.mockResolvedValueOnce([{ role_code: 'tenant:12:member' }]);
+    manager.count.mockResolvedValueOnce(0);
+
+    await service.removeMember(12, 8);
+
+    expect(manager.softDelete).toHaveBeenCalledWith(expect.any(Function), 70);
+    expect(manager.delete).toHaveBeenCalledWith(expect.any(Function), { tenantId: 12, userId: 8 });
+    expect(manager.softDelete).toHaveBeenCalledWith(expect.any(Function), 8);
+  });
+
+  it('resets a tenant member password', async () => {
+    manager.findOne.mockResolvedValueOnce({ id: 70, userId: 8, tenantId: 12 });
+    manager.query.mockResolvedValueOnce([{ role_code: 'tenant:12:member' }]);
+    manager.update.mockResolvedValue({ affected: 1 });
+
+    await service.resetMemberPassword(12, 8, 'NewPass123!');
+
+    expect(manager.update).toHaveBeenCalledWith(
+      expect.any(Function),
+      { id: 8 },
+      expect.objectContaining({ password: expect.not.stringMatching(/^NewPass123!$/) }),
+    );
   });
 });

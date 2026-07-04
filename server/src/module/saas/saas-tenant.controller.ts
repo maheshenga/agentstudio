@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { ResultData } from '../../common/utils/result';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { getTenantId } from '../../common/utils/tenant.util';
 import { CreateTenantMemberDto } from './dto/create-tenant-member.dto';
 import { CreateResourcePackOrderDto } from './dto/create-resource-pack-order.dto';
@@ -47,6 +48,7 @@ export class SaasTenantController {
   ) {}
 
   @Get('plans')
+  @RequirePermission('tenant:billing:view')
   @ApiOperation({ summary: 'Get active SaaS plans for tenant upgrades' })
   async plans() {
     const tenantId = getTenantId();
@@ -58,6 +60,7 @@ export class SaasTenantController {
   }
 
   @Get('usage')
+  @RequirePermission('tenant:quota:view')
   @ApiOperation({ summary: 'Get current tenant SaaS usage' })
   async usage() {
     const tenantId = getTenantId();
@@ -69,6 +72,7 @@ export class SaasTenantController {
   }
 
   @Get('quota-ledgers')
+  @RequirePermission('tenant:quota:view')
   @ApiOperation({ summary: 'List current tenant SaaS quota ledger records' })
   async quotaLedgers(@Query() query: SaasQuotaLedgerListQuery) {
     const tenantId = getTenantId();
@@ -80,6 +84,7 @@ export class SaasTenantController {
   }
 
   @Get('modules')
+  @RequirePermission('tenant:billing:view')
   @ApiOperation({ summary: 'Get current tenant SaaS modules' })
   async modules() {
     const tenantId = getTenantId();
@@ -91,6 +96,7 @@ export class SaasTenantController {
   }
 
   @Get('members')
+  @RequirePermission('tenant:member:index')
   @ApiOperation({ summary: 'List current tenant SaaS members' })
   async members(@Query() query: SaasTenantMemberListQuery) {
     const tenantId = getTenantId();
@@ -103,6 +109,7 @@ export class SaasTenantController {
   }
 
   @Post('members')
+  @RequirePermission('tenant:member:create')
   @ApiOperation({ summary: 'Create current tenant SaaS member' })
   async createMember(@Body() body: CreateTenantMemberDto) {
     const tenantId = getTenantId();
@@ -114,7 +121,64 @@ export class SaasTenantController {
     return ResultData.ok(await this.tenantMemberService.createMember(tenantId, body));
   }
 
+  @Patch('members/:user_id/role')
+  @RequirePermission('tenant:member:create')
+  @ApiOperation({ summary: 'Change current tenant SaaS member role' })
+  async changeMemberRole(@Param('user_id') userId: string, @Body() body: { role: 'admin' | 'member' }) {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    await this.moduleService.assertTenantModuleEnabled(tenantId, 'member_management');
+    await this.tenantMemberService.changeMemberRole(tenantId, Number(userId), body.role);
+    return ResultData.ok();
+  }
+
+  @Patch('members/:user_id/status')
+  @RequirePermission('tenant:member:create')
+  @ApiOperation({ summary: 'Update current tenant SaaS member status' })
+  async updateMemberStatus(@Param('user_id') userId: string, @Body() body: { status: 0 | 1 }) {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    await this.moduleService.assertTenantModuleEnabled(tenantId, 'member_management');
+    await this.tenantMemberService.updateMemberStatus(tenantId, Number(userId), Number(body.status) as 0 | 1);
+    return ResultData.ok();
+  }
+
+  @Delete('members/:user_id')
+  @RequirePermission('tenant:member:create')
+  @ApiOperation({ summary: 'Remove current tenant SaaS member' })
+  async removeMember(@Param('user_id') userId: string) {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    await this.moduleService.assertTenantModuleEnabled(tenantId, 'member_management');
+    await this.tenantMemberService.removeMember(tenantId, Number(userId));
+    return ResultData.ok();
+  }
+
+  @Post('members/:user_id/reset-password')
+  @RequirePermission('tenant:member:create')
+  @ApiOperation({ summary: 'Reset current tenant SaaS member password' })
+  async resetMemberPassword(@Param('user_id') userId: string, @Body() body: { password: string }) {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      return ResultData.fail(401, 'Tenant context is required');
+    }
+
+    await this.moduleService.assertTenantModuleEnabled(tenantId, 'member_management');
+    await this.tenantMemberService.resetMemberPassword(tenantId, Number(userId), body.password);
+    return ResultData.ok();
+  }
+
   @Get('resource-packs')
+  @RequirePermission('tenant:resource-pack:view')
   @ApiOperation({ summary: 'Get active SaaS resource packs for current tenant' })
   async resourcePacks() {
     const tenantId = getTenantId();
@@ -126,6 +190,7 @@ export class SaasTenantController {
   }
 
   @Post('resource-pack-orders')
+  @RequirePermission('tenant:resource-pack-order:create')
   @ApiOperation({ summary: 'Create a tenant SaaS resource pack order' })
   async createResourcePackOrder(@Body() body: CreateResourcePackOrderDto) {
     const tenantId = getTenantId();
@@ -141,6 +206,7 @@ export class SaasTenantController {
   }
 
   @Get('resource-pack-orders')
+  @RequirePermission('tenant:resource-pack-order:view')
   @ApiOperation({ summary: 'List current tenant SaaS resource pack orders' })
   async resourcePackOrders(@Query() query: SaasResourcePackOrderListQuery) {
     const tenantId = getTenantId();
@@ -152,6 +218,7 @@ export class SaasTenantController {
   }
 
   @Post('resource-pack-orders/:order_no/cancel')
+  @RequirePermission('tenant:resource-pack-order:create')
   @ApiOperation({ summary: 'Cancel a pending tenant SaaS resource pack order' })
   async cancelResourcePackOrder(@Param('order_no') orderNo: string) {
     const tenantId = getTenantId();
@@ -167,6 +234,7 @@ export class SaasTenantController {
   }
 
   @Get('resource-pack-orders/:order_no')
+  @RequirePermission('tenant:resource-pack-order:view')
   @ApiOperation({ summary: 'Get a tenant SaaS resource pack order' })
   async resourcePackOrder(@Param('order_no') orderNo: string) {
     const tenantId = getTenantId();
@@ -179,6 +247,7 @@ export class SaasTenantController {
   }
 
   @Get('subscription')
+  @RequirePermission('tenant:billing:view')
   @ApiOperation({ summary: 'Get current tenant SaaS subscription' })
   async subscription() {
     const tenantId = getTenantId();
@@ -233,6 +302,7 @@ export class SaasTenantController {
   }
 
   @Post('orders')
+  @RequirePermission('tenant:billing:upgrade')
   @ApiOperation({ summary: 'Create a tenant SaaS upgrade order' })
   async createOrder(@Body() body: CreateUpgradeOrderDto) {
     const tenantId = getTenantId();
@@ -244,6 +314,7 @@ export class SaasTenantController {
   }
 
   @Get('orders')
+  @RequirePermission('tenant:billing:view')
   @ApiOperation({ summary: 'List current tenant SaaS orders' })
   async orders(@Query() query: SaasOrderListQuery) {
     const tenantId = getTenantId();
@@ -255,6 +326,7 @@ export class SaasTenantController {
   }
 
   @Post('orders/:order_no/cancel')
+  @RequirePermission('tenant:billing:upgrade')
   @ApiOperation({ summary: 'Cancel a pending tenant SaaS order' })
   async cancelOrder(@Param('order_no') orderNo: string) {
     const tenantId = getTenantId();
@@ -266,6 +338,7 @@ export class SaasTenantController {
   }
 
   @Get('orders/:order_no')
+  @RequirePermission('tenant:billing:view')
   @ApiOperation({ summary: 'Get a tenant SaaS order' })
   async order(@Param('order_no') orderNo: string) {
     const tenantId = getTenantId();

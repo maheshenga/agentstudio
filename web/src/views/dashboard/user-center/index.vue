@@ -45,6 +45,28 @@
           </div>
         </div>
 
+        <div class="art-card-sm p-5 my-5">
+          <h1 class="text-lg font-normal">SaaS 身份</h1>
+          <div class="mt-4 space-y-3 text-sm">
+            <div class="flex-b">
+              <span class="text-g-600">账号范围</span>
+              <ElTag effect="plain" :type="accountScopeTagType">{{ accountScopeLabel }}</ElTag>
+            </div>
+            <div class="flex-b">
+              <span class="text-g-600">当前租户</span>
+              <span class="text-right">{{ tenantName }}</span>
+            </div>
+            <div class="flex-b">
+              <span class="text-g-600">租户角色</span>
+              <span class="text-right">{{ tenantRoleLabel }}</span>
+            </div>
+            <div class="flex-b">
+              <span class="text-g-600">权限数量</span>
+              <span>{{ permissionCount }}</span>
+            </div>
+          </div>
+        </div>
+
         <div class="art-card-sm py-5 h-128 my-5">
           <div class="art-card-header border-b border-g-300">
             <h1 class="p-4 text-xl font-normal">日志信息</h1>
@@ -202,6 +224,27 @@
 
   const userStore = useUserStore()
   const userInfo = computed(() => userStore.getUserInfo)
+  const accountScopeLabel = computed(() => {
+    const scope = (userInfo.value as any).account_scope
+    if ((userInfo.value as any).is_platform_admin || scope === 'platform') return '平台管理员'
+    if ((userInfo.value as any).tenant_id || scope === 'tenant') return '租户账号'
+    return '普通用户'
+  })
+  const accountScopeTagType = computed(() => {
+    const scope = (userInfo.value as any).account_scope
+    if ((userInfo.value as any).is_platform_admin || scope === 'platform') return 'danger'
+    if ((userInfo.value as any).tenant_id || scope === 'tenant') return 'success'
+    return 'info'
+  })
+  const tenantName = computed(() => (userInfo.value as any).tenant?.name || '未进入租户')
+  const tenantRoleLabel = computed(() => {
+    const roles = ((userInfo.value as any).roles || []) as string[]
+    if (roles.some((role) => role.endsWith(':owner'))) return '负责人'
+    if (roles.some((role) => role.endsWith(':admin'))) return '管理员'
+    if (roles.some((role) => role.endsWith(':member'))) return '普通成员'
+    return roles[0] || '-'
+  })
+  const permissionCount = computed(() => ((userInfo.value as any).buttons || []).length)
 
   const isEdit = ref(false)
   const isEditPwd = ref(false)

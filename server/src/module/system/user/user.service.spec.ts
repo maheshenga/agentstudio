@@ -12,6 +12,7 @@ jest.mock('../../../common/utils/index', () => ({
 }));
 
 import { UserService } from './user.service';
+import { getTenantId } from '../../../common/utils/tenant.util';
 
 type QueryBuilderMock = {
   where: jest.Mock;
@@ -71,31 +72,27 @@ function expectParameterizedLike(qb: QueryBuilderMock, column: string, param: st
 describe('UserService login', () => {
   const originalLoginCaptchaEnabled = process.env.LOGIN_CAPTCHA_ENABLED;
 
-  afterEach(() => {
-    if (originalLoginCaptchaEnabled === undefined) {
-      delete process.env.LOGIN_CAPTCHA_ENABLED;
-    } else {
-      process.env.LOGIN_CAPTCHA_ENABLED = originalLoginCaptchaEnabled;
-    }
-  });
-
-  it('logs in a SaaS user without a department', async () => {
-    const userRepo = {
+  function createLoginService(overrides: Record<string, any> = {}) {
+    const userRepo = overrides.userRepo || {
       findOne: jest.fn().mockResolvedValue({
         id: 125,
         password: bcrypt.hashSync('Passw0rd!', 10),
       }),
       update: jest.fn().mockResolvedValue(undefined),
     };
-    const sysDeptEntityRep = {
-      findOne: jest.fn(() => {
-        throw new Error('dept lookup should not run when deptId is null');
-      }),
+    const sysDeptEntityRep = overrides.sysDeptEntityRep || {
+      findOne: jest.fn().mockResolvedValue({ id: 3, deptName: 'Tech' }),
     };
-    const menuService = {
+    const sysUserTenantEntityRep = overrides.sysUserTenantEntityRep || {
+      findOne: jest.fn().mockResolvedValue({ id: 99, userId: 125, tenantId: 12 }),
+    };
+    const tenantEntityRep = overrides.tenantEntityRep || {
+      findOne: jest.fn().mockResolvedValue({ id: 12, status: 1, tenantName: 'Acme' }),
+    };
+    const menuService = overrides.menuService || {
       getMenuListByUserId: jest.fn().mockResolvedValue([{ id: 1, name: 'SaaS' }]),
     };
-    const redisService = {
+    const redisService = overrides.redisService || {
       get: jest.fn().mockResolvedValue('1234'),
     };
 
@@ -106,8 +103,8 @@ describe('UserService login', () => {
       {} as any,
       {} as any,
       {} as any,
-      {} as any,
-      {} as any,
+      sysUserTenantEntityRep as any,
+      tenantEntityRep as any,
       {} as any,
       {} as any,
       menuService as any,
@@ -117,6 +114,34 @@ describe('UserService login', () => {
       {} as any,
       {} as any,
     );
+
+    return {
+      service,
+      userRepo,
+      sysDeptEntityRep,
+      sysUserTenantEntityRep,
+      tenantEntityRep,
+      menuService,
+      redisService,
+    };
+  }
+
+  afterEach(() => {
+    if (originalLoginCaptchaEnabled === undefined) {
+      delete process.env.LOGIN_CAPTCHA_ENABLED;
+    } else {
+      process.env.LOGIN_CAPTCHA_ENABLED = originalLoginCaptchaEnabled;
+    }
+  });
+
+  it('logs in a SaaS user without a department', async () => {
+    const { service, sysDeptEntityRep, menuService } = createLoginService({
+      sysDeptEntityRep: {
+        findOne: jest.fn(() => {
+          throw new Error('dept lookup should not run when deptId is null');
+        }),
+      },
+    });
 
     const userData: any = {
       id: 125,
@@ -131,7 +156,7 @@ describe('UserService login', () => {
     };
 
     jest.spyOn(service as any, 'getUserinfo').mockResolvedValue(userData);
-    jest.spyOn(service as any, 'getUserPermissions').mockResolvedValue(['tenant:billing:view']);
+    jest.spyOn(service as any, 'getUserPermissions').mockImplementation(async () => [`tenant:${getTenantId()}:billing:view`]);
     jest.spyOn(service as any, 'createToken').mockReturnValue('access-token');
     jest.spyOn(service as any, 'createRefreshToken').mockResolvedValue('refresh-token');
     jest.spyOn(service as any, 'resolveLoginLocationFast').mockResolvedValue('unknown');
@@ -149,6 +174,7 @@ describe('UserService login', () => {
     );
 
     expect(result.code).toBe(200);
+    expect(result.data.permissions).toEqual(['tenant:12:billing:view']);
     expect(userData.deptName).toBe('');
     expect(sysDeptEntityRep.findOne).not.toHaveBeenCalled();
     expect(menuService.getMenuListByUserId).toHaveBeenCalledWith(125, 12);
@@ -157,41 +183,14 @@ describe('UserService login', () => {
   it('logs in without captcha when login captcha is disabled', async () => {
     process.env.LOGIN_CAPTCHA_ENABLED = 'false';
 
-    const userRepo = {
-      findOne: jest.fn().mockResolvedValue({
-        id: 125,
-        password: bcrypt.hashSync('Passw0rd!', 10),
-      }),
-      update: jest.fn().mockResolvedValue(undefined),
-    };
-    const sysDeptEntityRep = {
-      findOne: jest.fn().mockResolvedValue({ id: 3, deptName: 'Tech' }),
-    };
-    const menuService = {
-      getMenuListByUserId: jest.fn().mockResolvedValue([{ id: 1, name: 'SaaS' }]),
-    };
-    const redisService = {
-      get: jest.fn().mockResolvedValue('1234'),
-    };
-
-    const service = new UserService(
-      userRepo as any,
-      sysDeptEntityRep as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      menuService as any,
-      { sign: jest.fn().mockReturnValue('access-token') } as any,
-      redisService as any,
-      {} as any,
-      {} as any,
-      {} as any,
-    );
+    const { service, redisService } = createLoginService({
+      tenantEntityRep: {
+        findOne: jest.fn().mockResolvedValue({ id: 1, status: 1, tenantName: 'Platform Tenant' }),
+      },
+      sysUserTenantEntityRep: {
+        findOne: jest.fn().mockResolvedValue({ id: 100, userId: 125, tenantId: 1 }),
+      },
+    });
 
     jest.spyOn(service as any, 'getUserinfo').mockResolvedValue({
       id: 125,
@@ -221,6 +220,89 @@ describe('UserService login', () => {
 
     expect(result.code).toBe(200);
     expect(redisService.get).not.toHaveBeenCalled();
+  });
+
+  it('rejects login when the selected tenant is not linked to the user', async () => {
+    process.env.LOGIN_CAPTCHA_ENABLED = 'false';
+
+    const { service, userRepo, sysUserTenantEntityRep, tenantEntityRep, menuService } = createLoginService({
+      sysUserTenantEntityRep: {
+        findOne: jest.fn().mockResolvedValue(null),
+      },
+    });
+
+    jest.spyOn(service as any, 'getUserinfo').mockResolvedValue({
+      id: 125,
+      username: 'alice',
+      realname: 'Alice',
+      avatar: '',
+      deptId: null,
+      deleteTime: null,
+      status: 1,
+      isSuper: 0,
+      roles: [{ code: 'tenant:12:member' }],
+    });
+    jest.spyOn(service as any, 'getUserPermissions').mockResolvedValue(['tenant:billing:view']);
+    jest.spyOn(service as any, 'createToken').mockReturnValue('access-token');
+    jest.spyOn(service as any, 'createRefreshToken').mockResolvedValue('refresh-token');
+    jest.spyOn(service as any, 'resolveLoginLocationFast').mockResolvedValue('unknown');
+    jest.spyOn(service as any, 'updateRedisToken').mockResolvedValue(undefined);
+
+    const result = await service.login(
+      {
+        username: 'alice',
+        password: 'Passw0rd!',
+        tenant_id: 12,
+      },
+      { ipaddr: '127.0.0.1', browser: 'Chrome', os: 'Windows' } as any,
+    );
+
+    expect(result).toMatchObject({ code: 403, msg: '您不属于该租户' });
+    expect(sysUserTenantEntityRep.findOne).toHaveBeenCalled();
+    expect(tenantEntityRep.findOne).not.toHaveBeenCalled();
+    expect(userRepo.update).not.toHaveBeenCalled();
+    expect(menuService.getMenuListByUserId).not.toHaveBeenCalled();
+  });
+
+  it('rejects login when the selected tenant is inactive', async () => {
+    process.env.LOGIN_CAPTCHA_ENABLED = 'false';
+
+    const { service, userRepo, tenantEntityRep, menuService } = createLoginService({
+      tenantEntityRep: {
+        findOne: jest.fn().mockResolvedValue(null),
+      },
+    });
+
+    jest.spyOn(service as any, 'getUserinfo').mockResolvedValue({
+      id: 125,
+      username: 'alice',
+      realname: 'Alice',
+      avatar: '',
+      deptId: null,
+      deleteTime: null,
+      status: 1,
+      isSuper: 0,
+      roles: [{ code: 'tenant:12:member' }],
+    });
+    jest.spyOn(service as any, 'getUserPermissions').mockResolvedValue(['tenant:billing:view']);
+    jest.spyOn(service as any, 'createToken').mockReturnValue('access-token');
+    jest.spyOn(service as any, 'createRefreshToken').mockResolvedValue('refresh-token');
+    jest.spyOn(service as any, 'resolveLoginLocationFast').mockResolvedValue('unknown');
+    jest.spyOn(service as any, 'updateRedisToken').mockResolvedValue(undefined);
+
+    const result = await service.login(
+      {
+        username: 'alice',
+        password: 'Passw0rd!',
+        tenant_id: 12,
+      },
+      { ipaddr: '127.0.0.1', browser: 'Chrome', os: 'Windows' } as any,
+    );
+
+    expect(result).toMatchObject({ code: 403, msg: '租户无效或已过期' });
+    expect(tenantEntityRep.findOne).toHaveBeenCalled();
+    expect(userRepo.update).not.toHaveBeenCalled();
+    expect(menuService.getMenuListByUserId).not.toHaveBeenCalled();
   });
 });
 

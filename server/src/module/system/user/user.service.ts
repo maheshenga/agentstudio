@@ -450,6 +450,24 @@ export class UserService {
    * @param tenantId 可选租户ID
    * @returns 菜单ID数组
    */
+  private async assertActiveTenantMembership(userId: number, tenantId: number) {
+    const userTenant = await this.sysUserTenantEntityRep.findOne({
+      where: { userId, tenantId, deleteTime: IsNull() },
+    });
+    if (!userTenant) {
+      return ResultData.fail(403, '您不属于该租户');
+    }
+
+    const tenant = await this.tenantEntityRep.findOne({
+      where: { id: tenantId, status: 1, deleteTime: IsNull() },
+    });
+    if (!tenant) {
+      return ResultData.fail(403, '租户无效或已过期');
+    }
+
+    return ResultData.ok(tenant);
+  }
+
   private async getUserMenuIds(userId: number, tenantId?: number) {
     const tid = tenantId ?? getTenantId();
     const where: Record<string, any> = {
@@ -504,6 +522,11 @@ export class UserService {
     /**
      * 更新用户登录信息
      */
+    const tenantCheck = await this.assertActiveTenantMembership(data.id, Number(tenantId));
+    if (tenantCheck.code !== 200) {
+      return tenantCheck;
+    }
+
     const loginDate = new Date();
     await this.userRepo.update(
       {
@@ -516,67 +539,72 @@ export class UserService {
     );
 
     const uuid = generateUUID();
+    const tenantIdNumber = Number(tenantId);
     const token = this.createToken({ uuid: uuid, userId: userData.id });
     const refreshToken = await this.createRefreshToken(userData.id);
-    const permissions = await this.getUserPermissions(userData.id);
-    const deptData = userData.deptId
-      ? await this.sysDeptEntityRep.findOne({
-          where: {
-            id: userData.deptId,
-          },
-          select: { name: true },
-        })
-      : null;
 
-    /**
-     * 设置公司名称
-     */
-    userData['deptName'] = deptData?.name || '';
-    const roles = userData.roles.map((item) => item.code);
+    return await TenantContext.run({ tenantId: tenantIdNumber, userId: Number(userData.id) } as any, async () => {
+      const scopedUserData = await this.getUserinfo(userData.id);
+      const permissions = await this.getUserPermissions(userData.id);
+      const deptData = scopedUserData.deptId
+        ? await this.sysDeptEntityRep.findOne({
+            where: {
+              id: scopedUserData.deptId,
+            },
+            select: { name: true },
+          })
+        : null;
 
-    /**
-     * 获取登录 IP 地理位置
-     */
-    const loginLocation = await this.resolveLoginLocationFast(clientInfo.ipaddr);
+      /**
+       * 设置公司名称
+       */
+      scopedUserData['deptName'] = deptData?.name || '';
+      const roles = scopedUserData.roles.map((item) => item.code);
 
-    const userInfo = {
-      browser: clientInfo.browser,
-      ipaddr: clientInfo.ipaddr,
-      loginLocation,
-      loginTime: loginDate,
-      os: clientInfo.os,
-      permissions: permissions,
-      roles: roles,
-      token: uuid,
-      user: userData,
-      userId: userData.id,
-      userName: userData.username,
-      deptId: userData.deptId,
-      tenantId: Number(tenantId),
-    };
+      /**
+       * 获取登录 IP 地理位置
+       */
+      const loginLocation = await this.resolveLoginLocationFast(clientInfo.ipaddr);
 
-    const menus = await this.menuService.getMenuListByUserId(userData.id, tenantId);
-
-    await this.updateRedisToken(uuid, userInfo);
-
-    return ResultData.ok(
-      {
-        user: {
-          id: userData.id,
-          username: userData.username,
-          nickname: userData.realname,
-          avatar: userData.avatar,
-          is_admin: userData.isSuper || false,
-        },
-        access_token: token,
-        refresh_token: refreshToken,
-        expires_in: ACCESS_TOKEN_EXPIRESIN,
-        tenant_id: user.tenant_id || 0,
-        menus: menus,
+      const userInfo = {
+        browser: clientInfo.browser,
+        ipaddr: clientInfo.ipaddr,
+        loginLocation,
+        loginTime: loginDate,
+        os: clientInfo.os,
         permissions: permissions,
-      },
-      '登录成功',
-    );
+        roles: roles,
+        token: uuid,
+        user: scopedUserData,
+        userId: scopedUserData.id,
+        userName: scopedUserData.username,
+        deptId: scopedUserData.deptId,
+        tenantId: tenantIdNumber,
+      };
+
+      const menus = await this.menuService.getMenuListByUserId(scopedUserData.id, tenantIdNumber);
+
+      await this.updateRedisToken(uuid, userInfo);
+
+      return ResultData.ok(
+        {
+          user: {
+            id: scopedUserData.id,
+            username: scopedUserData.username,
+            nickname: scopedUserData.realname,
+            avatar: scopedUserData.avatar,
+            is_admin: scopedUserData.isSuper || false,
+          },
+          access_token: token,
+          refresh_token: refreshToken,
+          expires_in: ACCESS_TOKEN_EXPIRESIN,
+          tenant_id: tenantIdNumber,
+          menus: menus,
+          permissions: permissions,
+        },
+        '登录成功',
+      );
+    });
   }
 
   /**

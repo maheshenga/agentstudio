@@ -553,6 +553,22 @@ export function createTenantMember(params: CreateSaasTenantMemberParams) {
   return request.post<SaasTenantMemberRecord>({ url: '/api/saas/tenant/members', data: params })
 }
 
+export function changeTenantMemberRole(userId: number, role: 'admin' | 'member') {
+  return request.request({ url: `/api/saas/tenant/members/${userId}/role`, method: 'PATCH', data: { role } })
+}
+
+export function updateTenantMemberStatus(userId: number, status: 0 | 1) {
+  return request.request({ url: `/api/saas/tenant/members/${userId}/status`, method: 'PATCH', data: { status } })
+}
+
+export function removeTenantMember(userId: number) {
+  return request.del({ url: `/api/saas/tenant/members/${userId}` })
+}
+
+export function resetTenantMemberPassword(userId: number, password: string) {
+  return request.post({ url: `/api/saas/tenant/members/${userId}/reset-password`, data: { password } })
+}
+
 export function fetchTenantSubscription() {
   return request.get<TenantSubscriptionSummary>({ url: '/api/saas/tenant/subscription' })
 }

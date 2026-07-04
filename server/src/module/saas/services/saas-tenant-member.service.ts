@@ -158,6 +158,70 @@ export class SaasTenantMemberService {
     });
   }
 
+  async changeMemberRole(tenantId: number, userId: number, role: 'admin' | 'member') {
+    if (!['admin', 'member'].includes(role)) {
+      throw new BadRequestException('租户角色只能是管理员或成员');
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      await this.assertManageableMember(tenantId, userId, manager);
+      const targetRole = await manager.findOne(SysRoleEntity, {
+        where: { tenantId, code: `tenant:${tenantId}:${role}`, deleteTime: IsNull(), status: 1 },
+      });
+      if (!targetRole) {
+        throw new BadRequestException('租户角色不存在');
+      }
+
+      await manager.delete(SysUserRoleEntity, { tenantId, userId });
+      await manager.save(
+        SysUserRoleEntity,
+        manager.create(SysUserRoleEntity, {
+          userId,
+          roleId: targetRole.id,
+          tenantId,
+          status: 1,
+        }),
+      );
+    });
+  }
+
+  async updateMemberStatus(tenantId: number, userId: number, status: 0 | 1) {
+    if (![0, 1].includes(Number(status))) {
+      throw new BadRequestException('成员状态只能是启用或停用');
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      await this.assertManageableMember(tenantId, userId, manager);
+      await manager.update(UserEntity, { id: userId }, { status: Number(status) });
+    });
+  }
+
+  async removeMember(tenantId: number, userId: number) {
+    return this.dataSource.transaction(async (manager) => {
+      const member = await this.assertManageableMember(tenantId, userId, manager);
+      await manager.softDelete(SysUserTenantEntity, member.id);
+      await manager.delete(SysUserRoleEntity, { tenantId, userId });
+
+      const remainingTenantCount = await manager.count(SysUserTenantEntity, {
+        where: { userId, deleteTime: IsNull() },
+      });
+      if (remainingTenantCount === 0) {
+        await manager.softDelete(UserEntity, userId);
+      }
+    });
+  }
+
+  async resetMemberPassword(tenantId: number, userId: number, password: string) {
+    if (!password || password.length < 6) {
+      throw new BadRequestException('新密码长度不能少于 6 位');
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      await this.assertManageableMember(tenantId, userId, manager);
+      await manager.update(UserEntity, { id: userId }, { password: bcrypt.hashSync(password, bcrypt.genSaltSync(10)) });
+    });
+  }
+
   private async assertUserQuotaAvailable(tenantId: number, manager: any): Promise<void> {
     const quota = await manager.findOne(SaasTenantResourceEntity, {
       where: { tenantId, resourceType: SAAS_QUOTA_USERS, status: 1 },
@@ -171,6 +235,33 @@ export class SaasTenantMemberService {
     if (currentUsers >= totalQuota) {
       throw new BadRequestException('租户用户数额度不足');
     }
+  }
+
+  private async assertManageableMember(tenantId: number, userId: number, manager: any) {
+    const member = await manager.findOne(SysUserTenantEntity, {
+      where: { tenantId, userId, deleteTime: IsNull() },
+    });
+    if (!member) {
+      throw new BadRequestException('租户成员不存在');
+    }
+
+    const roles = await manager.query(
+      `
+        SELECT \`role\`.\`code\` AS \`role_code\`
+        FROM \`sa_system_user_role\` \`user_role\`
+        INNER JOIN \`sa_system_role\` \`role\`
+          ON \`role\`.\`id\` = \`user_role\`.\`role_id\`
+          AND \`role\`.\`delete_time\` IS NULL
+        WHERE \`user_role\`.\`tenant_id\` = ?
+          AND \`user_role\`.\`user_id\` = ?
+      `,
+      [tenantId, userId],
+    );
+    if ((roles || []).some((role: any) => String(role.role_code || '').endsWith(':owner'))) {
+      throw new BadRequestException('租户负责人不能通过成员管理修改');
+    }
+
+    return member;
   }
 
   private toMemberResponse(item: any): SaasTenantMemberRecord {

@@ -34,6 +34,19 @@
         <ElTableColumn label="创建时间" min-width="180">
           <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
         </ElTableColumn>
+        <ElTableColumn label="操作" width="300" fixed="right">
+          <template #default="{ row }">
+            <ElSpace v-if="row.role !== 'owner'" wrap>
+              <ElButton link type="primary" @click="openRoleDialog(row)">角色</ElButton>
+              <ElButton link :type="row.status === 1 ? 'warning' : 'success'" @click="toggleStatus(row)">
+                {{ row.status === 1 ? '停用' : '启用' }}
+              </ElButton>
+              <ElButton link type="primary" @click="openResetPasswordDialog(row)">重置密码</ElButton>
+              <ElButton link type="danger" @click="removeMember(row)">移除</ElButton>
+            </ElSpace>
+            <ElTag v-else type="danger" effect="plain">负责人</ElTag>
+          </template>
+        </ElTableColumn>
         <template #empty>
           <ElEmpty description="暂无成员" />
         </template>
@@ -89,17 +102,54 @@
         <ElButton type="primary" :loading="saving" @click="submitMember">保存</ElButton>
       </template>
     </ElDialog>
+
+    <ElDialog v-model="roleDialogVisible" title="调整角色" width="420px">
+      <ElForm label-width="88px">
+        <ElFormItem label="账号">
+          <ElInput :model-value="selectedMember?.username || ''" disabled />
+        </ElFormItem>
+        <ElFormItem label="角色">
+          <ElSelect v-model="roleForm.role" class="tenant-member-page__select">
+            <ElOption label="管理员" value="admin" />
+            <ElOption label="普通成员" value="member" />
+          </ElSelect>
+        </ElFormItem>
+      </ElForm>
+      <template #footer>
+        <ElButton @click="roleDialogVisible = false">取消</ElButton>
+        <ElButton type="primary" :loading="saving" @click="submitRoleChange">保存</ElButton>
+      </template>
+    </ElDialog>
+
+    <ElDialog v-model="passwordDialogVisible" title="重置密码" width="420px">
+      <ElForm ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" label-width="88px">
+        <ElFormItem label="账号">
+          <ElInput :model-value="selectedMember?.username || ''" disabled />
+        </ElFormItem>
+        <ElFormItem label="新密码" prop="password">
+          <ElInput v-model="passwordForm.password" type="password" maxlength="100" show-password />
+        </ElFormItem>
+      </ElForm>
+      <template #footer>
+        <ElButton @click="passwordDialogVisible = false">取消</ElButton>
+        <ElButton type="primary" :loading="saving" @click="submitPasswordReset">保存</ElButton>
+      </template>
+    </ElDialog>
   </div>
 </template>
 
 <script setup lang="ts">
-  import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+  import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
   import {
+    changeTenantMemberRole,
     createTenantMember,
     fetchTenantModules,
     fetchTenantMembers,
+    removeTenantMember,
+    resetTenantMemberPassword,
     type CreateSaasTenantMemberParams,
-    type SaasTenantMemberRecord
+    type SaasTenantMemberRecord,
+    updateTenantMemberStatus
   } from '@/api/saas'
 
   defineOptions({ name: 'SaasTenantMemberPage' })
@@ -111,7 +161,11 @@
   const loading = ref(false)
   const saving = ref(false)
   const dialogVisible = ref(false)
+  const roleDialogVisible = ref(false)
+  const passwordDialogVisible = ref(false)
   const formRef = ref<FormInstance>()
+  const passwordFormRef = ref<FormInstance>()
+  const selectedMember = ref<SaasTenantMemberRecord | null>(null)
   const pager = reactive({ page: 1, limit: 10, total: 0 })
   const form = reactive<CreateSaasTenantMemberParams>({
     username: '',
@@ -121,10 +175,15 @@
     email: '',
     role: 'member'
   })
+  const roleForm = reactive<{ role: 'admin' | 'member' }>({ role: 'member' })
+  const passwordForm = reactive({ password: '' })
   const rules: FormRules = {
     username: [{ required: true, message: '请输入账号', trigger: 'blur' }],
     password: [{ required: true, min: 6, message: '请输入至少 6 位密码', trigger: 'blur' }],
     role: [{ required: true, message: '请选择角色', trigger: 'change' }]
+  }
+  const passwordRules: FormRules = {
+    password: [{ required: true, min: 6, message: '请输入至少 6 位密码', trigger: 'blur' }]
   }
 
   function roleLabel(role: string) {
@@ -160,6 +219,19 @@
   function openCreateDialog() {
     resetForm()
     dialogVisible.value = true
+  }
+
+  function openRoleDialog(row: SaasTenantMemberRecord) {
+    selectedMember.value = row
+    roleForm.role = row.role === 'admin' ? 'admin' : 'member'
+    roleDialogVisible.value = true
+  }
+
+  function openResetPasswordDialog(row: SaasTenantMemberRecord) {
+    selectedMember.value = row
+    passwordForm.password = ''
+    passwordFormRef.value?.clearValidate()
+    passwordDialogVisible.value = true
   }
 
   async function loadMembers() {
@@ -219,6 +291,65 @@
     } catch (error) {
       console.error('[SaasTenantMemberPage] create member failed:', error)
       ElMessage.error('添加成员失败')
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function submitRoleChange() {
+    if (!selectedMember.value) return
+    saving.value = true
+    try {
+      await changeTenantMemberRole(selectedMember.value.user_id, roleForm.role)
+      ElMessage.success('角色已更新')
+      roleDialogVisible.value = false
+      await loadMembers()
+    } catch (error) {
+      console.error('[SaasTenantMemberPage] change role failed:', error)
+      ElMessage.error('更新角色失败')
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function toggleStatus(row: SaasTenantMemberRecord) {
+    const nextStatus = row.status === 1 ? 0 : 1
+    try {
+      await ElMessageBox.confirm(`确认${nextStatus === 1 ? '启用' : '停用'}成员「${row.username}」？`, '成员状态')
+      await updateTenantMemberStatus(row.user_id, nextStatus)
+      ElMessage.success(nextStatus === 1 ? '成员已启用' : '成员已停用')
+      await loadMembers()
+    } catch (error) {
+      if (error !== 'cancel') {
+        console.error('[SaasTenantMemberPage] update status failed:', error)
+      }
+    }
+  }
+
+  async function removeMember(row: SaasTenantMemberRecord) {
+    try {
+      await ElMessageBox.confirm(`确认移除成员「${row.username}」？`, '移除成员', { type: 'warning' })
+      await removeTenantMember(row.user_id)
+      ElMessage.success('成员已移除')
+      await loadMembers()
+    } catch (error) {
+      if (error !== 'cancel') {
+        console.error('[SaasTenantMemberPage] remove member failed:', error)
+      }
+    }
+  }
+
+  async function submitPasswordReset() {
+    if (!selectedMember.value) return
+    await passwordFormRef.value?.validate()
+    saving.value = true
+    try {
+      await resetTenantMemberPassword(selectedMember.value.user_id, passwordForm.password)
+      ElMessage.success('密码已重置')
+      passwordDialogVisible.value = false
+    } catch (error) {
+      console.error('[SaasTenantMemberPage] reset password failed:', error)
+      ElMessage.error('重置密码失败')
     } finally {
       saving.value = false
     }

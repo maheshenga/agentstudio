@@ -91,6 +91,10 @@ describe('SaasTenantController', () => {
   const tenantMemberService = {
     listMembers: jest.fn(),
     createMember: jest.fn(),
+    changeMemberRole: jest.fn(),
+    updateMemberStatus: jest.fn(),
+    removeMember: jest.fn(),
+    resetMemberPassword: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -155,6 +159,35 @@ describe('SaasTenantController', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+  });
+
+  it('requires tenant-scoped permissions on SaaS tenant endpoints', () => {
+    const expected: Array<[keyof SaasTenantController, string]> = [
+      ['plans', 'tenant:billing:view'],
+      ['usage', 'tenant:quota:view'],
+      ['quotaLedgers', 'tenant:quota:view'],
+      ['modules', 'tenant:billing:view'],
+      ['members', 'tenant:member:index'],
+      ['createMember', 'tenant:member:create'],
+      ['changeMemberRole', 'tenant:member:create'],
+      ['updateMemberStatus', 'tenant:member:create'],
+      ['removeMember', 'tenant:member:create'],
+      ['resetMemberPassword', 'tenant:member:create'],
+      ['resourcePacks', 'tenant:resource-pack:view'],
+      ['createResourcePackOrder', 'tenant:resource-pack-order:create'],
+      ['resourcePackOrders', 'tenant:resource-pack-order:view'],
+      ['cancelResourcePackOrder', 'tenant:resource-pack-order:create'],
+      ['resourcePackOrder', 'tenant:resource-pack-order:view'],
+      ['subscription', 'tenant:billing:view'],
+      ['createOrder', 'tenant:billing:upgrade'],
+      ['orders', 'tenant:billing:view'],
+      ['cancelOrder', 'tenant:billing:upgrade'],
+      ['order', 'tenant:billing:view'],
+    ];
+
+    for (const [methodName, permission] of expected) {
+      expect(Reflect.getMetadata('requirePermission', controller[methodName])).toEqual([permission]);
+    }
   });
 
   it('returns a tenant subscription summary with plan and trial fields', async () => {
@@ -334,6 +367,50 @@ describe('SaasTenantController', () => {
     expect(moduleService.assertTenantModuleEnabled).toHaveBeenCalledWith(88, 'member_management');
     expect(tenantMemberService.createMember).toHaveBeenCalledWith(88, body);
     expect(result.data).toEqual({ user_id: 8, username: 'bob', role: 'member' });
+  });
+
+  it('changes a tenant member role in current tenant context', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
+    tenantMemberService.changeMemberRole.mockResolvedValue(undefined);
+
+    const result = await controller.changeMemberRole('8', { role: 'admin' });
+
+    expect(moduleService.assertTenantModuleEnabled).toHaveBeenCalledWith(88, 'member_management');
+    expect(tenantMemberService.changeMemberRole).toHaveBeenCalledWith(88, 8, 'admin');
+    expect(result.code).toBe(200);
+  });
+
+  it('updates a tenant member status in current tenant context', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
+    tenantMemberService.updateMemberStatus.mockResolvedValue(undefined);
+
+    const result = await controller.updateMemberStatus('8', { status: 0 });
+
+    expect(moduleService.assertTenantModuleEnabled).toHaveBeenCalledWith(88, 'member_management');
+    expect(tenantMemberService.updateMemberStatus).toHaveBeenCalledWith(88, 8, 0);
+    expect(result.code).toBe(200);
+  });
+
+  it('removes a tenant member in current tenant context', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
+    tenantMemberService.removeMember.mockResolvedValue(undefined);
+
+    const result = await controller.removeMember('8');
+
+    expect(moduleService.assertTenantModuleEnabled).toHaveBeenCalledWith(88, 'member_management');
+    expect(tenantMemberService.removeMember).toHaveBeenCalledWith(88, 8);
+    expect(result.code).toBe(200);
+  });
+
+  it('resets a tenant member password in current tenant context', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
+    tenantMemberService.resetMemberPassword.mockResolvedValue(undefined);
+
+    const result = await controller.resetMemberPassword('8', { password: 'NewPass123!' });
+
+    expect(moduleService.assertTenantModuleEnabled).toHaveBeenCalledWith(88, 'member_management');
+    expect(tenantMemberService.resetMemberPassword).toHaveBeenCalledWith(88, 8, 'NewPass123!');
+    expect(result.code).toBe(200);
   });
 
   it('does not create tenant members when member management is disabled', async () => {
