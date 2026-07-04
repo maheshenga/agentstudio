@@ -138,6 +138,39 @@ export interface SaasPlatformPlanRecord extends SaasPlanOption {
   quotas: SaasPlanQuotaRecord[]
 }
 
+export interface SaasModuleRecord {
+  id?: number
+  code: string
+  name: string
+  description?: string
+  category?: string
+  icon?: string
+  route_path?: string
+  routePath?: string
+  status: number
+  sort?: number
+  remark?: string
+  create_time?: string | Date
+  update_time?: string | Date
+}
+
+export interface SaasModuleListParams {
+  keyword?: string
+  status?: number | string
+}
+
+export interface SaveSaasModuleParams {
+  code?: string
+  name: string
+  description?: string
+  category?: string
+  icon?: string
+  route_path?: string
+  status?: number
+  sort?: number
+  remark?: string
+}
+
 export interface SaasPlatformPlanListParams {
   page?: number
   limit?: number
@@ -557,6 +590,30 @@ export function updatePlatformPlanStatus(code: string, status: number) {
 
 export function updatePlatformPlanQuotas(code: string, quotas: SaasPlanQuotaRecord[]) {
   return request.put<SaasPlatformPlanRecord>({ url: `/api/saas/platform/plans/${code}/quotas`, data: { quotas } })
+}
+
+export function fetchPlatformModules(params: SaasModuleListParams) {
+  return request.get<SaasModuleRecord[]>({ url: '/api/saas/platform/modules', params })
+}
+
+export function createPlatformModule(params: SaveSaasModuleParams) {
+  return request.post<SaasModuleRecord>({ url: '/api/saas/platform/modules', data: params })
+}
+
+export function updatePlatformModule(code: string, params: SaveSaasModuleParams) {
+  return request.put<SaasModuleRecord>({ url: `/api/saas/platform/modules/${code}`, data: params })
+}
+
+export function updatePlatformModuleStatus(code: string, status: number) {
+  return request.put<SaasModuleRecord>({ url: `/api/saas/platform/modules/${code}/status`, data: { status } })
+}
+
+export function updatePlatformPlanModules(code: string, moduleCodes: string[]) {
+  return request.put<SaasPlatformPlanRecord>({ url: `/api/saas/platform/plans/${code}/modules`, data: { module_codes: moduleCodes } })
+}
+
+export function fetchTenantModules() {
+  return request.get<SaasModuleRecord[]>({ url: '/api/saas/tenant/modules' })
 }
 
 export function fetchPlatformResourcePacks(params: SaasResourcePackListParams) {
