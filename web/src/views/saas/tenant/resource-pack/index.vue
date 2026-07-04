@@ -5,10 +5,11 @@
         <h1 class="tenant-resource-pack-page__title">资源包</h1>
         <p class="tenant-resource-pack-page__subtitle">按需购买额外资源额度，支付成功后自动发放到当前租户。</p>
       </div>
-      <ElButton :loading="loading" @click="loadResourcePacks">刷新</ElButton>
+      <ElButton v-if="moduleEnabled" :loading="loading" @click="loadResourcePacks">刷新</ElButton>
     </section>
 
-    <ElSkeleton v-if="loading && !records.length" animated :rows="6" />
+    <template v-if="moduleEnabled">
+      <ElSkeleton v-if="loading && !records.length" animated :rows="6" />
 
     <ElResult v-else-if="errorMessage" icon="error" :title="errorMessage" sub-title="请稍后重试。">
       <template #extra>
@@ -184,6 +185,19 @@
         @size-change="handleOrderHistorySizeChange"
       />
     </section>
+    </template>
+
+    <section v-else-if="moduleChecked && errorMessage" class="tenant-resource-pack-page__state">
+      <ElResult icon="error" :title="errorMessage" sub-title="请稍后重试。">
+        <template #extra>
+          <ElButton type="primary" @click="loadPage">重试</ElButton>
+        </template>
+      </ElResult>
+    </section>
+
+    <section v-else-if="moduleChecked" class="tenant-resource-pack-page__state">
+      <ElEmpty description="当前套餐未开通资源包" />
+    </section>
   </div>
 </template>
 
@@ -196,6 +210,7 @@
     devConfirmTenantPayment,
     fetchTenantResourcePackOrder,
     fetchTenantResourcePackOrders,
+    fetchTenantModules,
     fetchTenantResourcePacks,
     type SaasResourcePackOrderRecord,
     type SaasResourcePackRecord
@@ -206,6 +221,8 @@
 
   const records = ref<SaasResourcePackRecord[]>([])
   const currentOrder = ref<SaasResourcePackOrderRecord | null>(null)
+  const moduleChecked = ref(false)
+  const moduleEnabled = ref(false)
   const loading = ref(false)
   const creatingPackCode = ref('')
   const creatingAlipayPayment = ref(false)
@@ -242,6 +259,7 @@
   const currentOrderStatusTagType = computed(() => getOrderStatusTagType(currentOrder.value?.status || ''))
 
   async function loadResourcePacks() {
+    if (!moduleEnabled.value) return
     loading.value = true
     errorMessage.value = ''
 
@@ -253,6 +271,25 @@
       errorMessage.value = '加载资源包失败'
     } finally {
       loading.value = false
+    }
+  }
+
+  async function loadPage() {
+    moduleChecked.value = false
+    errorMessage.value = ''
+    try {
+      const modules = await fetchTenantModules()
+      moduleEnabled.value = modules.some((module) => module.code === 'resource_pack' && module.status === 1)
+      moduleChecked.value = true
+      if (moduleEnabled.value) {
+        await loadResourcePacks()
+        await loadOrderHistory()
+      }
+    } catch (error) {
+      console.error('[SaasTenantResourcePackPage] load module access failed:', error)
+      moduleEnabled.value = false
+      moduleChecked.value = true
+      errorMessage.value = '加载模块权限失败'
     }
   }
 
@@ -480,10 +517,7 @@
     }).format((Number(priceCents) || 0) / 100)
   }
 
-  onMounted(() => {
-    loadResourcePacks()
-    loadOrderHistory()
-  })
+  onMounted(loadPage)
 
   onBeforeUnmount(() => {
     stopPaymentPolling()

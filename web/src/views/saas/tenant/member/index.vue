@@ -1,6 +1,6 @@
 <template>
   <div class="art-full-height p-5">
-    <ElCard shadow="never" class="tenant-member-page">
+    <ElCard v-if="moduleEnabled" shadow="never" class="tenant-member-page">
       <template #header>
         <div class="tenant-member-page__header">
           <div>
@@ -52,6 +52,14 @@
       </div>
     </ElCard>
 
+    <ElResult v-else-if="moduleErrorMessage" icon="error" :title="moduleErrorMessage" sub-title="请稍后重试。">
+      <template #extra>
+        <ElButton type="primary" @click="loadPage">重试</ElButton>
+      </template>
+    </ElResult>
+
+    <ElEmpty v-else-if="moduleChecked" description="当前套餐未开通成员管理" />
+
     <ElDialog v-model="dialogVisible" title="添加成员" width="520px">
       <ElForm ref="formRef" :model="form" :rules="rules" label-width="88px">
         <ElFormItem label="账号" prop="username">
@@ -88,6 +96,7 @@
   import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
   import {
     createTenantMember,
+    fetchTenantModules,
     fetchTenantMembers,
     type CreateSaasTenantMemberParams,
     type SaasTenantMemberRecord
@@ -96,6 +105,9 @@
   defineOptions({ name: 'SaasTenantMemberPage' })
 
   const members = ref<SaasTenantMemberRecord[]>([])
+  const moduleChecked = ref(false)
+  const moduleEnabled = ref(false)
+  const moduleErrorMessage = ref('')
   const loading = ref(false)
   const saving = ref(false)
   const dialogVisible = ref(false)
@@ -164,6 +176,24 @@
     }
   }
 
+  async function loadPage() {
+    moduleChecked.value = false
+    moduleErrorMessage.value = ''
+    try {
+      const modules = await fetchTenantModules()
+      moduleEnabled.value = modules.some((module) => module.code === 'member_management' && module.status === 1)
+      moduleChecked.value = true
+      if (moduleEnabled.value) {
+        await loadMembers()
+      }
+    } catch (error) {
+      console.error('[SaasTenantMemberPage] load module access failed:', error)
+      moduleEnabled.value = false
+      moduleChecked.value = true
+      moduleErrorMessage.value = '加载模块权限失败'
+    }
+  }
+
   function handleSizeChange() {
     pager.page = 1
     loadMembers()
@@ -194,7 +224,7 @@
     }
   }
 
-  onMounted(loadMembers)
+  onMounted(loadPage)
 </script>
 
 <style scoped>
