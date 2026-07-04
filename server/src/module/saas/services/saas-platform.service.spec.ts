@@ -9,6 +9,7 @@ import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entit
 import { SaasPlatformService } from './saas-platform.service';
 import { SaasOrderRiskService } from './saas-order-risk.service';
 import { SaasOrderService } from './saas-order.service';
+import { SaasQuotaService } from './saas-quota.service';
 import { SaasSubscriptionLifecycleService } from './saas-subscription-lifecycle.service';
 import { SaasResourcePackOrderService } from './saas-resource-pack-order.service';
 import { SaasResourcePackService } from './saas-resource-pack.service';
@@ -63,6 +64,9 @@ describe('SaasPlatformService', () => {
     listPlatformOrders: jest.fn(),
     findPlatformOrder: jest.fn(),
   };
+  const saasQuotaService = {
+    listPlatformQuotaLedgers: jest.fn(),
+  };
   const orderRiskService = {
     getOrderRiskOverview: jest.fn(),
   };
@@ -91,6 +95,7 @@ describe('SaasPlatformService', () => {
         { provide: SaasResourcePackService, useValue: resourcePackService },
         { provide: SaasOrderService, useValue: saasOrderService },
         { provide: SaasResourcePackOrderService, useValue: resourcePackOrderService },
+        { provide: SaasQuotaService, useValue: saasQuotaService },
         { provide: SaasOrderRiskService, useValue: orderRiskService },
         { provide: SaasSubscriptionLifecycleService, useValue: lifecycleService },
       ],
@@ -394,6 +399,14 @@ describe('SaasPlatformService', () => {
 
     await expect(service.listResourcePackOrders({ status: 'paid' })).resolves.toEqual({ list: [{ order_no: 'RPO20260703120000001000001' }], total: 1, page: 1, limit: 20 });
     expect(resourcePackOrderService.listPlatformOrders).toHaveBeenCalledWith({ status: 'paid' });
+  });
+
+  it('delegates platform quota ledger listing to the quota service', async () => {
+    const query = { tenant_id: '88', resource_type: 'tokens', source_type: 'ai_chat' };
+    saasQuotaService.listPlatformQuotaLedgers.mockResolvedValue({ list: [{ id: 9, tenant_id: 88 }], total: 1, page: 1, limit: 20 });
+
+    await expect(service.listQuotaLedgers(query)).resolves.toEqual({ list: [{ id: 9, tenant_id: 88 }], total: 1, page: 1, limit: 20 });
+    expect(saasQuotaService.listPlatformQuotaLedgers).toHaveBeenCalledWith(query);
   });
 
   it('delegates platform resource pack order detail lookup', async () => {

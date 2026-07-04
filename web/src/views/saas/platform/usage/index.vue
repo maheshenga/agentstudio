@@ -137,6 +137,109 @@
         </ElTable>
       </section>
 
+      <section class="saas-platform-usage-page__section" v-loading="quotaLedgerLoading">
+        <div class="saas-platform-usage-page__section-header saas-platform-usage-page__section-header--responsive">
+          <div>
+            <h2>Quota ledger</h2>
+          </div>
+          <div class="saas-platform-usage-page__actions">
+            <ElInput
+              v-model="quotaLedgerFilters.tenant_id"
+              clearable
+              placeholder="Tenant ID"
+              class="saas-platform-usage-page__filter-input"
+              @clear="refreshQuotaLedgers"
+              @keyup.enter="refreshQuotaLedgers"
+            />
+            <ElSelect
+              v-model="quotaLedgerFilters.resource_type"
+              clearable
+              placeholder="Resource"
+              class="saas-platform-usage-page__filter-select"
+              @change="refreshQuotaLedgers"
+            >
+              <ElOption label="Users" value="users" />
+              <ElOption label="Storage MB" value="storage_mb" />
+              <ElOption label="AI Calls" value="ai_calls" />
+              <ElOption label="RAG Documents" value="rag_documents" />
+              <ElOption label="Tokens" value="tokens" />
+            </ElSelect>
+            <ElSelect
+              v-model="quotaLedgerFilters.change_type"
+              clearable
+              placeholder="Change"
+              class="saas-platform-usage-page__filter-select"
+              @change="refreshQuotaLedgers"
+            >
+              <ElOption label="Grant" value="grant" />
+              <ElOption label="Consume" value="consume" />
+            </ElSelect>
+            <ElSelect
+              v-model="quotaLedgerFilters.source_type"
+              clearable
+              placeholder="Source"
+              class="saas-platform-usage-page__filter-select"
+              @change="refreshQuotaLedgers"
+            >
+              <ElOption label="AI Chat" value="ai_chat" />
+              <ElOption label="Resource Pack Order" value="resource_pack_order" />
+            </ElSelect>
+            <ElInput
+              v-model="quotaLedgerFilters.source_id"
+              clearable
+              placeholder="Source ID"
+              class="saas-platform-usage-page__filter-input"
+              @clear="refreshQuotaLedgers"
+              @keyup.enter="refreshQuotaLedgers"
+            />
+            <ElButton :icon="Refresh" :loading="quotaLedgerLoading" @click="refreshQuotaLedgers">Refresh</ElButton>
+          </div>
+        </div>
+        <ElTable :data="quotaLedgers" border>
+          <ElTableColumn prop="tenant_id" label="Tenant" width="100" />
+          <ElTableColumn label="Resource" min-width="140">
+            <template #default="{ row }">{{ quotaLabel(row.resource_type) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="Change" width="120">
+            <template #default="{ row }">
+              <ElTag :type="getChangeTagType(row.change_type)" effect="light">
+                {{ changeTypeLabel(row.change_type) }}
+              </ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="Quota delta" min-width="130" align="right">
+            <template #default="{ row }">{{ formatSignedNumber(row.quota_delta) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="Used delta" min-width="130" align="right">
+            <template #default="{ row }">{{ formatSignedNumber(row.used_delta) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="Balance" min-width="170" align="right">
+            <template #default="{ row }">
+              {{ formatNumber(row.balance_used_quota) }} / {{ formatNumber(row.balance_total_quota) }}
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="Source" min-width="170" show-overflow-tooltip>
+            <template #default="{ row }">{{ formatLedgerSource(row) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="Time" min-width="180">
+            <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
+          </ElTableColumn>
+          <template #empty>
+            <ElEmpty description="No quota ledger records" />
+          </template>
+        </ElTable>
+        <ElPagination
+          v-model:current-page="quotaLedgerPager.page"
+          v-model:page-size="quotaLedgerPager.limit"
+          class="saas-platform-usage-page__pagination"
+          layout="total, sizes, prev, pager, next"
+          :page-sizes="[10, 20, 50, 100]"
+          :total="quotaLedgerPager.total"
+          @current-change="loadQuotaLedgers"
+          @size-change="handleQuotaLedgerSizeChange"
+        />
+      </section>
+
       <section class="saas-platform-usage-page__section">
         <div class="saas-platform-usage-page__section-header">
           <h2>Plan distribution</h2>
@@ -206,17 +309,33 @@
   import { ElMessage } from 'element-plus'
   import {
     fetchPlatformPaymentReconciliationOverview,
+    fetchPlatformQuotaLedgers,
     fetchPlatformUsageOverview,
     scanPlatformPaymentReconciliation,
     type SaasPaymentReconciliationOverview,
-    type SaasPlatformUsageOverview
+    type SaasPlatformUsageOverview,
+    type TenantQuotaLedgerRecord
   } from '@/api/saas'
 
   defineOptions({ name: 'SaasPlatformUsagePage' })
 
   const loading = ref(false)
   const reconciliationLoading = ref(false)
+  const quotaLedgerLoading = ref(false)
   const staleMinutes = ref(120)
+  const quotaLedgers = ref<TenantQuotaLedgerRecord[]>([])
+  const quotaLedgerFilters = reactive({
+    tenant_id: '',
+    resource_type: '',
+    change_type: '',
+    source_type: '',
+    source_id: ''
+  })
+  const quotaLedgerPager = reactive({
+    page: 1,
+    limit: 20,
+    total: 0
+  })
   const overview = ref<SaasPlatformUsageOverview>({
     kpis: {
       active_subscriptions: 0,
@@ -259,6 +378,12 @@
     return new Intl.NumberFormat('zh-CN').format(Number(value) || 0)
   }
 
+  function formatSignedNumber(value: number) {
+    const numericValue = Number(value) || 0
+    if (numericValue === 0) return '0'
+    return numericValue > 0 ? `+${formatNumber(numericValue)}` : `-${formatNumber(Math.abs(numericValue))}`
+  }
+
   function formatDate(value?: string | Date | null) {
     if (!value) return '-'
     return new Date(value).toLocaleString('zh-CN', { hour12: false })
@@ -273,6 +398,25 @@
       tokens: 'Tokens'
     }
     return labels[type] || type
+  }
+
+  function changeTypeLabel(type: string) {
+    const labels: Record<string, string> = {
+      grant: 'Grant',
+      consume: 'Consume'
+    }
+    return labels[type] || type || '-'
+  }
+
+  function getChangeTagType(type: string) {
+    if (type === 'grant') return 'success'
+    if (type === 'consume') return 'warning'
+    return 'info'
+  }
+
+  function formatLedgerSource(row: TenantQuotaLedgerRecord) {
+    const sourceType = row.source_type || '-'
+    return row.source_id ? `${sourceType} / ${row.source_id}` : sourceType
   }
 
   function normalizeRate(value: number) {
@@ -303,6 +447,40 @@
     }
   }
 
+  async function loadQuotaLedgers() {
+    quotaLedgerLoading.value = true
+    try {
+      const result = await fetchPlatformQuotaLedgers({
+        page: quotaLedgerPager.page,
+        limit: quotaLedgerPager.limit,
+        tenant_id: quotaLedgerFilters.tenant_id || undefined,
+        resource_type: quotaLedgerFilters.resource_type || undefined,
+        change_type: quotaLedgerFilters.change_type || undefined,
+        source_type: quotaLedgerFilters.source_type || undefined,
+        source_id: quotaLedgerFilters.source_id || undefined
+      })
+      quotaLedgers.value = Array.isArray(result?.list) ? result.list : []
+      quotaLedgerPager.total = Number(result?.total) || 0
+    } catch (error) {
+      console.error('[SaasPlatformUsagePage] load quota ledgers failed:', error)
+      quotaLedgers.value = []
+      quotaLedgerPager.total = 0
+      ElMessage.error('Load quota ledgers failed')
+    } finally {
+      quotaLedgerLoading.value = false
+    }
+  }
+
+  function refreshQuotaLedgers() {
+    quotaLedgerPager.page = 1
+    loadQuotaLedgers()
+  }
+
+  function handleQuotaLedgerSizeChange() {
+    quotaLedgerPager.page = 1
+    loadQuotaLedgers()
+  }
+
   async function scanReconciliation() {
     reconciliationLoading.value = true
     try {
@@ -317,7 +495,7 @@
   }
 
   async function loadPage() {
-    await Promise.all([loadOverview(), loadReconciliation()])
+    await Promise.all([loadOverview(), loadReconciliation(), loadQuotaLedgers()])
   }
 
   onMounted(loadPage)
@@ -427,6 +605,16 @@
     width: 150px;
   }
 
+  .saas-platform-usage-page__filter-input,
+  .saas-platform-usage-page__filter-select {
+    width: 160px;
+  }
+
+  .saas-platform-usage-page__pagination {
+    margin-top: 14px;
+    justify-content: flex-end;
+  }
+
   .saas-platform-usage-page__kpis--compact {
     margin-bottom: 14px;
   }
@@ -468,6 +656,11 @@
 
     .saas-platform-usage-page__actions {
       justify-content: flex-start;
+    }
+
+    .saas-platform-usage-page__filter-input,
+    .saas-platform-usage-page__filter-select {
+      width: 100%;
     }
   }
 </style>

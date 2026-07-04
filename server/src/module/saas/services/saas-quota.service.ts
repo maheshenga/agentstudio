@@ -21,6 +21,12 @@ export interface SaasQuotaLedgerListQuery {
   change_type?: string;
 }
 
+export interface SaasQuotaLedgerPlatformListQuery extends SaasQuotaLedgerListQuery {
+  tenant_id?: string | number;
+  source_type?: string;
+  source_id?: string;
+}
+
 @Injectable()
 export class SaasQuotaService {
   constructor(
@@ -87,6 +93,31 @@ export class SaasQuotaService {
     const where: FindOptionsWhere<SaasQuotaLedgerEntity> = { tenantId };
     if (query.resource_type) where.resourceType = query.resource_type;
     if (query.change_type) where.changeType = query.change_type;
+
+    const [list, total] = await this.saasQuotaLedgerRepo.findAndCount({
+      where,
+      order: { createTime: 'DESC', id: 'DESC' },
+      skip,
+      take: limit,
+    });
+
+    return {
+      list: list.map((item) => this.toLedgerResponse(item)),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  async listPlatformQuotaLedgers(query: SaasQuotaLedgerPlatformListQuery = {}) {
+    const { page, limit, skip } = this.resolvePagination(query);
+    const where: FindOptionsWhere<SaasQuotaLedgerEntity> = {};
+    const tenantId = this.resolveTenantId(query.tenant_id);
+    if (tenantId !== undefined) where.tenantId = tenantId;
+    if (query.resource_type) where.resourceType = query.resource_type;
+    if (query.change_type) where.changeType = query.change_type;
+    if (query.source_type) where.sourceType = query.source_type;
+    if (query.source_id) where.sourceId = query.source_id;
 
     const [list, total] = await this.saasQuotaLedgerRepo.findAndCount({
       where,
@@ -286,6 +317,12 @@ export class SaasQuotaService {
     const limit = Math.min(100, Math.max(1, Number(query.limit || 20)));
 
     return { page, limit, skip: (page - 1) * limit };
+  }
+
+  private resolveTenantId(value: string | number | undefined): number | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    const tenantId = Number(value);
+    return Number.isFinite(tenantId) && tenantId > 0 ? tenantId : undefined;
   }
 
   private toLedgerResponse(item: Partial<SaasQuotaLedgerEntity>) {

@@ -26,6 +26,7 @@ describe('SaasPlatformController', () => {
     findSubscription: jest.fn(),
     listResourcePacks: jest.fn(),
     listResourcePackOrders: jest.fn(),
+    listQuotaLedgers: jest.fn(),
     findResourcePackOrder: jest.fn(),
   };
   const paymentConfigService = {
@@ -310,6 +311,16 @@ describe('SaasPlatformController', () => {
 
     expect(platformService.listResourcePackOrders).toHaveBeenCalledWith({ status: 'paid' });
     expect(result.data).toEqual({ list: [{ order_no: 'RPO20260703120000001000001' }], total: 1, page: 1, limit: 20 });
+  });
+
+  it('lists platform SaaS quota ledgers outside tenant scope', async () => {
+    const query = { page: '2', limit: '10', tenant_id: '88', resource_type: 'tokens', change_type: 'consume', source_type: 'ai_chat', source_id: 'chat-1' };
+    platformService.listQuotaLedgers.mockResolvedValue({ list: [{ id: 9, tenant_id: 88, source_id: 'chat-1' }], total: 1, page: 2, limit: 10 });
+
+    const result = await controller.quotaLedgers(query, { userId: 1 } as any);
+
+    expect(platformService.listQuotaLedgers).toHaveBeenCalledWith(query);
+    expect(result.data).toEqual({ list: [{ id: 9, tenant_id: 88, source_id: 'chat-1' }], total: 1, page: 2, limit: 10 });
   });
 
   it('returns platform SaaS resource pack order detail outside tenant scope', async () => {

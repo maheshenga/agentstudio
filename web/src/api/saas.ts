@@ -417,6 +417,12 @@ export interface TenantQuotaLedgerListParams {
   change_type?: string
 }
 
+export interface SaasPlatformQuotaLedgerListParams extends TenantQuotaLedgerListParams {
+  tenant_id?: number | string
+  source_type?: string
+  source_id?: string
+}
+
 export interface TenantQuotaLedgerRecord {
   id: number
   tenant_id: number
@@ -530,6 +536,13 @@ export function fetchTenantUsage() {
 
 export function fetchTenantQuotaLedgers(params: TenantQuotaLedgerListParams) {
   return request.get<SaasPlatformPageResult<TenantQuotaLedgerRecord>>({ url: '/api/saas/tenant/quota-ledgers', params })
+}
+
+export function fetchPlatformQuotaLedgers(params: SaasPlatformQuotaLedgerListParams) {
+  return request.get<SaasPlatformPageResult<TenantQuotaLedgerRecord>>({
+    url: '/api/saas/platform/quota-ledgers',
+    params
+  })
 }
 
 export function fetchTenantMembers(params: SaasTenantMemberListParams) {

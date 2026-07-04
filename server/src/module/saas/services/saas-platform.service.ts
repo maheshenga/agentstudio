@@ -11,6 +11,8 @@ import { SaasSubscriptionLifecycleService } from './saas-subscription-lifecycle.
 import { SaasOrderRiskService } from './saas-order-risk.service';
 import { SaasOrderService } from './saas-order.service';
 import type { SaasOrderListQuery } from './saas-order.service';
+import { SaasQuotaService } from './saas-quota.service';
+import type { SaasQuotaLedgerPlatformListQuery } from './saas-quota.service';
 import { SaasResourcePackOrderService } from './saas-resource-pack-order.service';
 import type { SaasResourcePackOrderListQuery } from './saas-resource-pack-order.service';
 import { SaasResourcePackService } from './saas-resource-pack.service';
@@ -111,6 +113,7 @@ export class SaasPlatformService {
     private readonly resourcePackService: SaasResourcePackService,
     private readonly saasOrderService: SaasOrderService,
     private readonly resourcePackOrderService: SaasResourcePackOrderService,
+    private readonly saasQuotaService: SaasQuotaService,
     private readonly orderRiskService: SaasOrderRiskService,
     private readonly lifecycleService: SaasSubscriptionLifecycleService,
   ) {}
@@ -205,6 +208,10 @@ export class SaasPlatformService {
 
   listResourcePackOrders(query: SaasResourcePackOrderListQuery = {}) {
     return this.resourcePackOrderService.listPlatformOrders(query);
+  }
+
+  listQuotaLedgers(query: SaasQuotaLedgerPlatformListQuery = {}) {
+    return this.saasQuotaService.listPlatformQuotaLedgers(query);
   }
 
   findResourcePackOrder(orderNo: string) {
