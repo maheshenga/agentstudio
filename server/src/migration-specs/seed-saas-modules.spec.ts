@@ -12,6 +12,7 @@ describe('SeedSaasModules1760000000017', () => {
     const params = queryRunner.query.mock.calls.flatMap(([, values]) => values || []);
     expect(params).toContain('ai_chat');
     expect(params).toContain('member_management');
+    expect(params).toContain('/tenant-saas/resource-packs');
     expect(params).toContain('SaasModule');
     expect(params).toContain('saas:module:list');
     expect(params).toContain('saas:plan:module:update');

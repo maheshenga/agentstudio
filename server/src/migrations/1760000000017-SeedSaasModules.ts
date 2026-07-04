@@ -14,7 +14,7 @@ const MODULES: ModuleSeed[] = [
   ['ai_chat', 'AI Chat', 'AI', 'ri:chat-ai-line', '/dashboard/taixu', 10],
   ['rag', 'Knowledge Base', 'AI', 'ri:database-2-line', '/dashboard/taixu', 20],
   ['member_management', 'Member Management', 'Tenant', 'ri:team-line', '/tenant-saas/members', 30],
-  ['resource_pack', 'Resource Pack', 'Billing', 'ri:box-3-line', '/tenant-saas/resource-pack', 40],
+  ['resource_pack', 'Resource Pack', 'Billing', 'ri:box-3-line', '/tenant-saas/resource-packs', 40],
   [
     'advanced_report',
     'Advanced Report',
