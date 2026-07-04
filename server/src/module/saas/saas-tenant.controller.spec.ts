@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
@@ -290,6 +291,18 @@ describe('SaasTenantController', () => {
     });
   });
 
+  it('does not list tenant members when member management is disabled', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
+    moduleService.assertTenantModuleEnabled.mockRejectedValueOnce(
+      new BadRequestException('Current plan has not enabled this module'),
+    );
+
+    await expect(controller.members({ page: '1' })).rejects.toThrow('Current plan has not enabled this module');
+
+    expect(moduleService.assertTenantModuleEnabled).toHaveBeenCalledWith(88, 'member_management');
+    expect(tenantMemberService.listMembers).not.toHaveBeenCalled();
+  });
+
   it('creates a tenant member in current tenant context', async () => {
     jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
     const body = { username: 'bob', password: '123456', realname: 'Bob', role: 'member' as const };
@@ -300,6 +313,19 @@ describe('SaasTenantController', () => {
     expect(moduleService.assertTenantModuleEnabled).toHaveBeenCalledWith(88, 'member_management');
     expect(tenantMemberService.createMember).toHaveBeenCalledWith(88, body);
     expect(result.data).toEqual({ user_id: 8, username: 'bob', role: 'member' });
+  });
+
+  it('does not create tenant members when member management is disabled', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
+    const body = { username: 'bob', password: '123456', realname: 'Bob', role: 'member' as const };
+    moduleService.assertTenantModuleEnabled.mockRejectedValueOnce(
+      new BadRequestException('Current plan has not enabled this module'),
+    );
+
+    await expect(controller.createMember(body)).rejects.toThrow('Current plan has not enabled this module');
+
+    expect(moduleService.assertTenantModuleEnabled).toHaveBeenCalledWith(88, 'member_management');
+    expect(tenantMemberService.createMember).not.toHaveBeenCalled();
   });
 
   it('returns current tenant modules', async () => {
