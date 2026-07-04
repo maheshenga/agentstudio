@@ -4,6 +4,8 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { User } from '../system/user/user.decorator';
 import type { UserDto } from '../system/user/user.decorator';
 import { ResultData } from '../../common/utils/result';
+import { SaveAiModelDto } from './dto/save-ai-model.dto';
+import { SaveAiProviderDto } from './dto/save-ai-provider.dto';
 import { AiAdminService } from './services/ai-admin.service';
 
 @ApiTags('AI 管理')
@@ -20,13 +22,13 @@ export class AiAdminController {
 
   @Post('providers/create')
   @ApiOperation({ summary: '创建供应商' })
-  createProvider(@User() user: UserDto, @Body() body: Record<string, any>) {
+  createProvider(@User() user: UserDto, @Body() body: SaveAiProviderDto) {
     return this.aiAdminService.createProvider(user as any, body).then((d) => ResultData.ok(d));
   }
 
   @Put('providers/update/:id')
   @ApiOperation({ summary: '更新供应商' })
-  updateProvider(@User() user: UserDto, @Param('id') id: string, @Body() body: Record<string, any>) {
+  updateProvider(@User() user: UserDto, @Param('id') id: string, @Body() body: Partial<SaveAiProviderDto>) {
     return this.aiAdminService.updateProvider(user as any, id, body).then((d) => ResultData.ok(d));
   }
 
@@ -50,13 +52,13 @@ export class AiAdminController {
 
   @Post('models/create')
   @ApiOperation({ summary: '创建模型' })
-  createModel(@User() user: UserDto, @Body() body: Record<string, any>) {
+  createModel(@User() user: UserDto, @Body() body: SaveAiModelDto) {
     return this.aiAdminService.createModel(user as any, body).then((d) => ResultData.ok(d));
   }
 
   @Put('models/update/:id')
   @ApiOperation({ summary: '更新模型' })
-  updateModel(@User() user: UserDto, @Param('id') id: string, @Body() body: Record<string, any>) {
+  updateModel(@User() user: UserDto, @Param('id') id: string, @Body() body: Partial<SaveAiModelDto>) {
     return this.aiAdminService.updateModel(user as any, id, body).then((d) => ResultData.ok(d));
   }
 

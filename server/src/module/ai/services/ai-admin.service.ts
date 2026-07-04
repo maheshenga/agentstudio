@@ -4,10 +4,14 @@ import { Repository, IsNull, In } from 'typeorm';
 
 import { encryptAiSecret, maskAiSecret, decryptAiSecret } from '../../../common/utils/ai-crypto.util';
 import { formatDateTime } from '../../../common/utils/index';
+import { SaveAiModelDto } from '../dto/save-ai-model.dto';
+import { SaveAiProviderDto } from '../dto/save-ai-provider.dto';
+import { TestAiProviderDto } from '../dto/test-ai-provider.dto';
 import { AiProviderEntity } from '../entities/ai-provider.entity';
 import { AiModelEntity } from '../entities/ai-model.entity';
 import type { UserType } from '../../system/user/dto/user';
 import { AI_STATUS_ENABLED } from '../ai.constants';
+import { LlmProviderService } from './llm-provider.service';
 
 @Injectable()
 export class AiAdminService {
@@ -16,6 +20,7 @@ export class AiAdminService {
     private readonly providerRepo: Repository<AiProviderEntity>,
     @InjectRepository(AiModelEntity)
     private readonly modelRepo: Repository<AiModelEntity>,
+    private readonly llmProviderService: LlmProviderService,
   ) {}
 
   private tenantId(user: UserType) {
@@ -59,7 +64,7 @@ export class AiAdminService {
    * @param body - 供应商创建参数，包含 code、name、base_url、api_key 等
    * @returns 格式化后的供应商信息
    */
-  async createProvider(user: UserType, body: Record<string, any>) {
+  async createProvider(user: UserType, body: SaveAiProviderDto) {
     const tenantId = this.tenantId(user);
     if (!body.code || !body.name || !body.base_url) {
       throw new BadRequestException('code、name、base_url 不能为空');
@@ -68,11 +73,13 @@ export class AiAdminService {
       throw new BadRequestException('api_key 不能为空');
     }
 
+    await this.assertProviderCodeUnique(tenantId, body.code);
+
     const entity = this.providerRepo.create({
       tenantId,
       code: body.code,
       name: body.name,
-      baseUrl: body.base_url,
+      baseUrl: this.normalizeBaseUrl(body.base_url),
       apiKeyCipher: encryptAiSecret(body.api_key),
       adapterType: body.adapter_type || 'openai_compatible',
       extraHeaders: body.extra_headers || null,
@@ -94,10 +101,14 @@ export class AiAdminService {
    * @param body - 需要更新的字段，包含 name、base_url、api_key 等可选属性
    * @returns 格式化后的更新后的供应商信息
    */
-  async updateProvider(user: UserType, id: string, body: Record<string, any>) {
+  async updateProvider(user: UserType, id: string, body: Partial<SaveAiProviderDto>) {
     const entity = await this.getOwnedProvider(user, id);
+    if (body.code !== undefined && body.code !== entity.code) {
+      await this.assertProviderCodeUnique(entity.tenantId, body.code, id);
+      entity.code = body.code;
+    }
     if (body.name !== undefined) entity.name = body.name;
-    if (body.base_url !== undefined) entity.baseUrl = body.base_url;
+    if (body.base_url !== undefined) entity.baseUrl = this.normalizeBaseUrl(body.base_url);
     if (body.adapter_type !== undefined) entity.adapterType = body.adapter_type;
     if (body.extra_headers !== undefined) entity.extraHeaders = body.extra_headers;
     if (body.status !== undefined) entity.status = `${body.status}`;
@@ -177,12 +188,14 @@ export class AiAdminService {
    * @param body - 模型创建参数，包含 provider_id、model_code、name 等
    * @returns 格式化后的模型信息
    */
-  async createModel(user: UserType, body: Record<string, any>) {
+  async createModel(user: UserType, body: SaveAiModelDto) {
     const tenantId = this.tenantId(user);
     if (!body.provider_id || !body.model_code || !body.name) {
       throw new BadRequestException('provider_id、model_code、name 不能为空');
     }
-    await this.getOwnedProvider(user, body.provider_id);
+    const provider = await this.getOwnedProvider(user, body.provider_id);
+    if (provider.status !== AI_STATUS_ENABLED) throw new BadRequestException('Provider is disabled');
+    await this.assertModelCodeUnique(tenantId, body.provider_id, body.model_code);
 
     if (Number(body.is_default) === 1) {
       await this.modelRepo.update({ tenantId }, { isDefault: 0 });
@@ -216,13 +229,23 @@ export class AiAdminService {
    * @param body - 需要更新的字段，包含 provider_id、model_code、name、context_window 等可选属性
    * @returns 格式化后的更新后的模型信息
    */
-  async updateModel(user: UserType, id: string, body: Record<string, any>) {
+  async updateModel(user: UserType, id: string, body: Partial<SaveAiModelDto>) {
     const entity = await this.getOwnedModel(user, id);
     if (body.provider_id !== undefined) {
-      await this.getOwnedProvider(user, body.provider_id);
+      const provider = await this.getOwnedProvider(user, body.provider_id);
+      if (provider.status !== AI_STATUS_ENABLED) throw new BadRequestException('Provider is disabled');
+      await this.assertModelCodeUnique(
+        entity.tenantId,
+        body.provider_id,
+        body.model_code ?? entity.modelCode,
+        id,
+      );
       entity.providerId = body.provider_id;
     }
-    if (body.model_code !== undefined) entity.modelCode = body.model_code;
+    if (body.model_code !== undefined && body.model_code !== entity.modelCode) {
+      await this.assertModelCodeUnique(entity.tenantId, entity.providerId, body.model_code, id);
+      entity.modelCode = body.model_code;
+    }
     if (body.name !== undefined) entity.name = body.name;
     if (body.context_window !== undefined) entity.contextWindow = Number(body.context_window);
     if (body.max_output_tokens !== undefined) entity.maxOutputTokens = Number(body.max_output_tokens);
@@ -259,6 +282,58 @@ export class AiAdminService {
       order: { sort: 'ASC', id: 'ASC' },
     });
     return list.map((p) => ({ id: p.id, name: p.name, code: p.code }));
+  }
+
+  async testProvider(user: UserType, id: string, body: TestAiProviderDto = {}) {
+    const provider = await this.getOwnedProvider(user, id);
+    const modelCode = body.model_code || (await this.findFirstEnabledModelCode(user, id));
+    if (!provider.apiKeyCipher) {
+      return {
+        provider_id: id,
+        model_code: modelCode,
+        ok: false,
+        latency_ms: 0,
+        message: 'Provider API key is not configured',
+      };
+    }
+    if (!modelCode) {
+      return {
+        provider_id: id,
+        model_code: '',
+        ok: false,
+        latency_ms: 0,
+        message: 'No enabled model configured for this provider',
+      };
+    }
+
+    const startedAt = Date.now();
+    try {
+      const result = await this.llmProviderService.completeChat(
+        provider,
+        decryptAiSecret(provider.apiKeyCipher),
+        {
+          model: modelCode,
+          messages: [{ role: 'user', content: 'ping' }],
+          maxTokens: 16,
+          temperature: 0,
+        },
+      );
+      return {
+        provider_id: id,
+        model_code: modelCode,
+        ok: true,
+        latency_ms: Date.now() - startedAt,
+        message: result.content.slice(0, 100) || 'ok',
+      };
+    } catch (err: any) {
+      return {
+        provider_id: id,
+        model_code: modelCode,
+        ok: false,
+        latency_ms: Date.now() - startedAt,
+        message: (err?.message || 'Provider test failed').slice(0, 200),
+      };
+    }
   }
 
   private formatProvider(item: AiProviderEntity) {
@@ -323,5 +398,44 @@ export class AiAdminService {
       throw new NotFoundException('无权操作该模型');
     }
     return entity;
+  }
+
+  private normalizeBaseUrl(baseUrl: string) {
+    return `${baseUrl || ''}`.trim().replace(/\/+$/, '');
+  }
+
+  private async assertProviderCodeUnique(tenantId: number, code: string, excludeId?: string) {
+    const existing = await this.providerRepo.findOne({
+      where: { tenantId, code, deleteTime: IsNull() },
+    });
+    if (existing && `${existing.id}` !== `${excludeId || ''}`) {
+      throw new BadRequestException('Provider code already exists');
+    }
+  }
+
+  private async assertModelCodeUnique(
+    tenantId: number,
+    providerId: string,
+    modelCode: string,
+    excludeId?: string,
+  ) {
+    const existing = await this.modelRepo.findOne({
+      where: { tenantId, providerId, modelCode, deleteTime: IsNull() },
+    });
+    if (existing && `${existing.id}` !== `${excludeId || ''}`) {
+      throw new BadRequestException('Model code already exists under this provider');
+    }
+  }
+
+  private async findFirstEnabledModelCode(user: UserType, providerId: string) {
+    const tenantId = this.tenantId(user);
+    const model = await this.modelRepo.findOne({
+      where: [
+        { tenantId, providerId, status: AI_STATUS_ENABLED, deleteTime: IsNull() },
+        { tenantId: 0, providerId, status: AI_STATUS_ENABLED, deleteTime: IsNull() },
+      ],
+      order: { sort: 'ASC', id: 'ASC' },
+    });
+    return model?.modelCode || '';
   }
 }
