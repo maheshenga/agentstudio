@@ -13,6 +13,18 @@ const providerApi = {
   delete(id: string | number) {
     return request.del<any>({ url: '/api/ai/admin/providers/delete/' + id })
   },
+  test(id: string | number, params: { model_code?: string } = {}) {
+    return request.post<{
+      provider_id: string
+      model_code: string
+      ok: boolean
+      latency_ms: number
+      message: string
+    }>({
+      url: '/api/ai/admin/providers/test/' + id,
+      data: params
+    })
+  },
   options() {
     return request.get<{ list: Array<{ id: string; name: string; code: string }> }>({
       url: '/api/ai/admin/providers/options'

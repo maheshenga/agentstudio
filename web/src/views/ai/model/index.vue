@@ -21,7 +21,11 @@
         <template #operation="{ row }">
           <div class="flex gap-2">
             <SaButton v-permission="'ai:model:update'" type="secondary" @click="showDialog('edit', row)" />
-            <SaButton v-permission="'ai:model:delete'" type="error" @click="deleteRow(row, api.model.delete, refreshData)" />
+            <SaButton
+              v-permission="'ai:model:delete'"
+              type="error"
+              @click="deleteRow(row, api.model.delete, refreshData)"
+            />
           </div>
         </template>
       </ArtTable>

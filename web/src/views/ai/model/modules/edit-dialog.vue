@@ -9,24 +9,24 @@
   >
     <el-form ref="formRef" :model="formData" :rules="rules" label-width="120px">
       <el-form-item label="供应商" prop="provider_id">
-        <el-select v-model="formData.provider_id" placeholder="选择供应商" style="width:100%">
+        <el-select v-model="formData.provider_id" placeholder="选择供应商" style="width: 100%">
           <el-option v-for="p in providerOptions" :key="p.id" :label="p.name" :value="p.id" />
         </el-select>
       </el-form-item>
       <el-form-item label="模型编码" prop="model_code">
         <el-input v-model="formData.model_code" placeholder="deepseek-chat" />
       </el-form-item>
-      <el-form-item label="展示名称" prop="name">
+      <el-form-item label="显示名称" prop="name">
         <el-input v-model="formData.name" />
       </el-form-item>
       <el-form-item label="上下文窗口">
-        <el-input-number v-model="formData.context_window" :min="1024" :step="1024" style="width:100%" />
+        <el-input-number v-model="formData.context_window" :min="1024" :step="1024" style="width: 100%" />
       </el-form-item>
       <el-form-item label="最大输出 tokens">
-        <el-input-number v-model="formData.max_output_tokens" :min="256" :step="256" style="width:100%" />
+        <el-input-number v-model="formData.max_output_tokens" :min="256" :step="256" style="width: 100%" />
       </el-form-item>
       <el-form-item label="默认温度">
-        <el-input-number v-model="formData.default_temperature" :min="0" :max="2" :step="0.1" style="width:100%" />
+        <el-input-number v-model="formData.default_temperature" :min="0" :max="2" :step="0.1" style="width: 100%" />
       </el-form-item>
       <el-form-item label="默认模型">
         <el-switch v-model="formData.is_default" :active-value="1" :inactive-value="0" />
@@ -105,9 +105,17 @@
       })
     } else {
       Object.assign(formData, {
-        id: '', provider_id: '', model_code: '', name: '',
-        context_window: 32000, max_output_tokens: 4096, default_temperature: 0.7,
-        is_default: 0, status: '1', sort: 0, remark: ''
+        id: '',
+        provider_id: '',
+        model_code: '',
+        name: '',
+        context_window: 32000,
+        max_output_tokens: 4096,
+        default_temperature: 0.7,
+        is_default: 0,
+        status: '1',
+        sort: 0,
+        remark: ''
       })
     }
   })

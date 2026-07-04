@@ -17,8 +17,13 @@
       >
         <template #operation="{ row }">
           <div class="flex gap-2">
+            <ElButton link type="primary" :loading="testingId === row.id" @click="testProvider(row)">测试</ElButton>
             <SaButton v-permission="'ai:provider:update'" type="secondary" @click="showDialog('edit', row)" />
-            <SaButton v-permission="'ai:provider:delete'" type="error" @click="deleteRow(row, api.provider.delete, refreshData)" />
+            <SaButton
+              v-permission="'ai:provider:delete'"
+              type="error"
+              @click="deleteRow(row, api.provider.delete, refreshData)"
+            />
           </div>
         </template>
       </ArtTable>
@@ -28,10 +33,13 @@
 </template>
 
 <script setup lang="ts">
+  import { ElMessage } from 'element-plus'
   import { useTable } from '@/hooks/core/useTable'
   import { useSaiAdmin } from '@/composables/useSaiAdmin'
   import api from '@/api/ai-admin'
   import EditDialog from './modules/edit-dialog.vue'
+
+  const testingId = ref('')
 
   const {
     columns, columnChecks, data, loading, pagination,
@@ -48,10 +56,21 @@
         { prop: 'adapter_type', label: '适配器', width: 140 },
         { prop: 'status', label: '状态', saiType: 'dict', saiDict: 'data_status', width: 90 },
         { prop: 'sort', label: '排序', width: 80 },
-        { prop: 'operation', label: '操作', width: 160, fixed: 'right', useSlot: true }
+        { prop: 'operation', label: '操作', width: 210, fixed: 'right', useSlot: true }
       ]
     }
   })
 
   const { dialogType, dialogVisible, dialogData, showDialog, deleteRow } = useSaiAdmin()
+
+  async function testProvider(row: any) {
+    testingId.value = row.id
+    try {
+      const res = await api.provider.test(row.id)
+      if (res.ok) ElMessage.success(`测试成功：${res.message}`)
+      else ElMessage.error(`测试失败：${res.message}`)
+    } finally {
+      testingId.value = ''
+    }
+  }
 </script>

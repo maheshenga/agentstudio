@@ -12,7 +12,7 @@
         <el-input v-model="formData.code" :disabled="dialogType === 'edit'" placeholder="如 deepseek" />
       </el-form-item>
       <el-form-item label="名称" prop="name">
-        <el-input v-model="formData.name" placeholder="展示名称" />
+        <el-input v-model="formData.name" placeholder="显示名称" />
       </el-form-item>
       <el-form-item label="Base URL" prop="base_url">
         <el-input v-model="formData.base_url" placeholder="https://api.deepseek.com/v1" />
@@ -26,7 +26,9 @@
         />
       </el-form-item>
       <el-form-item label="适配器">
-        <el-input v-model="formData.adapter_type" placeholder="openai_compatible" />
+        <el-select v-model="formData.adapter_type" style="width: 100%">
+          <el-option label="OpenAI Compatible" value="openai_compatible" />
+        </el-select>
       </el-form-item>
       <el-form-item label="状态">
         <el-radio-group v-model="formData.status">
@@ -75,13 +77,15 @@
     code: [{ required: true, message: '请输入 code', trigger: 'blur' }],
     name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
     base_url: [{ required: true, message: '请输入 Base URL', trigger: 'blur' }],
-    api_key: [{
-      validator: (_r, v, cb) => {
-        if (props.dialogType === 'add' && !v) cb(new Error('请输入 API Key'))
-        else cb()
-      },
-      trigger: 'blur'
-    }]
+    api_key: [
+      {
+        validator: (_r, v, cb) => {
+          if (props.dialogType === 'add' && !v) cb(new Error('请输入 API Key'))
+          else cb()
+        },
+        trigger: 'blur'
+      }
+    ]
   }
 
   watch(visible, (val) => {
@@ -100,8 +104,15 @@
       })
     } else {
       Object.assign(formData, {
-        id: '', code: '', name: '', base_url: 'https://api.deepseek.com/v1',
-        api_key: '', adapter_type: 'openai_compatible', status: '1', sort: 0, remark: ''
+        id: '',
+        code: '',
+        name: '',
+        base_url: 'https://api.deepseek.com/v1',
+        api_key: '',
+        adapter_type: 'openai_compatible',
+        status: '1',
+        sort: 0,
+        remark: ''
       })
     }
   })
