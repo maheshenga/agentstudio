@@ -136,6 +136,8 @@ export interface SaasPlatformPlanRecord extends SaasPlanOption {
   create_time?: string | Date
   update_time?: string | Date
   quotas: SaasPlanQuotaRecord[]
+  features?: Array<{ feature_key?: string; code?: string }>
+  modules?: SaasModuleRecord[]
 }
 
 export interface SaasModuleRecord {

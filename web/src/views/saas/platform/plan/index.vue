@@ -43,10 +43,11 @@
         <ElTableColumn label="更新时间" width="180">
           <template #default="{ row }">{{ formatDateTime(row.update_time) }}</template>
         </ElTableColumn>
-        <ElTableColumn label="操作" fixed="right" width="260">
+        <ElTableColumn label="操作" fixed="right" width="320">
           <template #default="{ row }">
             <ElButton link type="primary" @click="openEditDialog(row)">编辑</ElButton>
             <ElButton link type="primary" @click="openQuotaDialog(row)">配额</ElButton>
+            <ElButton link type="primary" @click="openModuleDialog(row)">Modules</ElButton>
             <ElButton link :type="row.status === 1 ? 'warning' : 'success'" @click="toggleStatus(row)">
               {{ row.status === 1 ? '停用' : '启用' }}
             </ElButton>
@@ -128,6 +129,18 @@
         <ElButton type="primary" :loading="savingQuotas" @click="saveQuotas">保存</ElButton>
       </template>
     </ElDialog>
+
+    <ElDialog v-model="moduleDialogVisible" title="Plan Modules" width="560px">
+      <ElCheckboxGroup v-model="selectedModuleCodes" class="saas-plan-page__module-list">
+        <ElCheckbox v-for="module in moduleRows" :key="module.code" :value="module.code">
+          {{ module.name }} / {{ module.code }}
+        </ElCheckbox>
+      </ElCheckboxGroup>
+      <template #footer>
+        <ElButton @click="moduleDialogVisible = false">Cancel</ElButton>
+        <ElButton type="primary" :loading="moduleSaving" @click="savePlanModules">Save</ElButton>
+      </template>
+    </ElDialog>
   </div>
 </template>
 
@@ -135,10 +148,13 @@
   import { ElMessage } from 'element-plus'
   import {
     createPlatformPlan,
+    fetchPlatformModules,
     fetchPlatformPlans,
     updatePlatformPlan,
+    updatePlatformPlanModules,
     updatePlatformPlanQuotas,
     updatePlatformPlanStatus,
+    type SaasModuleRecord,
     type SaasPlanQuotaRecord,
     type SaasPlatformPlanRecord
   } from '@/api/saas'
@@ -151,12 +167,17 @@
   const pager = reactive({ page: 1, limit: 20, total: 0 })
   const planDialogVisible = ref(false)
   const quotaDialogVisible = ref(false)
+  const moduleDialogVisible = ref(false)
   const savingPlan = ref(false)
   const savingQuotas = ref(false)
+  const moduleSaving = ref(false)
   const editingCode = ref('')
   const quotaEditingCode = ref('')
+  const modulePlanCode = ref('')
   const planForm = reactive({ code: '', name: '', billing_cycle: 'monthly' as 'monthly' | 'yearly', price_monthly_yuan: 0, price_yearly_yuan: 0, status: 1, sort: 100, remark: '' })
   const quotaRows = ref<SaasPlanQuotaRecord[]>([])
+  const moduleRows = ref<SaasModuleRecord[]>([])
+  const selectedModuleCodes = ref<string[]>([])
 
   const quotaTypes = ['users', 'storage_mb', 'ai_calls', 'rag_documents', 'tokens']
   const quotaLabels: Record<string, string> = {
@@ -259,6 +280,29 @@
     }
   }
 
+  async function openModuleDialog(row: SaasPlatformPlanRecord) {
+    modulePlanCode.value = row.code
+    moduleRows.value = await fetchPlatformModules({ status: 1 })
+    const bindings: Array<{ feature_key?: string; code?: string }> = row.features || row.modules || []
+    selectedModuleCodes.value = bindings
+      .map((item) => item.feature_key || item.code)
+      .filter(Boolean) as string[]
+    moduleDialogVisible.value = true
+  }
+
+  async function savePlanModules() {
+    if (!modulePlanCode.value) return
+    moduleSaving.value = true
+    try {
+      await updatePlatformPlanModules(modulePlanCode.value, selectedModuleCodes.value)
+      ElMessage.success('Plan modules saved')
+      moduleDialogVisible.value = false
+      await loadPlans()
+    } finally {
+      moduleSaving.value = false
+    }
+  }
+
   async function toggleStatus(row: SaasPlatformPlanRecord) {
     await updatePlatformPlanStatus(row.code, row.status === 1 ? 0 : 1)
     ElMessage.success(row.status === 1 ? '套餐已停用' : '套餐已启用')
@@ -310,5 +354,10 @@
   .saas-plan-page__pagination {
     margin-top: 16px;
     justify-content: flex-end;
+  }
+
+  .saas-plan-page__module-list {
+    display: grid;
+    gap: 8px;
   }
 </style>
