@@ -54,7 +54,7 @@ export class SaasModuleService {
       throw new BadRequestException('Module code is required');
     }
 
-    const existing = await this.moduleRepo.findOne({ where: { code } });
+    const existing = await this.moduleRepo.findOne({ where: { code }, withDeleted: true });
     if (existing) {
       throw new BadRequestException(`Module ${code} already exists`);
     }

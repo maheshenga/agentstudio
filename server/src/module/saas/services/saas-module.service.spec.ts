@@ -85,7 +85,7 @@ describe('SaasModuleService', () => {
 
     await expect(service.createPlatformModule({ code: 'crm', name: 'CRM' })).rejects.toBeInstanceOf(BadRequestException);
 
-    expect(moduleRepo.findOne).toHaveBeenCalledWith({ where: { code: 'crm' } });
+    expect(moduleRepo.findOne).toHaveBeenCalledWith({ where: { code: 'crm' }, withDeleted: true });
   });
 
   it('updates platform module status and returns the updated object', async () => {
