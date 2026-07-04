@@ -7,7 +7,7 @@
             <h1 class="saas-platform-usage-page__title">SaaS Usage</h1>
             <p class="saas-platform-usage-page__subtitle">Platform subscription, order, revenue, and quota overview.</p>
           </div>
-          <ElButton :loading="loading" @click="loadOverview">Refresh</ElButton>
+          <ElButton :icon="Refresh" :loading="loading" @click="loadPage">Refresh</ElButton>
         </div>
       </template>
 
@@ -29,6 +29,85 @@
           <strong>{{ formatNumber(pendingOrders) }}</strong>
         </div>
       </div>
+
+      <section class="saas-platform-usage-page__section" v-loading="reconciliationLoading">
+        <div class="saas-platform-usage-page__section-header saas-platform-usage-page__section-header--responsive">
+          <div>
+            <h2>Payment reconciliation</h2>
+            <p class="saas-platform-usage-page__section-note">
+              Pending payment requests without callbacks for {{ reconciliation.stale_minutes }} minutes or more.
+            </p>
+          </div>
+          <div class="saas-platform-usage-page__actions">
+            <ElInputNumber
+              v-model="staleMinutes"
+              :min="10"
+              :max="1440"
+              :step="10"
+              controls-position="right"
+              class="saas-platform-usage-page__stale-input"
+            />
+            <ElButton :icon="Refresh" :loading="reconciliationLoading" @click="loadReconciliation">Refresh</ElButton>
+            <ElButton type="primary" :icon="Search" :loading="reconciliationLoading" @click="scanReconciliation">
+              Scan
+            </ElButton>
+          </div>
+        </div>
+
+        <div class="saas-platform-usage-page__kpis saas-platform-usage-page__kpis--compact">
+          <div class="saas-platform-usage-page__kpi">
+            <span class="saas-platform-usage-page__kpi-label">Stale plan payments</span>
+            <strong>{{ formatNumber(reconciliation.stale_plan_payment_count) }}</strong>
+          </div>
+          <div class="saas-platform-usage-page__kpi">
+            <span class="saas-platform-usage-page__kpi-label">Stale resource-pack payments</span>
+            <strong>{{ formatNumber(reconciliation.stale_resource_pack_payment_count) }}</strong>
+          </div>
+          <div class="saas-platform-usage-page__kpi">
+            <span class="saas-platform-usage-page__kpi-label">Stale payment amount</span>
+            <strong>{{ formatMoney(stalePaymentAmount) }}</strong>
+          </div>
+          <div class="saas-platform-usage-page__kpi">
+            <span class="saas-platform-usage-page__kpi-label">Last checked</span>
+            <strong class="saas-platform-usage-page__kpi-date">{{ formatDate(reconciliation.checked_at) }}</strong>
+          </div>
+        </div>
+
+        <div class="saas-platform-usage-page__reconciliation-grid">
+          <div>
+            <div class="saas-platform-usage-page__table-title">Plan payment exceptions</div>
+            <ElTable :data="reconciliation.recent_plan_orders" border>
+              <ElTableColumn prop="order_no" label="Order no" min-width="210" />
+              <ElTableColumn prop="tenant_id" label="Tenant" width="100" />
+              <ElTableColumn label="Amount" width="130" align="right">
+                <template #default="{ row }">{{ formatMoney(row.amount_cents) }}</template>
+              </ElTableColumn>
+              <ElTableColumn label="Requested" min-width="180">
+                <template #default="{ row }">{{ formatDate(row.payment_requested_at) }}</template>
+              </ElTableColumn>
+              <template #empty>
+                <ElEmpty description="No stale plan payments" />
+              </template>
+            </ElTable>
+          </div>
+          <div>
+            <div class="saas-platform-usage-page__table-title">Resource-pack payment exceptions</div>
+            <ElTable :data="reconciliation.recent_resource_pack_orders" border>
+              <ElTableColumn prop="order_no" label="Order no" min-width="210" />
+              <ElTableColumn prop="tenant_id" label="Tenant" width="100" />
+              <ElTableColumn label="Amount" width="130" align="right">
+                <template #default="{ row }">{{ formatMoney(row.amount_cents) }}</template>
+              </ElTableColumn>
+              <ElTableColumn label="Requested" min-width="180">
+                <template #default="{ row }">{{ formatDate(row.payment_requested_at) }}</template>
+              </ElTableColumn>
+              <template #empty>
+                <ElEmpty description="No stale resource-pack payments" />
+              </template>
+            </ElTable>
+          </div>
+        </div>
+      </section>
 
       <section class="saas-platform-usage-page__section">
         <div class="saas-platform-usage-page__section-header">
@@ -123,15 +202,21 @@
 </template>
 
 <script setup lang="ts">
+  import { Refresh, Search } from '@element-plus/icons-vue'
   import { ElMessage } from 'element-plus'
   import {
+    fetchPlatformPaymentReconciliationOverview,
     fetchPlatformUsageOverview,
+    scanPlatformPaymentReconciliation,
+    type SaasPaymentReconciliationOverview,
     type SaasPlatformUsageOverview
   } from '@/api/saas'
 
   defineOptions({ name: 'SaasPlatformUsagePage' })
 
   const loading = ref(false)
+  const reconciliationLoading = ref(false)
+  const staleMinutes = ref(120)
   const overview = ref<SaasPlatformUsageOverview>({
     kpis: {
       active_subscriptions: 0,
@@ -148,8 +233,23 @@
     recent_plan_orders: [],
     recent_resource_pack_orders: []
   })
+  const reconciliation = ref<SaasPaymentReconciliationOverview>({
+    checked_at: '',
+    stale_minutes: 120,
+    stale_plan_payment_count: 0,
+    stale_resource_pack_payment_count: 0,
+    stale_plan_payment_amount_cents: 0,
+    stale_resource_pack_payment_amount_cents: 0,
+    recent_plan_orders: [],
+    recent_resource_pack_orders: []
+  })
 
   const pendingOrders = computed(() => overview.value.kpis.pending_plan_orders + overview.value.kpis.pending_resource_pack_orders)
+  const stalePaymentAmount = computed(
+    () =>
+      reconciliation.value.stale_plan_payment_amount_cents +
+      reconciliation.value.stale_resource_pack_payment_amount_cents
+  )
 
   function formatMoney(cents: number) {
     return `CNY ${((Number(cents) || 0) / 100).toFixed(2)}`
@@ -159,7 +259,7 @@
     return new Intl.NumberFormat('zh-CN').format(Number(value) || 0)
   }
 
-  function formatDate(value?: string | Date) {
+  function formatDate(value?: string | Date | null) {
     if (!value) return '-'
     return new Date(value).toLocaleString('zh-CN', { hour12: false })
   }
@@ -191,7 +291,36 @@
     }
   }
 
-  onMounted(loadOverview)
+  async function loadReconciliation() {
+    reconciliationLoading.value = true
+    try {
+      reconciliation.value = await fetchPlatformPaymentReconciliationOverview({ stale_minutes: staleMinutes.value })
+    } catch (error) {
+      console.error('[SaasPlatformUsagePage] load payment reconciliation failed:', error)
+      ElMessage.error('Load payment reconciliation failed')
+    } finally {
+      reconciliationLoading.value = false
+    }
+  }
+
+  async function scanReconciliation() {
+    reconciliationLoading.value = true
+    try {
+      reconciliation.value = await scanPlatformPaymentReconciliation({ stale_minutes: staleMinutes.value })
+      ElMessage.success('Payment reconciliation scan completed')
+    } catch (error) {
+      console.error('[SaasPlatformUsagePage] scan payment reconciliation failed:', error)
+      ElMessage.error('Payment reconciliation scan failed')
+    } finally {
+      reconciliationLoading.value = false
+    }
+  }
+
+  async function loadPage() {
+    await Promise.all([loadOverview(), loadReconciliation()])
+  }
+
+  onMounted(loadPage)
 </script>
 
 <style scoped>
@@ -251,6 +380,11 @@
     line-height: 1.2;
   }
 
+  .saas-platform-usage-page__kpi strong.saas-platform-usage-page__kpi-date {
+    font-size: 15px;
+    line-height: 1.4;
+  }
+
   .saas-platform-usage-page__section {
     margin-top: 20px;
   }
@@ -270,20 +404,70 @@
     line-height: 1.4;
   }
 
+  .saas-platform-usage-page__section-header--responsive {
+    align-items: flex-end;
+  }
+
+  .saas-platform-usage-page__section-note {
+    margin: 4px 0 0;
+    color: var(--el-text-color-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .saas-platform-usage-page__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .saas-platform-usage-page__stale-input {
+    width: 150px;
+  }
+
+  .saas-platform-usage-page__kpis--compact {
+    margin-bottom: 14px;
+  }
+
+  .saas-platform-usage-page__reconciliation-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .saas-platform-usage-page__table-title {
+    margin-bottom: 8px;
+    color: var(--el-text-color-regular);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
   @media (max-width: 1200px) {
     .saas-platform-usage-page__kpis {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+
+    .saas-platform-usage-page__reconciliation-grid {
+      grid-template-columns: 1fr;
+    }
   }
 
   @media (max-width: 640px) {
-    .saas-platform-usage-page__header {
+    .saas-platform-usage-page__header,
+    .saas-platform-usage-page__section-header--responsive {
       flex-direction: column;
       align-items: stretch;
     }
 
     .saas-platform-usage-page__kpis {
       grid-template-columns: 1fr;
+    }
+
+    .saas-platform-usage-page__actions {
+      justify-content: flex-start;
     }
   }
 </style>

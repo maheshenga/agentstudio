@@ -150,6 +150,20 @@ export class SaasPlatformController {
     return this.runOutsideTenant(user, () => this.platformService.getOrderRiskOverview().then((data) => ResultData.ok(data)));
   }
 
+  @Get('payment/reconciliation/overview')
+  @ApiOperation({ summary: 'Get SaaS payment reconciliation overview' })
+  @RequirePermission('saas:order:list')
+  paymentReconciliationOverview(@Query() query: Pick<SaasPlatformListQuery, 'stale_minutes'>, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () => this.platformService.getPaymentReconciliationOverview(query).then((data) => ResultData.ok(data)));
+  }
+
+  @Post('payment/reconciliation/scan')
+  @ApiOperation({ summary: 'Scan SaaS payment reconciliation exceptions' })
+  @RequirePermission('saas:order:list')
+  scanPaymentReconciliation(@Body() body: Pick<SaasPlatformListQuery, 'stale_minutes'>, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () => this.platformService.getPaymentReconciliationOverview(body).then((data) => ResultData.ok(data)));
+  }
+
   @Get('orders/:order_no')
   @ApiOperation({ summary: 'Get SaaS platform order detail' })
   @RequirePermission('saas:order:list')

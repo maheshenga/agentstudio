@@ -281,4 +281,86 @@ describe('SaasOrderRiskService', () => {
       },
     });
   });
+
+  it('summarizes stale payment requested orders for reconciliation', async () => {
+    const now = new Date('2026-07-04T12:00:00.000Z');
+    const cutoff = new Date('2026-07-04T10:00:00.000Z');
+    const planOrders = Array.from({ length: 21 }, (_, index) => ({
+      orderNo: `SO${index + 1}`,
+      tenantId: 12,
+      amountCents: 100,
+      paymentRequestedAt: new Date(`2026-07-04T09:${String(index).padStart(2, '0')}:00.000Z`),
+      createTime: new Date('2026-07-04T09:00:00.000Z'),
+    }));
+    const resourcePackOrders = [
+      {
+        orderNo: 'RPO1',
+        tenantId: 12,
+        amountCents: 19900,
+        paymentRequestedAt: new Date('2026-07-04T09:20:00.000Z'),
+        createTime: new Date('2026-07-04T09:00:00.000Z'),
+      },
+      {
+        orderNo: 'RPO2',
+        tenantId: 13,
+        amountCents: 29900,
+        paymentRequestedAt: new Date('2026-07-04T09:10:00.000Z'),
+        createTime: new Date('2026-07-04T09:00:00.000Z'),
+      },
+    ];
+    planOrderRepo.find.mockImplementation((options) => Promise.resolve(options?.take === 20 ? planOrders.slice(0, 20) : planOrders));
+    resourcePackOrderRepo.find.mockImplementation((options) =>
+      Promise.resolve(options?.take === 20 ? resourcePackOrders.slice(0, 20) : resourcePackOrders),
+    );
+
+    const result = await service.getPaymentReconciliationOverview(now, 120);
+
+    expect(result).toEqual({
+      checked_at: now,
+      stale_minutes: 120,
+      stale_plan_payment_count: 21,
+      stale_resource_pack_payment_count: 2,
+      stale_plan_payment_amount_cents: 2100,
+      stale_resource_pack_payment_amount_cents: 49800,
+      recent_plan_orders: expect.arrayContaining([
+        expect.objectContaining({ order_no: 'SO1', amount_cents: 100, exception_type: 'payment_requested_stale' }),
+      ]),
+      recent_resource_pack_orders: [
+        expect.objectContaining({ order_no: 'RPO1', exception_type: 'payment_requested_stale' }),
+        expect.objectContaining({ order_no: 'RPO2', exception_type: 'payment_requested_stale' }),
+      ],
+    });
+    expect(result.recent_plan_orders).toHaveLength(20);
+
+    expect(planOrderRepo.find).toHaveBeenCalledWith({
+      where: {
+        status: SAAS_ORDER_PENDING,
+        paymentRequestedAt: LessThanOrEqual(cutoff),
+      },
+      select: { amountCents: true },
+    });
+    expect(planOrderRepo.find).toHaveBeenCalledWith({
+      where: {
+        status: SAAS_ORDER_PENDING,
+        paymentRequestedAt: LessThanOrEqual(cutoff),
+      },
+      order: { paymentRequestedAt: 'ASC', id: 'DESC' },
+      take: 20,
+    });
+    expect(resourcePackOrderRepo.find).toHaveBeenCalledWith({
+      where: {
+        status: SAAS_ORDER_PENDING,
+        paymentRequestedAt: LessThanOrEqual(cutoff),
+      },
+      select: { amountCents: true },
+    });
+    expect(resourcePackOrderRepo.find).toHaveBeenCalledWith({
+      where: {
+        status: SAAS_ORDER_PENDING,
+        paymentRequestedAt: LessThanOrEqual(cutoff),
+      },
+      order: { paymentRequestedAt: 'ASC', id: 'DESC' },
+      take: 20,
+    });
+  });
 });

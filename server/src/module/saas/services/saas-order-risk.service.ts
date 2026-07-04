@@ -32,6 +32,26 @@ export interface OrderRiskOverview {
   tenant_cancelled_resource_pack_orders_7d: number;
 }
 
+export interface PaymentReconciliationOverview {
+  checked_at: Date;
+  stale_minutes: number;
+  stale_plan_payment_count: number;
+  stale_resource_pack_payment_count: number;
+  stale_plan_payment_amount_cents: number;
+  stale_resource_pack_payment_amount_cents: number;
+  recent_plan_orders: PaymentExceptionRecord[];
+  recent_resource_pack_orders: PaymentExceptionRecord[];
+}
+
+export interface PaymentExceptionRecord {
+  order_no?: string;
+  tenant_id?: number;
+  amount_cents: number;
+  payment_requested_at?: Date | null;
+  create_time?: Date | null;
+  exception_type: 'payment_requested_stale';
+}
+
 @Injectable()
 export class SaasOrderRiskService {
   constructor(
@@ -168,6 +188,45 @@ export class SaasOrderRiskService {
     };
   }
 
+  async getPaymentReconciliationOverview(now = new Date(), staleMinutes = 120): Promise<PaymentReconciliationOverview> {
+    const cutoff = this.subtractMinutes(now, staleMinutes);
+    const stalePaymentWhere = {
+      status: SAAS_ORDER_PENDING,
+      paymentRequestedAt: LessThanOrEqual(cutoff),
+    };
+    const [planOrderAmounts, resourcePackOrderAmounts, planOrders, resourcePackOrders] = await Promise.all([
+      this.planOrderRepo.find({
+        where: stalePaymentWhere,
+        select: { amountCents: true },
+      }),
+      this.resourcePackOrderRepo.find({
+        where: stalePaymentWhere,
+        select: { amountCents: true },
+      }),
+      this.planOrderRepo.find({
+        where: stalePaymentWhere,
+        order: { paymentRequestedAt: 'ASC', id: 'DESC' },
+        take: 20,
+      }),
+      this.resourcePackOrderRepo.find({
+        where: stalePaymentWhere,
+        order: { paymentRequestedAt: 'ASC', id: 'DESC' },
+        take: 20,
+      }),
+    ]);
+
+    return {
+      checked_at: now,
+      stale_minutes: staleMinutes,
+      stale_plan_payment_count: planOrderAmounts.length,
+      stale_resource_pack_payment_count: resourcePackOrderAmounts.length,
+      stale_plan_payment_amount_cents: this.sumAmount(planOrderAmounts),
+      stale_resource_pack_payment_amount_cents: this.sumAmount(resourcePackOrderAmounts),
+      recent_plan_orders: planOrders.map((order) => this.toPaymentExceptionRecord(order)),
+      recent_resource_pack_orders: resourcePackOrders.map((order) => this.toPaymentExceptionRecord(order)),
+    };
+  }
+
   decoratePlanOrder(order: Partial<SaasOrderEntity>) {
     return {
       closed_at: order.closedAt ?? null,
@@ -190,6 +249,29 @@ export class SaasOrderRiskService {
   })
   closeExpiredPendingOrdersTask() {
     return this.closeExpiredPendingOrders();
+  }
+
+  @Task({
+    name: 'saas.orderRisk.paymentReconciliationOverview',
+    description: 'Scan stale SaaS payment requests',
+  })
+  paymentReconciliationOverviewTask() {
+    return this.getPaymentReconciliationOverview();
+  }
+
+  private sumAmount(orders: Array<Partial<SaasOrderEntity> | Partial<SaasResourcePackOrderEntity>>): number {
+    return orders.reduce((sum, order) => sum + (Number(order.amountCents) || 0), 0);
+  }
+
+  private toPaymentExceptionRecord(order: Partial<SaasOrderEntity | SaasResourcePackOrderEntity>): PaymentExceptionRecord {
+    return {
+      order_no: order.orderNo,
+      tenant_id: order.tenantId,
+      amount_cents: Number(order.amountCents) || 0,
+      payment_requested_at: order.paymentRequestedAt ?? null,
+      create_time: order.createTime ?? null,
+      exception_type: 'payment_requested_stale',
+    };
   }
 
   private subtractMinutes(date: Date, minutes: number): Date {

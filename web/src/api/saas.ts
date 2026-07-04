@@ -112,6 +112,30 @@ export interface SaasOrderRiskOverview {
   tenant_cancelled_resource_pack_orders_7d: number
 }
 
+export interface SaasPaymentExceptionRecord {
+  order_no?: string
+  tenant_id?: number
+  amount_cents: number
+  payment_requested_at?: string | Date | null
+  create_time?: string | Date | null
+  exception_type: 'payment_requested_stale'
+}
+
+export interface SaasPaymentReconciliationOverview {
+  checked_at: string | Date
+  stale_minutes: number
+  stale_plan_payment_count: number
+  stale_resource_pack_payment_count: number
+  stale_plan_payment_amount_cents: number
+  stale_resource_pack_payment_amount_cents: number
+  recent_plan_orders: SaasPaymentExceptionRecord[]
+  recent_resource_pack_orders: SaasPaymentExceptionRecord[]
+}
+
+export interface SaasPaymentReconciliationParams {
+  stale_minutes?: number | string
+}
+
 export interface SaasPlanQuotaRecord {
   quota_type: string
   total_quota: number
@@ -553,6 +577,20 @@ export function fetchPlatformRevenueOverview() {
 
 export function fetchPlatformOrderRiskOverview() {
   return request.get<SaasOrderRiskOverview>({ url: '/api/saas/platform/orders/risk/overview' })
+}
+
+export function fetchPlatformPaymentReconciliationOverview(params?: SaasPaymentReconciliationParams) {
+  return request.get<SaasPaymentReconciliationOverview>({
+    url: '/api/saas/platform/payment/reconciliation/overview',
+    params
+  })
+}
+
+export function scanPlatformPaymentReconciliation(params?: SaasPaymentReconciliationParams) {
+  return request.post<SaasPaymentReconciliationOverview>({
+    url: '/api/saas/platform/payment/reconciliation/scan',
+    data: params
+  })
 }
 
 export function fetchPlatformSubscriptionLifecycleOverview() {

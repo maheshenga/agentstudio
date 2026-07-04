@@ -18,6 +18,7 @@ describe('SaasPlatformController', () => {
   const platformService = {
     getUsageOverview: jest.fn(),
     getOrderRiskOverview: jest.fn(),
+    getPaymentReconciliationOverview: jest.fn(),
     getSubscriptionLifecycleOverview: jest.fn(),
     listOrders: jest.fn(),
     listSubscriptions: jest.fn(),
@@ -139,6 +140,45 @@ describe('SaasPlatformController', () => {
       timeout_closed_resource_pack_orders_7d: 4,
       tenant_cancelled_plan_orders_7d: 5,
       tenant_cancelled_resource_pack_orders_7d: 6,
+    });
+  });
+
+  it('returns SaaS payment reconciliation overview outside tenant scope', async () => {
+    platformService.getPaymentReconciliationOverview.mockResolvedValue({
+      checked_at: new Date('2026-07-04T12:00:00.000Z'),
+      stale_minutes: 120,
+      stale_plan_payment_count: 1,
+      stale_resource_pack_payment_count: 2,
+      recent_plan_orders: [],
+      recent_resource_pack_orders: [],
+    });
+
+    const result = await controller.paymentReconciliationOverview({ stale_minutes: '120' }, { userId: 1 } as any);
+
+    expect(platformService.getPaymentReconciliationOverview).toHaveBeenCalledWith({ stale_minutes: '120' });
+    expect(result.data).toMatchObject({
+      stale_minutes: 120,
+      stale_plan_payment_count: 1,
+      stale_resource_pack_payment_count: 2,
+    });
+  });
+
+  it('runs a SaaS payment reconciliation scan outside tenant scope', async () => {
+    platformService.getPaymentReconciliationOverview.mockResolvedValue({
+      checked_at: new Date('2026-07-04T12:00:00.000Z'),
+      stale_minutes: 120,
+      stale_plan_payment_count: 0,
+      stale_resource_pack_payment_count: 0,
+      recent_plan_orders: [],
+      recent_resource_pack_orders: [],
+    });
+
+    const result = await controller.scanPaymentReconciliation({ stale_minutes: 120 } as any, { userId: 1 } as any);
+
+    expect(platformService.getPaymentReconciliationOverview).toHaveBeenCalledWith({ stale_minutes: 120 });
+    expect(result.data).toMatchObject({
+      stale_minutes: 120,
+      stale_plan_payment_count: 0,
     });
   });
 

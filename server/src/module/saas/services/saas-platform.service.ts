@@ -28,6 +28,7 @@ export interface SaasPlatformListQuery {
   lifecycle_status?: string;
   expires_within_days?: string | number;
   expired_since_days?: string | number;
+  stale_minutes?: string | number;
 }
 
 export interface SaasPlatformPlanOrderOverviewRecord {
@@ -214,6 +215,10 @@ export class SaasPlatformService {
     return this.orderRiskService.getOrderRiskOverview();
   }
 
+  getPaymentReconciliationOverview(query: Pick<SaasPlatformListQuery, 'stale_minutes'> = {}) {
+    return this.orderRiskService.getPaymentReconciliationOverview(new Date(), this.resolveStaleMinutes(query.stale_minutes));
+  }
+
   private buildQuotaSummary(resources: Partial<SaasTenantResourceEntity>[]) {
     const groups = new Map<string, { resource_type: string; total_quota: number; used_quota: number }>();
     for (const resource of resources) {
@@ -308,5 +313,12 @@ export class SaasPlatformService {
     if (value === undefined || value === null || value === '') return undefined;
     const tenantId = Number(value);
     return Number.isFinite(tenantId) && tenantId > 0 ? tenantId : undefined;
+  }
+
+  private resolveStaleMinutes(value: string | number | undefined): number {
+    if (value === undefined || value === null || value === '') return 120;
+    const minutes = Number(value);
+    if (!Number.isFinite(minutes)) return 120;
+    return Math.min(1440, Math.max(10, Math.floor(minutes)));
   }
 }
