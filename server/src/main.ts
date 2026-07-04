@@ -18,6 +18,7 @@ import { writeFileSync, existsSync, mkdirSync } from 'fs';
 import { AppModule } from './app.module';
 import { AppLoggerService } from './logging/app-logger.service';
 import { HttpExceptionsFilter } from './common/filters/http-exceptions.filter';
+import { AUTH_RATE_LIMITS } from './common/rate-limit/auth-rate-limit.config';
 
 /** 重启保护：时间窗口内最大异常重启次数 */
 const MAX_RESTARTS_IN_WINDOW = 10;
@@ -104,16 +105,10 @@ async function bootstrap(): Promise<void> {
     // CORS 配置
     configureCors(app, configService);
 
-    // Tighter limits for public auth surfaces to reduce brute-force signup/login and tenant enumeration.
-    app.use(
-      ['/api/core/login', '/api/core/tenants-by-username', '/api/saas/signup'],
-      rateLimit({
-        windowMs: 15 * 60 * 1000,
-        max: 60,
-        standardHeaders: true,
-        legacyHeaders: false,
-      }),
-    );
+    // Tighter, independent limits for public auth surfaces.
+    app.use('/api/core/login', rateLimit(AUTH_RATE_LIMITS.login));
+    app.use('/api/core/tenants-by-username', rateLimit(AUTH_RATE_LIMITS.tenantLookup));
+    app.use('/api/saas/signup', rateLimit(AUTH_RATE_LIMITS.signup));
 
     // 静态文件目录
     const uploadDir = configService.get<string>('file.uploadDir', '../upload');

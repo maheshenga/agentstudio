@@ -135,6 +135,12 @@ describe('MainService auth safety', () => {
 
     const result = await service.getCurrentUser({ userId: 7, tenantId: 9 });
 
+    expect(redisService.get).toHaveBeenCalledWith(expect.stringMatching(/profile:7:9$/));
+    expect(redisService.set).toHaveBeenCalledWith(
+      expect.stringMatching(/profile:7:9$/),
+      expect.any(Object),
+      expect.any(Number),
+    );
     expect(result.data).toEqual(
       expect.objectContaining({
         tenant_id: 9,

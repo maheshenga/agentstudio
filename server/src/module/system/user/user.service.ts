@@ -424,7 +424,10 @@ export class UserService {
     }
     await this.redisService.del(`user:roles:${userId}`);
     // 清除用户信息缓存
-    await this.redisService.del(`${CacheEnum.SYS_USER_KEY}profile:${userId}`);
+    const profileKeys = await this.redisService.keys(`${CacheEnum.SYS_USER_KEY}profile:${userId}:*`);
+    if (profileKeys?.length) {
+      await this.redisService.del(profileKeys);
+    }
   }
 
   /** ponytail: login should not block on external geo-ip; timeout fallback keeps auth responsive */

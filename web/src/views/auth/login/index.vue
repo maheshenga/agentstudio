@@ -207,6 +207,9 @@
   const homeDebugEnabled = import.meta.env.VITE_HOME_DEGBUG === 'true'
   const welcomeDialogVisible = ref(false)
   let welcomeDialogTimer: ReturnType<typeof setTimeout> | undefined
+  const TENANT_LOOKUP_DEBOUNCE_MS = 400
+  let tenantLookupTimer: ReturnType<typeof setTimeout> | undefined
+  let tenantLookupRequestId = 0
 
   const loadSystemName = async () => {
     try {
@@ -255,27 +258,48 @@
     if (welcomeDialogTimer) {
       clearTimeout(welcomeDialogTimer)
     }
+    if (tenantLookupTimer) {
+      clearTimeout(tenantLookupTimer)
+    }
   })
 
   // 监听用户名变化，加载租户列表
-  watch(() => formData.username, (newUsername) => {
-    if (newUsername && newUsername.trim()) {
-      loadTenantList()
-    } else {
-      tenantList.value = []
-      formData.tenant_id = undefined
+  const scheduleTenantLookup = () => {
+    if (tenantLookupTimer) {
+      clearTimeout(tenantLookupTimer)
     }
+
+    const username = formData.username.trim()
+    tenantLookupRequestId++
+    tenantList.value = []
+    formData.tenant_id = undefined
+
+    if (username.length < 2) {
+      loadingTenants.value = false
+      return
+    }
+
+    tenantLookupTimer = setTimeout(() => {
+      loadTenantList()
+    }, TENANT_LOOKUP_DEBOUNCE_MS)
+  }
+
+  watch(() => formData.username, () => {
+    scheduleTenantLookup()
   })
 
   // 加载租户列表
   const loadTenantList = async () => {
-    if (!formData.username || !formData.username.trim()) {
+    const username = formData.username.trim()
+    if (username.length < 2) {
       return
     }
 
+    const requestId = ++tenantLookupRequestId
     try {
       loadingTenants.value = true
-      const list = await fetchTenantsByUsername(formData.username.trim())
+      const list = await fetchTenantsByUsername(username)
+      if (requestId !== tenantLookupRequestId) return
       tenantList.value = list || []
       
       // 如果只有一个租户，自动选中
@@ -290,9 +314,13 @@
       }
     } catch (error) {
       console.error('[Login] 加载租户列表失败:', error)
-      tenantList.value = []
+      if (requestId === tenantLookupRequestId) {
+        tenantList.value = []
+      }
     } finally {
-      loadingTenants.value = false
+      if (requestId === tenantLookupRequestId) {
+        loadingTenants.value = false
+      }
     }
   }
 

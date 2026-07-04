@@ -331,3 +331,35 @@ describe('UserService tenant lookup before login', () => {
     expect(userRepo.findOne).toHaveBeenCalledWith({ where: { username: 'founder' } });
   });
 });
+
+describe('UserService runtime cache eviction', () => {
+  it('clears all tenant-scoped profile cache entries for a user', async () => {
+    const redisService = {
+      keys: jest.fn().mockResolvedValue(['user:profile:7:0', 'user:profile:7:9']),
+      del: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new UserService(
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      redisService as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+
+    await (service as any).clearUserRuntimeCache(7);
+
+    expect(redisService.keys).toHaveBeenCalledWith('user:profile:7:*');
+    expect(redisService.del).toHaveBeenCalledWith(['user:profile:7:0', 'user:profile:7:9']);
+  });
+});

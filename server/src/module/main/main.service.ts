@@ -221,14 +221,14 @@ export class MainService {
    */
   async getCurrentUser(user: any): Promise<ResultData> {
     const userId = user.userId;
-    const cacheKey = `${CacheEnum.SYS_USER_KEY}profile:${userId}`;
+    const tenantId = (user as any).tenantId || 0;
+    const cacheKey = `${CacheEnum.SYS_USER_KEY}profile:${userId}:${tenantId}`;
     const cached = await this.redisService.get(cacheKey);
     if (cached) return ResultData.ok(cached);
 
     const userData = await this.userService.getUserinfo(userId);
     const roles = userData.roles?.map((r: any) => r.code) || [];
     const isAdmin = userData.isSuper === 1;
-    const tenantId = (user as any).tenantId || 0;
     const isTenantOwner = roles.some((role: string) => role.endsWith(':owner'));
     const accountScope = isAdmin ? 'platform' : tenantId ? 'tenant' : 'user';
     const buttons = isAdmin ? ['*'] : await this.userService.getUserPermissions(userId);
