@@ -1,0 +1,17 @@
+node_modules
+.env
+.env.*
+!.env.example
+.DS_Store
+dist
+dist-ssr
+*.local
+*.zip
+logs
+*.log
+.cursorrules
+
+# Auto-generated files
+src/types/import/auto-imports.d.ts
+src/types/import/components.d.ts
+.auto-import.json
