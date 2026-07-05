@@ -14,6 +14,9 @@ describe('SystemModulePlatformController', () => {
     listEvents: jest.fn(),
     registerBuiltInModules: jest.fn(),
     registerPluginManifest: jest.fn(),
+    listSaasBridges: jest.fn(),
+    saveSaasBridge: jest.fn(),
+    updateSaasBridgeStatus: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -67,5 +70,42 @@ describe('SystemModulePlatformController', () => {
       { tenantId: undefined, userId: 66, ignoreAudit: false, ignoreTenant: true },
       expect.any(Function),
     );
+  });
+
+  it('lists SaaS bridge configs outside tenant scope', async () => {
+    const query = { saas_module_code: 'ai_chat' };
+    const rows = [{ id: 1, saas_module_code: 'ai_chat', system_module_code: 'ai_console' }];
+    registry.listSaasBridges.mockResolvedValue(rows);
+    const contextSpy = jest.spyOn(TenantContext, 'run');
+
+    const result = await controller.listSaasBridges(query as any, { userId: 81 } as any);
+
+    expect(registry.listSaasBridges).toHaveBeenCalledWith(query);
+    expect(result.data).toEqual(rows);
+    expect(contextSpy).toHaveBeenCalledWith(
+      { tenantId: undefined, userId: 81, ignoreAudit: false, ignoreTenant: true },
+      expect.any(Function),
+    );
+  });
+
+  it('saves SaaS bridge config with operator id', async () => {
+    const body = { saas_module_code: 'ai_chat', system_module_code: 'ai_console', enabled: 1 };
+    const row = { id: 1, saas_module_code: 'ai_chat', system_module_code: 'ai_console', enabled: true };
+    registry.saveSaasBridge.mockResolvedValue(row);
+
+    const result = await controller.saveSaasBridge(body as any, { userId: 82 } as any);
+
+    expect(registry.saveSaasBridge).toHaveBeenCalledWith(body, 82);
+    expect(result.data).toEqual(row);
+  });
+
+  it('updates SaaS bridge config status with operator id', async () => {
+    const row = { id: 1, enabled: false };
+    registry.updateSaasBridgeStatus.mockResolvedValue(row);
+
+    const result = await controller.updateSaasBridgeStatus('1', { enabled: 0 }, { userId: 83 } as any);
+
+    expect(registry.updateSaasBridgeStatus).toHaveBeenCalledWith(1, 0, 83);
+    expect(result.data).toEqual(row);
   });
 });

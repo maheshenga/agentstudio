@@ -25,6 +25,19 @@ export interface SystemModuleListQuery {
   source?: string;
 }
 
+export interface SystemModuleSaasBridgeListQuery {
+  saas_module_code?: string;
+  system_module_code?: string;
+  enabled?: number | string;
+}
+
+export interface SaveSystemModuleSaasBridgeInput {
+  saas_module_code: string;
+  system_module_code: string;
+  enabled?: number;
+  remark?: string;
+}
+
 interface ImportManifestOptions {
   validateExisting?: (existing: SystemModuleEntity, manifest: SystemModuleManifest) => void;
 }
@@ -250,6 +263,62 @@ export class SystemModuleRegistryService implements OnModuleInit {
     });
   }
 
+  async listSaasBridges(query: SystemModuleSaasBridgeListQuery = {}) {
+    const bridgeRows = await this.bridgeRepo.find({
+      where: { deleteTime: IsNull() },
+      order: { saasModuleCode: 'ASC', systemModuleCode: 'ASC', id: 'ASC' },
+    });
+
+    const enabledFilter = query.enabled === undefined || query.enabled === '' ? undefined : Number(query.enabled);
+
+    return bridgeRows
+      .filter((row) => {
+        if (query.saas_module_code && row.saasModuleCode !== query.saas_module_code) return false;
+        if (query.system_module_code && row.systemModuleCode !== query.system_module_code) return false;
+        if (enabledFilter !== undefined && Number(row.enabled) !== enabledFilter) return false;
+        return true;
+      })
+      .map((row) => this.toSaasBridgeResponse(row));
+  }
+
+  async saveSaasBridge(dto: SaveSystemModuleSaasBridgeInput, operatorId?: number) {
+    void operatorId;
+    const saasModuleCode = dto.saas_module_code?.trim();
+    const systemModuleCode = dto.system_module_code?.trim();
+    if (!saasModuleCode || !systemModuleCode) {
+      throw new BadRequestException('SaaS module code and system module code are required');
+    }
+
+    await this.assertSaasModuleExists(saasModuleCode);
+    await this.findModule(systemModuleCode);
+
+    const existing = await this.bridgeRepo.findOne({
+      where: { saasModuleCode, systemModuleCode },
+      withDeleted: true,
+    } as any);
+    const bridge = existing || this.bridgeRepo.create({ saasModuleCode, systemModuleCode, source: 'platform' });
+
+    bridge.saasModuleCode = saasModuleCode;
+    bridge.systemModuleCode = systemModuleCode;
+    bridge.enabled = dto.enabled === undefined ? 1 : Number(dto.enabled);
+    bridge.source = bridge.source || 'platform';
+    bridge.remark = dto.remark || '';
+    bridge.deleteTime = null;
+
+    return this.toSaasBridgeResponse(await this.bridgeRepo.save(bridge));
+  }
+
+  async updateSaasBridgeStatus(id: number, enabled: number, operatorId?: number) {
+    void operatorId;
+    const bridge = await this.bridgeRepo.findOne({ where: { id, deleteTime: IsNull() } });
+    if (!bridge) {
+      throw new NotFoundException(`SaaS bridge ${id} not found`);
+    }
+
+    bridge.enabled = Number(enabled);
+    return this.toSaasBridgeResponse(await this.bridgeRepo.save(bridge));
+  }
+
   async getModule(code: string) {
     const module = await this.findModule(code);
     const [dependencies, permissions, apis, events] = await Promise.all([
@@ -391,6 +460,13 @@ export class SystemModuleRegistryService implements OnModuleInit {
     return module;
   }
 
+  private async assertSaasModuleExists(code: string) {
+    const modules = await this.saasModuleService.listPlatformModules({});
+    if (!modules.some((module) => module.code === code)) {
+      throw new NotFoundException(`SaaS module ${code} not found`);
+    }
+  }
+
   private async resolvePlanEntitledSystemModuleCodes(saasModuleCodes: string[]) {
     const uniqueCodes = [...new Set(saasModuleCodes.filter(Boolean))];
     if (!uniqueCodes.length) {
@@ -514,6 +590,19 @@ export class SystemModuleRegistryService implements OnModuleInit {
       health_status: module.healthStatus || 'unknown',
       create_time: module.createTime,
       update_time: module.updateTime,
+    };
+  }
+
+  private toSaasBridgeResponse(row: Partial<SystemModuleSaasBridgeEntity>) {
+    return {
+      id: row.id,
+      saas_module_code: row.saasModuleCode,
+      system_module_code: row.systemModuleCode,
+      enabled: Number(row.enabled) === 1,
+      source: row.source || 'platform',
+      remark: row.remark || '',
+      create_time: row.createTime,
+      update_time: row.updateTime,
     };
   }
 }

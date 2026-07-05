@@ -159,6 +159,7 @@ describe('SystemModuleRegistryService', () => {
     const bridgeRepo = new MemoryRepository();
     const saasModuleService = {
       listTenantModules: jest.fn().mockResolvedValue([]),
+      listPlatformModules: jest.fn().mockResolvedValue([]),
     };
     const dataSource = new MemoryDataSource(
       new Map<Function, MemoryRepository<EntityRecord>>([
@@ -688,6 +689,140 @@ describe('SystemModuleRegistryService', () => {
         entitlement_source: null,
       }),
     ]);
+  });
+
+  it('lists SaaS bridge config rows with filters and snake case response', async () => {
+    const { service, bridgeRepo } = createService();
+    await bridgeRepo.save({
+      saasModuleCode: 'ai_chat',
+      systemModuleCode: 'ai_console',
+      enabled: 1,
+      source: 'seed',
+      remark: 'AI bridge',
+    });
+    await bridgeRepo.save({
+      saasModuleCode: 'member_management',
+      systemModuleCode: 'tenant_saas',
+      enabled: 0,
+      source: 'platform',
+      remark: 'Disabled bridge',
+    });
+
+    await expect(service.listSaasBridges({ saas_module_code: 'ai_chat' })).resolves.toEqual([
+      expect.objectContaining({
+        saas_module_code: 'ai_chat',
+        system_module_code: 'ai_console',
+        enabled: true,
+        source: 'seed',
+        remark: 'AI bridge',
+      }),
+    ]);
+  });
+
+  it('creates SaaS bridge config after validating SaaS and system module catalogs', async () => {
+    const { service, moduleRepo, bridgeRepo, saasModuleService } = createService();
+    await moduleRepo.save({
+      code: 'custom_workspace',
+      name: 'Custom Workspace',
+      source: 'built_in',
+      version: '1.0.0',
+      description: '',
+      category: 'ai',
+      icon: 'Bot',
+      status: 'enabled',
+      entryRoute: '/custom/workspace',
+      configSchema: {},
+      healthStatus: 'unknown',
+      sort: 40,
+    });
+    saasModuleService.listPlatformModules.mockResolvedValue([{ code: 'custom_ai' }]);
+
+    const result = await service.saveSaasBridge({
+      saas_module_code: 'custom_ai',
+      system_module_code: 'custom_workspace',
+      enabled: 1,
+      remark: 'Custom AI workspace',
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        saas_module_code: 'custom_ai',
+        system_module_code: 'custom_workspace',
+        enabled: true,
+        source: 'platform',
+        remark: 'Custom AI workspace',
+      }),
+    );
+    expect(bridgeRepo.records).toEqual([
+      expect.objectContaining({
+        saasModuleCode: 'custom_ai',
+        systemModuleCode: 'custom_workspace',
+        enabled: 1,
+        source: 'platform',
+      }),
+    ]);
+  });
+
+  it('revives an existing soft-deleted SaaS bridge config without inserting a duplicate', async () => {
+    const { service, moduleRepo, bridgeRepo, saasModuleService } = createService();
+    await moduleRepo.save({
+      code: 'ai_console',
+      name: 'AI Console',
+      source: 'built_in',
+      version: '1.0.0',
+      description: '',
+      category: 'ai',
+      icon: 'Bot',
+      status: 'enabled',
+      entryRoute: '/ai/chat',
+      configSchema: {},
+      healthStatus: 'unknown',
+      sort: 40,
+    });
+    await bridgeRepo.save({
+      id: 88,
+      saasModuleCode: 'ai_chat',
+      systemModuleCode: 'ai_console',
+      enabled: 0,
+      source: 'seed',
+      remark: 'Old bridge',
+      deleteTime: new Date('2026-07-01T00:00:00.000Z'),
+    });
+    saasModuleService.listPlatformModules.mockResolvedValue([{ code: 'ai_chat' }]);
+
+    const result = await service.saveSaasBridge({
+      saas_module_code: 'ai_chat',
+      system_module_code: 'ai_console',
+      enabled: 1,
+      remark: 'Revived bridge',
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        id: 88,
+        enabled: true,
+        source: 'seed',
+        remark: 'Revived bridge',
+      }),
+    );
+    expect(bridgeRepo.records).toHaveLength(1);
+    expect(bridgeRepo.records[0]).toEqual(expect.objectContaining({ id: 88, enabled: 1, deleteTime: null }));
+  });
+
+  it('updates SaaS bridge config status by id', async () => {
+    const { service, bridgeRepo } = createService();
+    await bridgeRepo.save({
+      id: 9,
+      saasModuleCode: 'ai_chat',
+      systemModuleCode: 'ai_console',
+      enabled: 1,
+      source: 'seed',
+    });
+
+    const result = await service.updateSaasBridgeStatus(9, 0);
+
+    expect(result).toEqual(expect.objectContaining({ id: 9, enabled: false }));
+    expect(bridgeRepo.records[0]).toEqual(expect.objectContaining({ enabled: 0 }));
   });
 
   it('rejects invalid lifecycle state with BadRequestException', async () => {

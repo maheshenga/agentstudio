@@ -6,7 +6,13 @@ import { TenantContext } from '../../common/tenant/tenant.context';
 import { ResultData } from '../../common/utils/result';
 import { User, UserDto } from '../system/user/user.decorator';
 import { PluginModuleManifestDto } from './dto/plugin-module-manifest.dto';
-import { SystemModuleListQueryDto, UpdateSystemModuleStatusDto } from './dto/save-system-module.dto';
+import {
+  SaveSystemModuleSaasBridgeDto,
+  SystemModuleListQueryDto,
+  SystemModuleSaasBridgeListQueryDto,
+  UpdateSystemModuleSaasBridgeStatusDto,
+  UpdateSystemModuleStatusDto,
+} from './dto/save-system-module.dto';
 import { SystemModuleRegistryService } from './services/system-module-registry.service';
 
 @ApiTags('System Modules')
@@ -28,6 +34,37 @@ export class SystemModulePlatformController {
   registerPluginManifest(@Body() body: PluginModuleManifestDto, @User() user: UserDto) {
     return this.runOutsideTenant(user, () =>
       this.registry.registerPluginManifest(body, user?.userId).then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Get('saas-bridges')
+  @ApiOperation({ summary: 'List SaaS to system module bridge configs' })
+  @RequirePermission('system:module:list')
+  listSaasBridges(@Query() query: SystemModuleSaasBridgeListQueryDto, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () =>
+      this.registry.listSaasBridges(query).then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Post('saas-bridges')
+  @ApiOperation({ summary: 'Create or update SaaS to system module bridge config' })
+  @RequirePermission('system:module:config')
+  saveSaasBridge(@Body() body: SaveSystemModuleSaasBridgeDto, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () =>
+      this.registry.saveSaasBridge(body, user?.userId).then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Put('saas-bridges/:id/status')
+  @ApiOperation({ summary: 'Update SaaS to system module bridge config status' })
+  @RequirePermission('system:module:config')
+  updateSaasBridgeStatus(
+    @Param('id') id: string,
+    @Body() body: UpdateSystemModuleSaasBridgeStatusDto,
+    @User() user: UserDto,
+  ) {
+    return this.runOutsideTenant(user, () =>
+      this.registry.updateSaasBridgeStatus(Number(id), body.enabled, user?.userId).then((data) => ResultData.ok(data)),
     );
   }
 
