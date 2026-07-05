@@ -10,6 +10,7 @@ import { RoleModule } from './role/role.module';
 import { ToolModule } from './tool/tool.module';
 import { UserModule } from './user/user.module';
 import { TenantModule } from './tenant/tenant.module';
+import { SystemModuleRegistryModule } from '../system-module/system-module.module';
 
 @Global()
 @Module({
@@ -25,6 +26,7 @@ import { TenantModule } from './tenant/tenant.module';
     ToolModule,
     UserModule,
     TenantModule,
+    SystemModuleRegistryModule,
   ],
   exports: [
     AuthModule,
@@ -38,6 +40,7 @@ import { TenantModule } from './tenant/tenant.module';
     ToolModule,
     UserModule,
     TenantModule,
+    SystemModuleRegistryModule,
   ],
 })
 export class SystemModule {}
