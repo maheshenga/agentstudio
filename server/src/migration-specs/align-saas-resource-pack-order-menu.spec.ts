@@ -12,7 +12,7 @@ describe('AlignSaasResourcePackOrderMenu1760000000007', () => {
     const params = queryRunner.query.mock.calls.flatMap(([, values]) => values ?? []);
 
     expect(sql.some((statement) => statement.includes('INSERT INTO `sa_system_menu`'))).toBe(true);
-    expect(params).toContain('Resource Pack Orders');
+    expect(params).toContain('资源包订单');
     expect(params).toContain('SaasResourcePackOrder');
     expect(params).toContain('resource-pack-orders');
     expect(params).toContain('/saas/platform/resource-pack-order');
