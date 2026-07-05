@@ -9,6 +9,18 @@ export class SaasSubscriptionEntity {
   @Column({ type: 'bigint', name: 'tenant_id' })
   tenantId: number;
 
+  @Column({
+    type: 'bigint',
+    name: 'active_tenant_id',
+    asExpression: "CASE WHEN `status` = 'active' AND `delete_time` IS NULL THEN `tenant_id` ELSE NULL END",
+    generatedType: 'STORED',
+    nullable: true,
+    select: false,
+    insert: false,
+    update: false,
+  })
+  activeTenantId?: number | null;
+
   @Column({ type: 'bigint', name: 'plan_id' })
   planId: number;
 

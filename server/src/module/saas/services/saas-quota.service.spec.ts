@@ -7,6 +7,10 @@ import { SaasQuotaLedgerEntity } from '../entities/saas-quota-ledger.entity';
 import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
 import { SaasQuotaService } from './saas-quota.service';
 
+const MSG_MISSING_TENANT_CONTEXT = '\u7f3a\u5c11\u79df\u6237\u4e0a\u4e0b\u6587';
+const MSG_AI_CALLS_QUOTA_INSUFFICIENT = 'AI \u8c03\u7528\u6b21\u6570\u989d\u5ea6\u4e0d\u8db3';
+const MSG_TOKENS_QUOTA_INSUFFICIENT = 'Token \u989d\u5ea6\u4e0d\u8db3';
+
 describe('SaasQuotaService', () => {
   let service: SaasQuotaService;
 
@@ -203,6 +207,18 @@ describe('SaasQuotaService', () => {
     await expect(
       service.assertTenantQuotaAvailable(42, 'ai_calls', 1, 'AI 调用次数额度不足'),
     ).rejects.toThrow('AI 调用次数额度不足');
+  });
+
+  it('returns readable Chinese messages for missing tenant context', async () => {
+    await expect(service.assertTenantQuotaAvailable(0, 'tokens', 1)).rejects.toThrow('缺少租户上下文');
+    await expect(service.consumeTenantQuota(0, 'tokens', 1)).rejects.toThrow('缺少租户上下文');
+    await expect(service.grantTenantQuota(0, 'tokens', 1)).rejects.toThrow('缺少租户上下文');
+  });
+
+  it('returns canonical Unicode Chinese messages for missing tenant context', async () => {
+    await expect(service.assertTenantQuotaAvailable(0, 'tokens', 1)).rejects.toThrow(MSG_MISSING_TENANT_CONTEXT);
+    await expect(service.consumeTenantQuota(0, 'tokens', 1)).rejects.toThrow(MSG_MISSING_TENANT_CONTEXT);
+    await expect(service.grantTenantQuota(0, 'tokens', 1)).rejects.toThrow(MSG_MISSING_TENANT_CONTEXT);
   });
 
   it('treats non-positive total quota as unlimited', async () => {
@@ -496,5 +512,50 @@ describe('SaasQuotaService', () => {
         balanceUsedQuota: 521,
       }),
     );
+  });
+
+  it('passes readable Chinese quota messages into AI quota consumption', async () => {
+    const spy = jest
+      .spyOn(service, 'consumeTenantQuota')
+      .mockRejectedValueOnce(new Error('AI 调用次数额度不足'));
+
+    try {
+      await expect(service.consumeAiUsage(42, { totalTokens: 100 })).rejects.toThrow('AI 调用次数额度不足');
+      expect(spy).toHaveBeenCalledWith(
+        42,
+        'ai_calls',
+        1,
+        expect.objectContaining({ message: 'AI 调用次数额度不足' }),
+        expect.anything(),
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('passes canonical Unicode quota messages into AI quota consumption', async () => {
+    const spy = jest.spyOn(service, 'consumeTenantQuota').mockResolvedValue(undefined);
+
+    try {
+      await service.consumeAiUsage(42, { totalTokens: 100 });
+      expect(spy).toHaveBeenNthCalledWith(
+        1,
+        42,
+        'ai_calls',
+        1,
+        expect.objectContaining({ message: MSG_AI_CALLS_QUOTA_INSUFFICIENT }),
+        expect.anything(),
+      );
+      expect(spy).toHaveBeenNthCalledWith(
+        2,
+        42,
+        'tokens',
+        100,
+        expect.objectContaining({ message: MSG_TOKENS_QUOTA_INSUFFICIENT }),
+        expect.anything(),
+      );
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
