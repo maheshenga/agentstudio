@@ -33,10 +33,10 @@ const PLATFORM_MENU: MenuSeed = {
 };
 
 const PLATFORM_DETAIL_MENU: MenuSeed = {
-  parentCode: 'SystemModules',
+  parentCode: 'System',
   name: 'System Module Detail',
   code: 'SystemModuleDetail',
-  path: 'detail',
+  path: 'modules/detail',
   component: '/system/modules/detail',
   icon: '',
   sort: 91,
@@ -222,6 +222,13 @@ export class SeedSystemModules1760000000021 implements MigrationInterface {
           )
         )
         AND \`menu\`.\`delete_time\` IS NULL
+        AND \`menu\`.\`remark\` IN (
+          'Seeded system module menu',
+          'Seeded system module detail menu',
+          'Seeded system module permission',
+          'Seeded tenant system module menu',
+          'Seeded tenant system module permission'
+        )
       WHERE \`role\`.\`code\` IN ('admin', 'super_admin')
         AND \`role\`.\`delete_time\` IS NULL
         AND NOT EXISTS (
@@ -244,6 +251,7 @@ export class SeedSystemModules1760000000021 implements MigrationInterface {
         AND \`source_menu\`.\`delete_time\` IS NULL
       INNER JOIN \`sa_system_menu\` \`detail_menu\`
         ON \`detail_menu\`.\`code\` = 'SystemModuleDetail'
+        AND \`detail_menu\`.\`remark\` = 'Seeded system module detail menu'
         AND \`detail_menu\`.\`delete_time\` IS NULL
       WHERE NOT EXISTS (
         SELECT 1
@@ -265,6 +273,7 @@ export class SeedSystemModules1760000000021 implements MigrationInterface {
         AND \`source_menu\`.\`delete_time\` IS NULL
       INNER JOIN \`sa_system_menu\` \`read_permission\`
         ON \`read_permission\`.\`slug\` = 'system:module:read'
+        AND \`read_permission\`.\`remark\` = 'Seeded system module permission'
         AND \`read_permission\`.\`delete_time\` IS NULL
       WHERE NOT EXISTS (
         SELECT 1

@@ -12,7 +12,7 @@ describe('SeedSystemModules1760000000021', () => {
 
     expect(sql).toContain('SystemModules');
     expect(params).toContain('SystemModuleDetail');
-    expect(params).toContain('detail');
+    expect(params).toContain('modules/detail');
     expect(params).toContain('/system/modules/detail');
     expect(sql).toContain("`parent`.`code` = ?");
     expect(sql).toContain('`is_hidden`');
@@ -26,10 +26,14 @@ describe('SeedSystemModules1760000000021', () => {
     expect(sql).toContain("`role`.`code` IN ('admin', 'super_admin')");
     expect(sql).toContain("`source_menu`.`code` = 'SystemModules'");
     expect(sql).toContain("`detail_menu`.`code` = 'SystemModuleDetail'");
+    expect(sql).toContain("`detail_menu`.`remark` = 'Seeded system module detail menu'");
     expect(sql).toContain("`read_permission`.`slug` = 'system:module:read'");
+    expect(sql).toContain("`read_permission`.`remark` = 'Seeded system module permission'");
+    expect(sql).toContain('`menu`.`remark` IN (');
     expect(sql).toContain('`source_role_menu`.`role_id`');
     expect(sql).toContain('NOT EXISTS');
     expect(params).toContain('System');
+    expect(params).not.toContain('detail');
     expect(params).not.toContain('SystemManage');
   });
 
