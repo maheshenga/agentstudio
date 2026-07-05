@@ -14,6 +14,8 @@ type EntityRecord = Record<string, any>;
 class MemoryRepository<T extends EntityRecord> {
   public records: T[];
   public saveCalls = 0;
+  public savedInputs: T[] = [];
+  public updatedInputs: EntityRecord[] = [];
   private nextId: number;
 
   constructor(seed: T[] = []) {
@@ -30,6 +32,7 @@ class MemoryRepository<T extends EntityRecord> {
 
   async save(input: T | T[]) {
     this.saveCalls += 1;
+    this.savedInputs.push(...(Array.isArray(input) ? input : [input]));
     if (Array.isArray(input)) {
       return Promise.all(input.map((item) => this.save(item))) as Promise<T[]>;
     }
@@ -53,6 +56,28 @@ class MemoryRepository<T extends EntityRecord> {
 
     this.records.push(record);
     return record;
+  }
+
+  async insert(input: T) {
+    if (input.code && this.records.some((record) => record.code === input.code)) {
+      const error = new Error(`Duplicate entry '${input.code}' for key 'uk_system_module_code'`) as Error & {
+        code: string;
+        errno: number;
+      };
+      error.code = 'ER_DUP_ENTRY';
+      error.errno = 1062;
+      throw error;
+    }
+
+    return this.save(input);
+  }
+
+  async update(where: EntityRecord, partial: EntityRecord) {
+    this.updatedInputs.push(partial);
+    this.records = this.records.map((record) =>
+      this.matchesWhere(record, where) ? ({ ...record, ...partial } as T) : record,
+    );
+    return { affected: 1 };
   }
 
   async findOne(options: { where: EntityRecord; lock?: EntityRecord }) {
@@ -169,13 +194,21 @@ describe('SystemModuleRegistryService', () => {
   });
 
   it('preserves existing lifecycle status when manifests are re-synced', async () => {
-    const { service } = createService();
+    const { service, moduleRepo } = createService();
 
     await service.registerBuiltInModules();
     await service.updateStatus('core_system', 'disabled', 7);
+    moduleRepo.savedInputs = [];
     await service.registerBuiltInModules();
 
     await expect(service.getModule('core_system')).resolves.toEqual(expect.objectContaining({ status: 'disabled' }));
+    expect(moduleRepo.savedInputs).not.toContainEqual(
+      expect.objectContaining({
+        code: 'core_system',
+        status: expect.any(String),
+      }),
+    );
+    expect(moduleRepo.updatedInputs.some((input) => Object.prototype.hasOwnProperty.call(input, 'status'))).toBe(false);
   });
 
   it('updates status transactionally and records an enable event with operator id', async () => {

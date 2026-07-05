@@ -53,31 +53,25 @@ export class SystemModuleRegistryService implements OnModuleInit {
       const imported = [];
 
       for (const manifest of manifests) {
-        const existing = await moduleRepo.findOne({ where: { code: manifest.code } });
-        const manifestChanged = existing ? this.hasManifestChanged(existing, manifest) : false;
-        const module = moduleRepo.create({
-          ...(existing || {}),
-          code: manifest.code,
-          name: manifest.name,
-          source: manifest.source,
-          version: manifest.version,
-          description: manifest.description,
-          category: manifest.category,
-          icon: manifest.icon,
-          status: existing?.status || manifest.status,
-          entryRoute: manifest.entryRoute,
-          manifest: manifest as unknown as Record<string, unknown>,
-          configSchema: manifest.configSchema,
-          healthStatus: existing?.healthStatus || 'unknown',
-          sort: manifest.sort,
+        const inserted = await this.insertManifestModule(moduleRepo, manifest);
+        const existing = await moduleRepo.findOne({
+          where: { code: manifest.code },
+          lock: { mode: 'pessimistic_write' },
         });
-        imported.push(this.toResponse(await moduleRepo.save(module)));
+        if (!existing) {
+          throw new NotFoundException(`System module ${manifest.code} not found after manifest insert`);
+        }
+
+        const manifestChanged = inserted ? false : this.hasManifestChanged(existing, manifest);
+        const metadata = this.toManifestMetadata(manifest, existing);
+        await moduleRepo.update({ code: manifest.code }, metadata);
+        imported.push(this.toResponse({ ...existing, ...metadata }));
 
         await this.replaceDependencies(dependencyRepo, manifest);
         await this.replacePermissions(permissionRepo, manifest);
         await this.replaceApis(apiRepo, manifest);
 
-        if (!existing) {
+        if (inserted) {
           await this.recordEvent(eventRepo, manifest.code, 'install', 'success', `Imported module ${manifest.code}`);
         } else if (manifestChanged) {
           await this.recordEvent(eventRepo, manifest.code, 'upgrade', 'success', `Synced module ${manifest.code}`, {
@@ -88,6 +82,61 @@ export class SystemModuleRegistryService implements OnModuleInit {
 
       return imported;
     });
+  }
+
+  private async insertManifestModule(repo: Repository<SystemModuleEntity>, manifest: SystemModuleManifest) {
+    try {
+      await repo.insert(
+        repo.create({
+          code: manifest.code,
+          name: manifest.name,
+          source: manifest.source,
+          version: manifest.version,
+          description: manifest.description,
+          category: manifest.category,
+          icon: manifest.icon,
+          status: manifest.status,
+          entryRoute: manifest.entryRoute,
+          manifest: manifest as unknown as Record<string, unknown>,
+          configSchema: manifest.configSchema,
+          healthStatus: 'unknown',
+          sort: manifest.sort,
+        }),
+      );
+      return true;
+    } catch (error) {
+      if (this.isDuplicateModuleCodeError(error)) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  private toManifestMetadata(manifest: SystemModuleManifest, existing: SystemModuleEntity) {
+    return {
+      name: manifest.name,
+      source: manifest.source,
+      version: manifest.version,
+      description: manifest.description,
+      category: manifest.category,
+      icon: manifest.icon,
+      entryRoute: manifest.entryRoute,
+      manifest: manifest as unknown as Record<string, unknown>,
+      configSchema: manifest.configSchema,
+      healthStatus: existing.healthStatus || 'unknown',
+      sort: manifest.sort,
+      remark: existing.remark,
+    };
+  }
+
+  private isDuplicateModuleCodeError(error: unknown) {
+    const err = error as { code?: string; errno?: number; message?: string };
+    return (
+      err?.code === 'ER_DUP_ENTRY' ||
+      err?.code === '23505' ||
+      err?.errno === 1062 ||
+      String(err?.message || '').toLowerCase().includes('duplicate')
+    );
   }
 
   async listModules(query: SystemModuleListQuery = {}) {
