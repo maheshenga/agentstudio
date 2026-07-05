@@ -124,26 +124,40 @@ describe('SystemModuleAccessService', () => {
 
   it('derives tenant availability from SaaS plan feature module codes', async () => {
     const { service } = createService({
-      modules: [enabledModule('ai_chat')],
+      modules: [enabledModule('ai_console')],
     });
 
     await expect(
       service.assertModuleAccess({
         tenantId: 10,
-        moduleCode: 'ai_chat',
-        saasModuleCodes: ['taixu_workspace'],
+        moduleCode: 'ai_console',
+        saasModuleCodes: ['ai_chat'],
       }),
     ).resolves.toBe(true);
   });
 
   it('derives tenant availability from mocked SaaS tenant modules', async () => {
     const { service, saasModuleService } = createService({
-      modules: [enabledModule('advanced_report')],
-      saasModuleCodes: ['saas_platform'],
+      modules: [enabledModule('tenant_saas')],
+      saasModuleCodes: ['member_management'],
     });
 
-    await expect(service.assertModuleAccess({ tenantId: 10, moduleCode: 'advanced_report' })).resolves.toBe(true);
+    await expect(service.assertModuleAccess({ tenantId: 10, moduleCode: 'tenant_saas' })).resolves.toBe(true);
     expect(saasModuleService.listTenantModules).toHaveBeenCalledWith(10);
+  });
+
+  it('denies SaaS bridge entitlement when tenant plan modules do not map to the system module', async () => {
+    const { service } = createService({
+      modules: [enabledModule('tenant_saas')],
+    });
+
+    await expect(
+      service.assertModuleAccess({
+        tenantId: 10,
+        moduleCode: 'tenant_saas',
+        saasModuleCodes: ['ai_chat'],
+      }),
+    ).rejects.toThrow('Tenant has not enabled this module');
   });
 
   it('denies missing user permission with ForbiddenException', async () => {

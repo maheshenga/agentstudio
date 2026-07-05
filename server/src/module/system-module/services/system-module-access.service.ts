@@ -77,9 +77,10 @@ export class SystemModuleAccessService {
     }
 
     const tenantSaasModuleCodes = saasModuleCodes ?? (await this.loadTenantSaasModuleCodes(tenantId));
-    const bridgedCodes = SAAS_BRIDGE_MODULES[moduleCode] || [];
 
-    return bridgedCodes.some((code) => tenantSaasModuleCodes.includes(code));
+    return tenantSaasModuleCodes.some((saasModuleCode) =>
+      (SAAS_BRIDGE_MODULES[saasModuleCode] || []).includes(moduleCode),
+    );
   }
 
   private async assertDependenciesEnabled(moduleCode: string) {
