@@ -20,6 +20,28 @@ export interface SystemModuleRecord {
   entitlement_source?: string
   create_time?: string | Date
   update_time?: string | Date
+  dependencies?: SystemModuleDependencyRecord[]
+  permissions?: SystemModulePermissionRecord[]
+  apis?: SystemModuleApiRecord[]
+  events?: SystemModuleEventRecord[]
+}
+
+export interface SystemModuleDependencyRecord {
+  depends_on_code: string
+  version_range?: string
+  required?: boolean
+}
+
+export interface SystemModulePermissionRecord {
+  permission_slug: string
+  binding_type?: string
+}
+
+export interface SystemModuleApiRecord {
+  method: string
+  path: string
+  permission_slug?: string
+  tenant_scoped?: boolean
 }
 
 export interface SystemModuleEventRecord {

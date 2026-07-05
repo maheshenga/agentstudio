@@ -9,6 +9,7 @@ type MenuSeed = {
   icon: string;
   sort: number;
   remark: string;
+  isHidden?: number;
 };
 
 type PermissionSeed = {
@@ -29,6 +30,18 @@ const PLATFORM_MENU: MenuSeed = {
   icon: 'ri:apps-2-line',
   sort: 90,
   remark: 'Seeded system module menu',
+};
+
+const PLATFORM_DETAIL_MENU: MenuSeed = {
+  parentCode: 'SystemModules',
+  name: 'System Module Detail',
+  code: 'SystemModuleDetail',
+  path: 'detail',
+  component: '/system/modules/detail',
+  icon: '',
+  sort: 91,
+  remark: 'Seeded system module detail menu',
+  isHidden: 1,
 };
 
 const TENANT_MENU: MenuSeed = {
@@ -64,6 +77,7 @@ export class SeedSystemModules1760000000021 implements MigrationInterface {
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await this.insertMenu(queryRunner, PLATFORM_MENU);
+    await this.insertMenu(queryRunner, PLATFORM_DETAIL_MENU);
     await this.insertMenu(queryRunner, TENANT_MENU);
 
     for (const permission of [...PLATFORM_PERMISSIONS, ...TENANT_PERMISSIONS]) {
@@ -81,6 +95,7 @@ export class SeedSystemModules1760000000021 implements MigrationInterface {
         ON \`menu\`.\`id\` = \`role_menu\`.\`menu_id\`
       WHERE \`menu\`.\`remark\` IN (
         'Seeded system module menu',
+        'Seeded system module detail menu',
         'Seeded system module permission',
         'Seeded tenant system module menu',
         'Seeded tenant system module permission'
@@ -97,6 +112,7 @@ export class SeedSystemModules1760000000021 implements MigrationInterface {
       DELETE FROM \`sa_system_menu\`
       WHERE \`remark\` IN (
         'Seeded system module menu',
+        'Seeded system module detail menu',
         'Seeded tenant system module menu'
       )
     `);
@@ -114,11 +130,12 @@ export class SeedSystemModules1760000000021 implements MigrationInterface {
           \`path\`,
           \`component\`,
           \`icon\`,
+          \`is_hidden\`,
           \`sort\`,
           \`status\`,
           \`remark\`
         )
-        SELECT \`parent\`.\`id\`, ?, ?, NULL, 2, ?, ?, ?, ?, 1, ?
+        SELECT \`parent\`.\`id\`, ?, ?, NULL, 2, ?, ?, ?, ?, ?, 1, ?
         FROM \`sa_system_menu\` \`parent\`
         WHERE \`parent\`.\`code\` = ?
           ${menu.parentCode === 'System' ? "AND `parent`.`path` = '/system'\n          AND `parent`.`type` = 1" : ''}
@@ -132,7 +149,18 @@ export class SeedSystemModules1760000000021 implements MigrationInterface {
         ORDER BY \`parent\`.\`id\` ASC
         LIMIT 1
       `,
-      [menu.name, menu.code, menu.path, menu.component, menu.icon, menu.sort, menu.remark, menu.parentCode, menu.code],
+      [
+        menu.name,
+        menu.code,
+        menu.path,
+        menu.component,
+        menu.icon,
+        menu.isHidden ?? 2,
+        menu.sort,
+        menu.remark,
+        menu.parentCode,
+        menu.code,
+      ],
     );
   }
 
@@ -176,7 +204,7 @@ export class SeedSystemModules1760000000021 implements MigrationInterface {
       FROM \`sa_system_role\` \`role\`
       INNER JOIN \`sa_system_menu\` \`menu\`
         ON (
-          \`menu\`.\`code\` IN ('SystemModules', 'TenantSystemModules')
+          \`menu\`.\`code\` IN ('SystemModules', 'SystemModuleDetail', 'TenantSystemModules')
           OR \`menu\`.\`slug\` IN (
             'system:module:list',
             'system:module:read',

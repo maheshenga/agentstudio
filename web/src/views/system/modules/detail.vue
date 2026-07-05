@@ -48,19 +48,19 @@
 
           <ElTabs v-model="activeTab">
             <ElTabPane label="清单" name="manifest">
-              <pre class="system-module-detail__json">{{ toPrettyJson(moduleData.manifest) }}</pre>
+              <pre class="system-module-detail__json">{{ toPrettyJson(moduleData.manifest || {}) }}</pre>
             </ElTabPane>
             <ElTabPane label="依赖" name="dependencies">
-              <pre class="system-module-detail__json">{{ manifestSection('dependencies') }}</pre>
+              <pre class="system-module-detail__json">{{ toPrettyJson(moduleData.dependencies || []) }}</pre>
             </ElTabPane>
             <ElTabPane label="权限" name="permissions">
-              <pre class="system-module-detail__json">{{ manifestSection('permissions') }}</pre>
+              <pre class="system-module-detail__json">{{ toPrettyJson(moduleData.permissions || []) }}</pre>
             </ElTabPane>
             <ElTabPane label="接口" name="apis">
-              <pre class="system-module-detail__json">{{ manifestSection('apis') }}</pre>
+              <pre class="system-module-detail__json">{{ toPrettyJson(moduleData.apis || []) }}</pre>
             </ElTabPane>
             <ElTabPane label="事件" name="events">
-              <ElTable v-loading="eventsLoading" :data="events" border>
+              <ElTable v-loading="eventsLoading" :data="moduleEvents" border>
                 <ElTableColumn label="事件类型" min-width="150">
                   <template #default="{ row }">{{ row.eventType || row.event_type || '-' }}</template>
                 </ElTableColumn>
@@ -102,7 +102,7 @@
   const route = useRoute()
   const router = useRouter()
   const moduleData = ref<SystemModuleRecord | null>(null)
-  const events = ref<SystemModuleEventRecord[]>([])
+  const fetchedEvents = ref<SystemModuleEventRecord[]>([])
   const loading = ref(false)
   const eventsLoading = ref(false)
   const activeTab = ref('manifest')
@@ -119,6 +119,10 @@
   const moduleCode = computed(() => {
     const code = route.query.code
     return Array.isArray(code) ? code[0] || '' : code || ''
+  })
+
+  const moduleEvents = computed(() => {
+    return moduleData.value?.events?.length ? moduleData.value.events : fetchedEvents.value
   })
 
   function parseJsonValue(value: unknown) {
@@ -142,17 +146,6 @@
     if (parsed === undefined || parsed === null || parsed === '') return '-'
     if (typeof parsed === 'string') return parsed
     return JSON.stringify(parsed)
-  }
-
-  function getManifestObject() {
-    const parsed = parseJsonValue(moduleData.value?.manifest)
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {}
-  }
-
-  function manifestSection(key: string) {
-    return toPrettyJson(getManifestObject()[key] ?? [])
   }
 
   function sourceText(source?: string) {
@@ -213,12 +206,13 @@
     loading.value = true
     eventsLoading.value = true
     try {
-      const [detail, eventList] = await Promise.all([
-        fetchSystemModule(moduleCode.value),
-        fetchSystemModuleEvents(moduleCode.value)
-      ])
+      const detail = await fetchSystemModule(moduleCode.value)
       moduleData.value = detail
-      events.value = eventList
+      if (!detail.events?.length) {
+        fetchedEvents.value = await fetchSystemModuleEvents(moduleCode.value)
+      } else {
+        fetchedEvents.value = []
+      }
     } finally {
       loading.value = false
       eventsLoading.value = false

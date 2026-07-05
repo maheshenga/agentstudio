@@ -11,7 +11,11 @@ describe('SeedSystemModules1760000000021', () => {
     const params = calls.flatMap(([, values]) => values || []);
 
     expect(sql).toContain('SystemModules');
+    expect(params).toContain('SystemModuleDetail');
+    expect(params).toContain('detail');
+    expect(params).toContain('/system/modules/detail');
     expect(sql).toContain("`parent`.`code` = ?");
+    expect(sql).toContain('`is_hidden`');
     expect(sql).toContain("`parent`.`path` = '/system'");
     expect(sql).toContain('`parent`.`type` = 1');
     expect(sql).toContain('system:module:list');
@@ -34,6 +38,7 @@ describe('SeedSystemModules1760000000021', () => {
 
     expect(sql).toContain('DELETE `role_menu`');
     expect(sql).toContain('Seeded system module menu');
+    expect(sql).toContain('Seeded system module detail menu');
     expect(sql).toContain('Seeded system module permission');
     expect(sql).toContain('Seeded tenant system module menu');
     expect(sql).toContain('Seeded tenant system module permission');
