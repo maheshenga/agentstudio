@@ -9,6 +9,7 @@ import { SystemModulePermissionEntity } from './entities/system-module-permissio
 import { SystemModuleEntity } from './entities/system-module.entity';
 import { SystemTenantModuleEntity } from './entities/system-tenant-module.entity';
 import { SystemModuleRegistryService } from './services/system-module-registry.service';
+import { SystemModulePlatformController } from './system-module-platform.controller';
 
 @Global()
 @Module({
@@ -23,6 +24,7 @@ import { SystemModuleRegistryService } from './services/system-module-registry.s
       SystemModuleEventEntity,
     ]),
   ],
+  controllers: [SystemModulePlatformController],
   providers: [SystemModuleRegistryService],
   exports: [SystemModuleRegistryService],
 })

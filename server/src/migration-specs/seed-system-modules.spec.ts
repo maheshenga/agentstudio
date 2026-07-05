@@ -1,0 +1,34 @@
+import { SeedSystemModules1760000000021 } from '../migrations/1760000000021-SeedSystemModules';
+
+describe('SeedSystemModules1760000000021', () => {
+  it('seeds system module menus, permissions, and admin grants idempotently', async () => {
+    const queryRunner = { query: jest.fn().mockResolvedValue(undefined) };
+
+    await new SeedSystemModules1760000000021().up(queryRunner as any);
+
+    const calls = queryRunner.query.mock.calls;
+    const sql = calls.map(([statement]) => String(statement)).join('\n');
+
+    expect(sql).toContain('SystemModules');
+    expect(sql).toContain('system:module:list');
+    expect(sql).toContain('system:module:read');
+    expect(sql).toContain('TenantSystemModules');
+    expect(sql).toContain('tenant:module:list');
+    expect(sql).toContain('sa_system_role_menu');
+    expect(sql).toContain('NOT EXISTS');
+  });
+
+  it('rolls back role links and only rows created by this seed', async () => {
+    const queryRunner = { query: jest.fn().mockResolvedValue(undefined) };
+
+    await new SeedSystemModules1760000000021().down(queryRunner as any);
+
+    const sql = queryRunner.query.mock.calls.map(([statement]) => String(statement)).join('\n');
+
+    expect(sql).toContain('DELETE `role_menu`');
+    expect(sql).toContain('Seeded system module menu');
+    expect(sql).toContain('Seeded system module permission');
+    expect(sql).toContain('Seeded tenant system module menu');
+    expect(sql).toContain('Seeded tenant system module permission');
+  });
+});
