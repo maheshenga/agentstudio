@@ -270,6 +270,105 @@ describe('SystemModuleRegistryService', () => {
     expect(eventRepo.records).toHaveLength(0);
   });
 
+  it('lists enabled modules with explicit tenant entitlement flags', async () => {
+    const { service, moduleRepo, tenantModuleRepo } = createService();
+    await moduleRepo.save({
+      code: 'core_system',
+      name: 'Core System',
+      source: 'built_in',
+      version: '1.0.0',
+      description: '',
+      category: 'core',
+      icon: 'Settings',
+      status: 'enabled',
+      entryRoute: '/system',
+      configSchema: {},
+      healthStatus: 'healthy',
+      sort: 10,
+    });
+    await moduleRepo.save({
+      code: 'ai_console',
+      name: 'AI Console',
+      source: 'built_in',
+      version: '1.0.0',
+      description: '',
+      category: 'ai',
+      icon: 'Bot',
+      status: 'enabled',
+      entryRoute: '/ai/chat',
+      configSchema: {},
+      healthStatus: 'unknown',
+      sort: 40,
+    });
+    await moduleRepo.save({
+      code: 'ops_monitor',
+      name: 'Ops Monitor',
+      source: 'built_in',
+      version: '1.0.0',
+      description: '',
+      category: 'ops',
+      icon: 'Activity',
+      status: 'disabled',
+      entryRoute: '/tool/crontab',
+      configSchema: {},
+      healthStatus: 'unknown',
+      sort: 70,
+    });
+    await moduleRepo.save({
+      code: 'audit_center',
+      name: 'Audit Center',
+      source: 'built_in',
+      version: '1.0.0',
+      description: '',
+      category: 'ops',
+      icon: 'Shield',
+      status: 'enabled',
+      entryRoute: '/monitor/logs',
+      configSchema: {},
+      healthStatus: 'unknown',
+      sort: 80,
+    });
+    await tenantModuleRepo.save({
+      tenantId: 23,
+      moduleCode: 'core_system',
+      enabled: 1,
+      source: 'platform',
+      config: null,
+    });
+    await tenantModuleRepo.save({
+      tenantId: 23,
+      moduleCode: 'ai_console',
+      enabled: 0,
+      source: 'platform',
+      config: null,
+    });
+    await tenantModuleRepo.save({
+      tenantId: 99,
+      moduleCode: 'ops_monitor',
+      enabled: 1,
+      source: 'platform',
+      config: null,
+    });
+
+    await expect(service.listTenantModules(23)).resolves.toEqual([
+      expect.objectContaining({
+        code: 'core_system',
+        tenant_enabled: true,
+        entitlement_source: 'platform',
+      }),
+      expect.objectContaining({
+        code: 'ai_console',
+        tenant_enabled: false,
+        entitlement_source: 'platform',
+      }),
+      expect.objectContaining({
+        code: 'audit_center',
+        tenant_enabled: false,
+        entitlement_source: 'plan',
+      }),
+    ]);
+  });
+
   it('rejects invalid lifecycle state with BadRequestException', async () => {
     const { service } = createService();
 

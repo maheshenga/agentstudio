@@ -12,6 +12,7 @@ import { SystemTenantModuleEntity } from './entities/system-tenant-module.entity
 import { SystemModuleAccessService } from './services/system-module-access.service';
 import { SystemModuleRegistryService } from './services/system-module-registry.service';
 import { SystemModulePlatformController } from './system-module-platform.controller';
+import { SystemModuleTenantController } from './system-module-tenant.controller';
 
 @Global()
 @Module({
@@ -27,7 +28,7 @@ import { SystemModulePlatformController } from './system-module-platform.control
     ]),
     SaasModule,
   ],
-  controllers: [SystemModulePlatformController],
+  controllers: [SystemModulePlatformController, SystemModuleTenantController],
   providers: [SystemModuleRegistryService, SystemModuleAccessService],
   exports: [SystemModuleRegistryService, SystemModuleAccessService],
 })

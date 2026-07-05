@@ -155,6 +155,23 @@ export class SystemModuleRegistryService implements OnModuleInit {
       .map((module) => this.toResponse(module));
   }
 
+  async listTenantModules(tenantId: number) {
+    const [modules, tenantModules] = await Promise.all([
+      this.moduleRepo.find({ where: { status: 'enabled' }, order: { sort: 'ASC', id: 'ASC' } }),
+      this.tenantModuleRepo.find({ where: { tenantId }, order: { id: 'ASC' } }),
+    ]);
+    const tenantModuleByCode = new Map(tenantModules.map((module) => [module.moduleCode, module]));
+
+    return modules.map((module) => {
+      const tenantModule = tenantModuleByCode.get(module.code);
+      return {
+        ...this.toResponse(module),
+        tenant_enabled: tenantModule ? Number(tenantModule.enabled) === 1 : false,
+        entitlement_source: tenantModule ? 'platform' : 'plan',
+      };
+    });
+  }
+
   async getModule(code: string) {
     const module = await this.findModule(code);
     const [dependencies, permissions, apis, events] = await Promise.all([
