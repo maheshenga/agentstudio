@@ -1,4 +1,4 @@
-import { SystemModuleSource, SystemModuleStatus } from '../constants';
+import type { SystemModuleSource, SystemModuleStatus } from '../constants';
 
 export interface SystemModuleManifestDependency {
   code: string;

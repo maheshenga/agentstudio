@@ -1,6 +1,6 @@
 import { Column, CreateDateColumn, DeleteDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
-import { SystemTenantModuleSource } from '../constants';
+import type { SystemTenantModuleSource } from '../constants';
 
 @Index('uk_system_tenant_module_pair', ['tenantId', 'moduleCode'], { unique: true })
 @Index('idx_system_tenant_module_module', ['moduleCode'])

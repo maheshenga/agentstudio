@@ -23,7 +23,8 @@ import { SaasResourcePackOrderService } from './services/saas-resource-pack-orde
 import type { SaasResourcePackOrderListQuery } from './services/saas-resource-pack-order.service';
 import { SaasResourcePackService } from './services/saas-resource-pack.service';
 import { SaasSubscriptionLifecycleService } from './services/saas-subscription-lifecycle.service';
-import { SaasTenantMemberListQuery, SaasTenantMemberService } from './services/saas-tenant-member.service';
+import { SaasTenantMemberService } from './services/saas-tenant-member.service';
+import type { SaasTenantMemberListQuery } from './services/saas-tenant-member.service';
 
 @ApiTags('SaaS Tenant')
 @ApiBearerAuth('Authorization')

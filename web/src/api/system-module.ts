@@ -63,6 +63,30 @@ export interface SystemModuleListParams {
   status?: string
 }
 
+export interface SystemModuleSaasBridgeRecord {
+  id?: number | string
+  saas_module_code: string
+  system_module_code: string
+  enabled: boolean
+  source?: string
+  remark?: string
+  create_time?: string | Date
+  update_time?: string | Date
+}
+
+export interface SystemModuleSaasBridgeListParams {
+  saas_module_code?: string
+  system_module_code?: string
+  enabled?: number | string
+}
+
+export interface SaveSystemModuleSaasBridgeParams {
+  saas_module_code: string
+  system_module_code: string
+  enabled?: number
+  remark?: string
+}
+
 export function fetchSystemModules(params?: SystemModuleListParams) {
   return request.get<SystemModuleRecord[]>({ url: '/api/system/modules', params })
 }
@@ -84,6 +108,21 @@ export function fetchSystemModuleEvents(code: string) {
 
 export function registerBuiltInSystemModules() {
   return request.post<SystemModuleRecord[]>({ url: '/api/system/modules/register-built-ins' })
+}
+
+export function fetchSystemModuleSaasBridges(params?: SystemModuleSaasBridgeListParams) {
+  return request.get<SystemModuleSaasBridgeRecord[]>({ url: '/api/system/modules/saas-bridges', params })
+}
+
+export function saveSystemModuleSaasBridge(params: SaveSystemModuleSaasBridgeParams) {
+  return request.post<SystemModuleSaasBridgeRecord>({ url: '/api/system/modules/saas-bridges', data: params })
+}
+
+export function updateSystemModuleSaasBridgeStatus(id: number | string, enabled: number) {
+  return request.put<SystemModuleSaasBridgeRecord>({
+    url: `/api/system/modules/saas-bridges/${id}/status`,
+    data: { enabled }
+  })
 }
 
 export function fetchTenantSystemModules() {

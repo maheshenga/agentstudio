@@ -1,6 +1,6 @@
 import { Column, CreateDateColumn, DeleteDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
-import { SystemModuleHealthStatus, SystemModuleSource, SystemModuleStatus } from '../constants';
+import type { SystemModuleHealthStatus, SystemModuleSource, SystemModuleStatus } from '../constants';
 
 @Index('uk_system_module_code', ['code'], { unique: true })
 @Index('idx_system_module_status', ['status'])

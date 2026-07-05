@@ -6,9 +6,8 @@ import { SaasModuleService } from '../../saas/services/saas-module.service';
 import {
   SAAS_TO_SYSTEM_MODULE_BRIDGE,
   SYSTEM_MODULE_STATUSES,
-  SystemModuleEventType,
-  SystemModuleStatus,
 } from '../constants';
+import type { SystemModuleEventType, SystemModuleStatus } from '../constants';
 import { SystemModuleApiEntity } from '../entities/system-module-api.entity';
 import { SystemModuleDependencyEntity } from '../entities/system-module-dependency.entity';
 import { SystemModuleEventEntity } from '../entities/system-module-event.entity';

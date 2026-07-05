@@ -4,7 +4,8 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { TenantContext } from '../../common/tenant/tenant.context';
 import { ResultData } from '../../common/utils/result';
-import { User, UserDto } from '../system/user/user.decorator';
+import { User } from '../system/user/user.decorator';
+import type { UserDto } from '../system/user/user.decorator';
 import { PluginModuleManifestDto } from './dto/plugin-module-manifest.dto';
 import {
   SaveSystemModuleSaasBridgeDto,

@@ -89,15 +89,144 @@
         </template>
       </ElTable>
     </ElCard>
+
+    <ElCard class="art-table-card" shadow="never">
+      <template #header>
+        <div class="system-modules-page__header">
+          <div>
+            <h2 class="system-modules-page__title">SAAS 桥接配置</h2>
+            <p class="system-modules-page__subtitle">维护商业 SAAS 模块与系统模块之间的授权映射关系。</p>
+          </div>
+          <ElButton type="primary" @click="openBridgeDialog()">新增桥接</ElButton>
+        </div>
+      </template>
+
+      <div class="system-modules-page__filters">
+        <ElInput
+          v-model="bridgeFilters.saas_module_code"
+          clearable
+          class="system-modules-page__keyword"
+          placeholder="SAAS 模块编码"
+          @keyup.enter="loadSaasBridges"
+        />
+        <ElInput
+          v-model="bridgeFilters.system_module_code"
+          clearable
+          class="system-modules-page__keyword"
+          placeholder="系统模块编码"
+          @keyup.enter="loadSaasBridges"
+        />
+        <ElSelect
+          v-model="bridgeFilters.enabled"
+          clearable
+          class="system-modules-page__select"
+          placeholder="桥接状态"
+        >
+          <ElOption label="已启用" :value="1" />
+          <ElOption label="已禁用" :value="0" />
+        </ElSelect>
+        <ElButton type="primary" :icon="Search" :loading="bridgeLoading" @click="loadSaasBridges">查询</ElButton>
+        <ElButton @click="resetBridgeFilters">重置</ElButton>
+      </div>
+
+      <ElTable v-loading="bridgeLoading" :data="bridgeRecords" border>
+        <ElTableColumn prop="saas_module_code" label="SAAS 模块" min-width="160" show-overflow-tooltip />
+        <ElTableColumn prop="system_module_code" label="系统模块" min-width="160" show-overflow-tooltip />
+        <ElTableColumn label="状态" width="110">
+          <template #default="{ row }">
+            <ElTag :type="row.enabled ? 'success' : 'info'" effect="light">
+              {{ row.enabled ? '已启用' : '已禁用' }}
+            </ElTag>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn prop="source" label="来源" width="110" show-overflow-tooltip />
+        <ElTableColumn prop="remark" label="备注" min-width="180" show-overflow-tooltip />
+        <ElTableColumn label="更新时间" width="180">
+          <template #default="{ row }">{{ formatDateTime(row.update_time) }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="操作" fixed="right" width="180">
+          <template #default="{ row }">
+            <ElSpace>
+              <ElButton link type="primary" @click="openBridgeDialog(row)">编辑</ElButton>
+              <ElButton
+                link
+                :type="row.enabled ? 'warning' : 'success'"
+                :loading="updatingBridgeId === row.id"
+                @click="toggleBridgeStatus(row)"
+              >
+                {{ row.enabled ? '禁用' : '启用' }}
+              </ElButton>
+            </ElSpace>
+          </template>
+        </ElTableColumn>
+        <template #empty>
+          <ElEmpty description="暂无桥接配置" />
+        </template>
+      </ElTable>
+    </ElCard>
+
+    <ElDialog v-model="bridgeDialogVisible" :title="editingBridgeId ? '编辑桥接' : '新增桥接'" width="560px">
+      <ElForm ref="bridgeFormRef" :model="bridgeForm" :rules="bridgeRules" label-width="112px">
+        <ElFormItem label="SAAS 模块" prop="saas_module_code">
+          <ElSelect
+            v-model="bridgeForm.saas_module_code"
+            filterable
+            :disabled="Boolean(editingBridgeId)"
+            class="system-modules-page__form-control"
+            placeholder="选择 SAAS 模块"
+          >
+            <ElOption
+              v-for="module in saasModuleOptions"
+              :key="module.code"
+              :label="`${module.name} (${module.code})`"
+              :value="module.code"
+            />
+          </ElSelect>
+        </ElFormItem>
+        <ElFormItem label="系统模块" prop="system_module_code">
+          <ElSelect
+            v-model="bridgeForm.system_module_code"
+            filterable
+            :disabled="Boolean(editingBridgeId)"
+            class="system-modules-page__form-control"
+            placeholder="选择系统模块"
+          >
+            <ElOption
+              v-for="module in systemModuleOptions"
+              :key="module.code"
+              :label="`${module.name} (${module.code})`"
+              :value="module.code"
+            />
+          </ElSelect>
+        </ElFormItem>
+        <ElFormItem label="状态">
+          <ElSwitch v-model="bridgeForm.enabled" :active-value="1" :inactive-value="0" />
+        </ElFormItem>
+        <ElFormItem label="备注">
+          <ElInput v-model="bridgeForm.remark" type="textarea" maxlength="255" show-word-limit />
+        </ElFormItem>
+      </ElForm>
+      <template #footer>
+        <ElButton @click="bridgeDialogVisible = false">取消</ElButton>
+        <ElButton type="primary" :loading="bridgeSaving" @click="saveBridge">保存</ElButton>
+      </template>
+    </ElDialog>
   </div>
 </template>
 
 <script setup lang="ts">
   import { ElMessage, ElMessageBox } from 'element-plus'
+  import type { FormInstance, FormRules } from 'element-plus'
   import { Refresh, Search, SwitchButton, View } from '@element-plus/icons-vue'
+  import { fetchPlatformModules, type SaasModuleRecord } from '@/api/saas'
   import {
+    fetchSystemModuleSaasBridges,
     fetchSystemModules,
     registerBuiltInSystemModules,
+    saveSystemModuleSaasBridge,
+    updateSystemModuleSaasBridgeStatus,
+    type SaveSystemModuleSaasBridgeParams,
+    type SystemModuleSaasBridgeRecord,
     updateSystemModuleStatus,
     type SystemModuleRecord
   } from '@/api/system-module'
@@ -109,10 +238,43 @@
   const loading = ref(false)
   const syncing = ref(false)
   const updatingCode = ref('')
+  const bridgeRecords = ref<SystemModuleSaasBridgeRecord[]>([])
+  const bridgeLoading = ref(false)
+  const bridgeSaving = ref(false)
+  const bridgeDialogVisible = ref(false)
+  const editingBridgeId = ref<number | string | undefined>()
+  const updatingBridgeId = ref<number | string | undefined>()
+  const bridgeFormRef = ref<FormInstance>()
+  const saasModuleOptions = ref<SaasModuleRecord[]>([])
+  const systemModuleOptions = ref<SystemModuleRecord[]>([])
   const filters = reactive({
     keyword: '',
     source: '',
     status: ''
+  })
+  const bridgeFilters = reactive<{ saas_module_code: string; system_module_code: string; enabled: number | '' }>({
+    saas_module_code: '',
+    system_module_code: '',
+    enabled: ''
+  })
+  const bridgeForm = reactive({
+    saas_module_code: '',
+    system_module_code: '',
+    enabled: 1,
+    remark: ''
+  })
+  const bridgeRules: FormRules = {
+    saas_module_code: [{ required: true, message: '请选择 SAAS 模块', trigger: 'change' }],
+    system_module_code: [{ required: true, message: '请选择系统模块', trigger: 'change' }]
+  }
+  const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
   })
 
   function cleanText(value: string) {
@@ -174,6 +336,12 @@
     return status === 'enabled' || status === 'disabled' || status === 'installed'
   }
 
+  function formatDateTime(value: unknown) {
+    if (!value) return '-'
+    const date = value instanceof Date ? value : new Date(String(value))
+    return Number.isNaN(date.getTime()) ? String(value) : dateFormatter.format(date)
+  }
+
   async function loadModules() {
     loading.value = true
     try {
@@ -192,6 +360,82 @@
     filters.source = ''
     filters.status = ''
     loadModules()
+  }
+
+  async function loadSaasBridges() {
+    bridgeLoading.value = true
+    try {
+      bridgeRecords.value = await fetchSystemModuleSaasBridges({
+        saas_module_code: cleanText(bridgeFilters.saas_module_code),
+        system_module_code: cleanText(bridgeFilters.system_module_code),
+        enabled: bridgeFilters.enabled === '' ? undefined : bridgeFilters.enabled
+      })
+    } finally {
+      bridgeLoading.value = false
+    }
+  }
+
+  function resetBridgeFilters() {
+    bridgeFilters.saas_module_code = ''
+    bridgeFilters.system_module_code = ''
+    bridgeFilters.enabled = ''
+    loadSaasBridges()
+  }
+
+  async function loadBridgeOptions() {
+    const [saasModules, systemModules] = await Promise.all([
+      fetchPlatformModules({}),
+      fetchSystemModules({ status: 'enabled' })
+    ])
+    saasModuleOptions.value = saasModules
+    systemModuleOptions.value = systemModules
+  }
+
+  function resetBridgeForm() {
+    Object.assign(bridgeForm, {
+      saas_module_code: '',
+      system_module_code: '',
+      enabled: 1,
+      remark: ''
+    })
+    bridgeFormRef.value?.clearValidate()
+  }
+
+  async function openBridgeDialog(row?: SystemModuleSaasBridgeRecord) {
+    editingBridgeId.value = row?.id
+    resetBridgeForm()
+    await loadBridgeOptions()
+    if (row) {
+      Object.assign(bridgeForm, {
+        saas_module_code: row.saas_module_code,
+        system_module_code: row.system_module_code,
+        enabled: row.enabled ? 1 : 0,
+        remark: row.remark || ''
+      })
+    }
+    bridgeDialogVisible.value = true
+  }
+
+  function buildBridgePayload(): SaveSystemModuleSaasBridgeParams {
+    return {
+      saas_module_code: bridgeForm.saas_module_code,
+      system_module_code: bridgeForm.system_module_code,
+      enabled: bridgeForm.enabled,
+      remark: cleanText(bridgeForm.remark)
+    }
+  }
+
+  async function saveBridge() {
+    await bridgeFormRef.value?.validate()
+    bridgeSaving.value = true
+    try {
+      await saveSystemModuleSaasBridge(buildBridgePayload())
+      ElMessage.success(editingBridgeId.value ? '桥接配置已更新' : '桥接配置已创建')
+      bridgeDialogVisible.value = false
+      await loadSaasBridges()
+    } finally {
+      bridgeSaving.value = false
+    }
   }
 
   async function syncBuiltIns() {
@@ -230,8 +474,22 @@
     }
   }
 
+  async function toggleBridgeStatus(row: SystemModuleSaasBridgeRecord) {
+    if (!row.id) return
+    const nextEnabled = row.enabled ? 0 : 1
+    updatingBridgeId.value = row.id
+    try {
+      await updateSystemModuleSaasBridgeStatus(row.id, nextEnabled)
+      ElMessage.success(nextEnabled === 1 ? '桥接已启用' : '桥接已禁用')
+      await loadSaasBridges()
+    } finally {
+      updatingBridgeId.value = undefined
+    }
+  }
+
   onMounted(() => {
     loadModules()
+    loadSaasBridges()
   })
 </script>
 
@@ -269,6 +527,10 @@
     flex-wrap: wrap;
     gap: 12px;
     margin-bottom: 16px;
+  }
+
+  .system-modules-page__form-control {
+    width: 100%;
   }
 
   .system-modules-page__keyword {

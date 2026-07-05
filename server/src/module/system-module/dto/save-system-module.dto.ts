@@ -1,7 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
-import { SYSTEM_MODULE_STATUSES, SystemModuleStatus } from '../constants';
+import { SYSTEM_MODULE_STATUSES } from '../constants';
+import type { SystemModuleStatus } from '../constants';
 
 export class SystemModuleListQueryDto {
   @ApiProperty({ required: false })

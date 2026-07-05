@@ -1,6 +1,6 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
-import { SystemModuleEventType } from '../constants';
+import type { SystemModuleEventType } from '../constants';
 
 export type SystemModuleEventStatus = 'success' | 'failed';
 

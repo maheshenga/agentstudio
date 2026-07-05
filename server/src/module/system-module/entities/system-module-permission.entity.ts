@@ -1,6 +1,6 @@
 import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
-import { SystemModuleBindingType } from './system-module-menu.entity';
+import type { SystemModuleBindingType } from './system-module-menu.entity';
 
 @Index('idx_system_module_permission_module', ['moduleCode'])
 @Index('uk_system_module_permission_pair', ['moduleCode', 'permissionSlug'], { unique: true })
