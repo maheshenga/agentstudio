@@ -1,5 +1,11 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
+import { SystemModuleApiEntity } from '../entities/system-module-api.entity';
+import { SystemModuleDependencyEntity } from '../entities/system-module-dependency.entity';
+import { SystemModuleEventEntity } from '../entities/system-module-event.entity';
+import { SystemModulePermissionEntity } from '../entities/system-module-permission.entity';
+import { SystemModuleEntity } from '../entities/system-module.entity';
+import { SystemTenantModuleEntity } from '../entities/system-tenant-module.entity';
 import { BUILT_IN_SYSTEM_MODULES } from '../manifests/built-in-modules';
 import { SystemModuleRegistryService } from './system-module-registry.service';
 
@@ -92,6 +98,23 @@ class MemoryRepository<T extends EntityRecord> {
   }
 }
 
+class MemoryDataSource {
+  public transactionCalls = 0;
+
+  constructor(private readonly repositories: Map<Function, MemoryRepository<EntityRecord>>) {}
+
+  async transaction<T>(callback: (manager: { getRepository: (entity: Function) => MemoryRepository<EntityRecord> }) => Promise<T>) {
+    this.transactionCalls += 1;
+    return callback({
+      getRepository: (entity: Function) => {
+        const repo = this.repositories.get(entity);
+        if (!repo) throw new Error(`Missing repository for ${entity.name}`);
+        return repo;
+      },
+    });
+  }
+}
+
 describe('SystemModuleRegistryService', () => {
   const createService = () => {
     const moduleRepo = new MemoryRepository();
@@ -100,7 +123,18 @@ describe('SystemModuleRegistryService', () => {
     const apiRepo = new MemoryRepository();
     const tenantModuleRepo = new MemoryRepository();
     const eventRepo = new MemoryRepository();
+    const dataSource = new MemoryDataSource(
+      new Map<Function, MemoryRepository<EntityRecord>>([
+        [SystemModuleEntity, moduleRepo],
+        [SystemModuleDependencyEntity, dependencyRepo],
+        [SystemModulePermissionEntity, permissionRepo],
+        [SystemModuleApiEntity, apiRepo],
+        [SystemTenantModuleEntity, tenantModuleRepo],
+        [SystemModuleEventEntity, eventRepo],
+      ]),
+    );
     const service = new SystemModuleRegistryService(
+      dataSource as any,
       moduleRepo as any,
       dependencyRepo as any,
       permissionRepo as any,
@@ -109,11 +143,11 @@ describe('SystemModuleRegistryService', () => {
       eventRepo as any,
     );
 
-    return { service, moduleRepo, dependencyRepo, permissionRepo, apiRepo, tenantModuleRepo, eventRepo };
+    return { service, dataSource, moduleRepo, dependencyRepo, permissionRepo, apiRepo, tenantModuleRepo, eventRepo };
   };
 
   it('imports built-in manifests idempotently and includes core system and SaaS platform modules', async () => {
-    const { service, moduleRepo, dependencyRepo, eventRepo } = createService();
+    const { service, dataSource, moduleRepo, dependencyRepo, eventRepo } = createService();
 
     await service.registerBuiltInModules();
     await service.registerBuiltInModules();
@@ -126,9 +160,18 @@ describe('SystemModuleRegistryService', () => {
     expect(dependencyRepo.records.filter((row) => row.moduleCode === 'saas_platform')).toEqual([
       expect.objectContaining({ dependsOnCode: 'core_system', required: 1 }),
     ]);
-    expect(eventRepo.records.filter((row) => row.eventType === 'install')).toHaveLength(
-      BUILT_IN_SYSTEM_MODULES.length * 2,
-    );
+    expect(eventRepo.records.filter((row) => row.eventType === 'install')).toHaveLength(BUILT_IN_SYSTEM_MODULES.length);
+    expect(dataSource.transactionCalls).toBe(2);
+  });
+
+  it('preserves existing lifecycle status when manifests are re-synced', async () => {
+    const { service } = createService();
+
+    await service.registerBuiltInModules();
+    await service.updateStatus('core_system', 'disabled', 7);
+    await service.registerBuiltInModules();
+
+    await expect(service.getModule('core_system')).resolves.toEqual(expect.objectContaining({ status: 'disabled' }));
   });
 
   it('updates status and records an enable event with operator id', async () => {
