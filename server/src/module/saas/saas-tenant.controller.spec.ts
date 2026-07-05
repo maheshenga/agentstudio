@@ -7,6 +7,7 @@ import { SaasPlanEntity } from './entities/saas-plan.entity';
 import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
 import { SaasTrialEntity } from './entities/saas-trial.entity';
 import { SaasTenantController } from './saas-tenant.controller';
+import { SystemModuleAccessService } from '../system-module/services/system-module-access.service';
 import { SaasModuleService } from './services/saas-module.service';
 import { SaasOrderService } from './services/saas-order.service';
 import { SaasOrderRiskService } from './services/saas-order-risk.service';
@@ -66,6 +67,9 @@ describe('SaasTenantController', () => {
     listTenantModules: jest.fn(),
     assertTenantModuleEnabled: jest.fn(),
   };
+  const systemModuleAccessService = {
+    assertModuleAccess: jest.fn(),
+  };
   const saasResourcePackService = {
     listTenantResourcePacks: jest.fn(),
   };
@@ -95,6 +99,14 @@ describe('SaasTenantController', () => {
     updateMemberStatus: jest.fn(),
     removeMember: jest.fn(),
     resetMemberPassword: jest.fn(),
+  };
+
+  const expectTenantFeatureGate = (tenantId: number, requiredSaasModuleCode: string) => {
+    expect(systemModuleAccessService.assertModuleAccess).toHaveBeenCalledWith({
+      tenantId,
+      moduleCode: 'tenant_saas',
+      requiredSaasModuleCode,
+    });
   };
 
   beforeEach(async () => {
@@ -134,6 +146,10 @@ describe('SaasTenantController', () => {
         {
           provide: SaasModuleService,
           useValue: moduleService,
+        },
+        {
+          provide: SystemModuleAccessService,
+          useValue: systemModuleAccessService,
         },
         {
           provide: SaasResourcePackService,
@@ -335,7 +351,7 @@ describe('SaasTenantController', () => {
 
     const result = await controller.members({ page: '1' });
 
-    expect(moduleService.assertTenantModuleEnabled).toHaveBeenCalledWith(88, 'member_management');
+    expectTenantFeatureGate(88, 'member_management');
     expect(tenantMemberService.listMembers).toHaveBeenCalledWith(88, { page: '1' });
     expect(result.data).toEqual({
       list: [{ user_id: 7, username: 'alice', role: 'admin' }],
@@ -347,13 +363,13 @@ describe('SaasTenantController', () => {
 
   it('does not list tenant members when member management is disabled', async () => {
     jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
-    moduleService.assertTenantModuleEnabled.mockRejectedValueOnce(
+    systemModuleAccessService.assertModuleAccess.mockRejectedValueOnce(
       new BadRequestException('Current plan has not enabled this module'),
     );
 
     await expect(controller.members({ page: '1' })).rejects.toThrow('Current plan has not enabled this module');
 
-    expect(moduleService.assertTenantModuleEnabled).toHaveBeenCalledWith(88, 'member_management');
+    expectTenantFeatureGate(88, 'member_management');
     expect(tenantMemberService.listMembers).not.toHaveBeenCalled();
   });
 
@@ -364,7 +380,7 @@ describe('SaasTenantController', () => {
 
     const result = await controller.createMember(body);
 
-    expect(moduleService.assertTenantModuleEnabled).toHaveBeenCalledWith(88, 'member_management');
+    expectTenantFeatureGate(88, 'member_management');
     expect(tenantMemberService.createMember).toHaveBeenCalledWith(88, body);
     expect(result.data).toEqual({ user_id: 8, username: 'bob', role: 'member' });
   });
@@ -375,7 +391,7 @@ describe('SaasTenantController', () => {
 
     const result = await controller.changeMemberRole('8', { role: 'admin' });
 
-    expect(moduleService.assertTenantModuleEnabled).toHaveBeenCalledWith(88, 'member_management');
+    expectTenantFeatureGate(88, 'member_management');
     expect(tenantMemberService.changeMemberRole).toHaveBeenCalledWith(88, 8, 'admin');
     expect(result.code).toBe(200);
   });
@@ -386,7 +402,7 @@ describe('SaasTenantController', () => {
 
     const result = await controller.updateMemberStatus('8', { status: 0 });
 
-    expect(moduleService.assertTenantModuleEnabled).toHaveBeenCalledWith(88, 'member_management');
+    expectTenantFeatureGate(88, 'member_management');
     expect(tenantMemberService.updateMemberStatus).toHaveBeenCalledWith(88, 8, 0);
     expect(result.code).toBe(200);
   });
@@ -397,7 +413,7 @@ describe('SaasTenantController', () => {
 
     const result = await controller.removeMember('8');
 
-    expect(moduleService.assertTenantModuleEnabled).toHaveBeenCalledWith(88, 'member_management');
+    expectTenantFeatureGate(88, 'member_management');
     expect(tenantMemberService.removeMember).toHaveBeenCalledWith(88, 8);
     expect(result.code).toBe(200);
   });
@@ -408,7 +424,7 @@ describe('SaasTenantController', () => {
 
     const result = await controller.resetMemberPassword('8', { password: 'NewPass123!' });
 
-    expect(moduleService.assertTenantModuleEnabled).toHaveBeenCalledWith(88, 'member_management');
+    expectTenantFeatureGate(88, 'member_management');
     expect(tenantMemberService.resetMemberPassword).toHaveBeenCalledWith(88, 8, 'NewPass123!');
     expect(result.code).toBe(200);
   });
@@ -416,13 +432,13 @@ describe('SaasTenantController', () => {
   it('does not create tenant members when member management is disabled', async () => {
     jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
     const body = { username: 'bob', password: '123456', realname: 'Bob', role: 'member' as const };
-    moduleService.assertTenantModuleEnabled.mockRejectedValueOnce(
+    systemModuleAccessService.assertModuleAccess.mockRejectedValueOnce(
       new BadRequestException('Current plan has not enabled this module'),
     );
 
     await expect(controller.createMember(body)).rejects.toThrow('Current plan has not enabled this module');
 
-    expect(moduleService.assertTenantModuleEnabled).toHaveBeenCalledWith(88, 'member_management');
+    expectTenantFeatureGate(88, 'member_management');
     expect(tenantMemberService.createMember).not.toHaveBeenCalled();
   });
 
@@ -530,8 +546,21 @@ describe('SaasTenantController', () => {
 
     const result = await controller.resourcePacks();
 
+    expectTenantFeatureGate(88, 'resource_pack');
     expect(saasResourcePackService.listTenantResourcePacks).toHaveBeenCalled();
     expect(result.data).toEqual([{ code: 'ai_calls_1k' }]);
+  });
+
+  it('does not list resource packs when the resource pack feature is disabled', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
+    systemModuleAccessService.assertModuleAccess.mockRejectedValueOnce(
+      new BadRequestException('Current plan has not enabled this module'),
+    );
+
+    await expect(controller.resourcePacks()).rejects.toThrow('Current plan has not enabled this module');
+
+    expectTenantFeatureGate(88, 'resource_pack');
+    expect(saasResourcePackService.listTenantResourcePacks).not.toHaveBeenCalled();
   });
 
   it('creates a tenant resource pack order in tenant context', async () => {
@@ -547,6 +576,7 @@ describe('SaasTenantController', () => {
       payment_method: 'alipay',
     });
 
+    expectTenantFeatureGate(88, 'resource_pack');
     expect(saasResourcePackOrderService.createTenantOrder).toHaveBeenCalledWith(88, {
       resource_pack_code: 'tokens_1m',
       payment_method: 'alipay',
@@ -560,6 +590,23 @@ describe('SaasTenantController', () => {
     });
   });
 
+  it('does not create resource pack orders when the resource pack feature is disabled', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
+    systemModuleAccessService.assertModuleAccess.mockRejectedValueOnce(
+      new BadRequestException('Current plan has not enabled this module'),
+    );
+
+    await expect(
+      controller.createResourcePackOrder({
+        resource_pack_code: 'tokens_1m',
+        payment_method: 'alipay',
+      }),
+    ).rejects.toThrow('Current plan has not enabled this module');
+
+    expectTenantFeatureGate(88, 'resource_pack');
+    expect(saasResourcePackOrderService.createTenantOrder).not.toHaveBeenCalled();
+  });
+
   it('returns a tenant resource pack order by order number', async () => {
     jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
     saasResourcePackOrderService.findTenantOrder.mockResolvedValue({
@@ -570,6 +617,7 @@ describe('SaasTenantController', () => {
 
     const result = await controller.resourcePackOrder('RPO20260703120000001000001');
 
+    expectTenantFeatureGate(88, 'resource_pack');
     expect(saasResourcePackOrderService.findTenantOrder).toHaveBeenCalledWith(88, 'RPO20260703120000001000001');
     expect(result.data).toEqual({
       order_no: 'RPO20260703120000001000001',
@@ -591,6 +639,7 @@ describe('SaasTenantController', () => {
 
     const result = await controller.resourcePackOrders({ status: 'pending' });
 
+    expectTenantFeatureGate(88, 'resource_pack');
     expect(saasResourcePackOrderService.listTenantOrders).toHaveBeenCalledWith(88, { status: 'pending' });
     expect(result.data).toEqual({
       list: [{ order_no: 'RPO20260703120000001000001' }],
@@ -612,6 +661,7 @@ describe('SaasTenantController', () => {
 
     const result = await controller.cancelResourcePackOrder('RPO20260703120000001000001');
 
+    expectTenantFeatureGate(88, 'resource_pack');
     expect(saasOrderRiskService.closeTenantResourcePackOrder).toHaveBeenCalledWith(
       88,
       'RPO20260703120000001000001',

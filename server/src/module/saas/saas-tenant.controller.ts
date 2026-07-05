@@ -15,6 +15,7 @@ import { SaasTrialEntity } from './entities/saas-trial.entity';
 import { SaasOrderRiskService } from './services/saas-order-risk.service';
 import { SaasOrderService } from './services/saas-order.service';
 import { SaasModuleService } from './services/saas-module.service';
+import { SystemModuleAccessService } from '../system-module/services/system-module-access.service';
 import type { SaasOrderListQuery } from './services/saas-order.service';
 import { SaasPlanService } from './services/saas-plan.service';
 import { SaasQuotaService } from './services/saas-quota.service';
@@ -42,6 +43,7 @@ export class SaasTenantController {
     private readonly saasOrderRiskService: SaasOrderRiskService,
     private readonly saasPlanService: SaasPlanService,
     private readonly moduleService: SaasModuleService,
+    private readonly systemModuleAccessService: SystemModuleAccessService,
     private readonly saasResourcePackService: SaasResourcePackService,
     private readonly saasResourcePackOrderService: SaasResourcePackOrderService,
     private readonly lifecycleService: SaasSubscriptionLifecycleService,
@@ -105,7 +107,7 @@ export class SaasTenantController {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
-    await this.moduleService.assertTenantModuleEnabled(tenantId, 'member_management');
+    await this.assertTenantFeatureAccess(tenantId, 'member_management');
     return ResultData.ok(await this.tenantMemberService.listMembers(tenantId, query));
   }
 
@@ -118,7 +120,7 @@ export class SaasTenantController {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
-    await this.moduleService.assertTenantModuleEnabled(tenantId, 'member_management');
+    await this.assertTenantFeatureAccess(tenantId, 'member_management');
     return ResultData.ok(await this.tenantMemberService.createMember(tenantId, body));
   }
 
@@ -131,7 +133,7 @@ export class SaasTenantController {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
-    await this.moduleService.assertTenantModuleEnabled(tenantId, 'member_management');
+    await this.assertTenantFeatureAccess(tenantId, 'member_management');
     await this.tenantMemberService.changeMemberRole(tenantId, Number(userId), body.role);
     return ResultData.ok();
   }
@@ -145,7 +147,7 @@ export class SaasTenantController {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
-    await this.moduleService.assertTenantModuleEnabled(tenantId, 'member_management');
+    await this.assertTenantFeatureAccess(tenantId, 'member_management');
     await this.tenantMemberService.updateMemberStatus(tenantId, Number(userId), Number(body.status) as 0 | 1);
     return ResultData.ok();
   }
@@ -159,7 +161,7 @@ export class SaasTenantController {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
-    await this.moduleService.assertTenantModuleEnabled(tenantId, 'member_management');
+    await this.assertTenantFeatureAccess(tenantId, 'member_management');
     await this.tenantMemberService.removeMember(tenantId, Number(userId));
     return ResultData.ok();
   }
@@ -173,7 +175,7 @@ export class SaasTenantController {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
-    await this.moduleService.assertTenantModuleEnabled(tenantId, 'member_management');
+    await this.assertTenantFeatureAccess(tenantId, 'member_management');
     await this.tenantMemberService.resetMemberPassword(tenantId, Number(userId), body.password);
     return ResultData.ok();
   }
@@ -187,6 +189,7 @@ export class SaasTenantController {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
+    await this.assertTenantFeatureAccess(tenantId, 'resource_pack');
     return ResultData.ok(await this.saasResourcePackService.listTenantResourcePacks());
   }
 
@@ -199,6 +202,7 @@ export class SaasTenantController {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
+    await this.assertTenantFeatureAccess(tenantId, 'resource_pack');
     return ResultData.ok(
       this.saasResourcePackOrderService.toResponse(
         await this.saasResourcePackOrderService.createTenantOrder(tenantId, body),
@@ -215,6 +219,7 @@ export class SaasTenantController {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
+    await this.assertTenantFeatureAccess(tenantId, 'resource_pack');
     return ResultData.ok(await this.saasResourcePackOrderService.listTenantOrders(tenantId, query));
   }
 
@@ -227,6 +232,7 @@ export class SaasTenantController {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
+    await this.assertTenantFeatureAccess(tenantId, 'resource_pack');
     return ResultData.ok(
       this.saasResourcePackOrderService.toResponse(
         await this.saasOrderRiskService.closeTenantResourcePackOrder(tenantId, orderNo),
@@ -243,6 +249,7 @@ export class SaasTenantController {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
+    await this.assertTenantFeatureAccess(tenantId, 'resource_pack');
     const order = await this.saasResourcePackOrderService.findTenantOrder(tenantId, orderNo);
     return ResultData.ok(order ? this.saasResourcePackOrderService.toResponse(order) : null);
   }
@@ -349,5 +356,13 @@ export class SaasTenantController {
 
     const order = await this.saasOrderService.findTenantOrder(tenantId, orderNo);
     return ResultData.ok(order ? this.saasOrderService.toResponse(order) : null);
+  }
+
+  private async assertTenantFeatureAccess(tenantId: number, requiredSaasModuleCode: string) {
+    await this.systemModuleAccessService.assertModuleAccess({
+      tenantId,
+      moduleCode: 'tenant_saas',
+      requiredSaasModuleCode,
+    });
   }
 }
