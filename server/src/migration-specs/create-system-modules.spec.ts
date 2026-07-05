@@ -24,6 +24,8 @@ describe('CreateSystemModules1760000000020', () => {
       expect(sql).toContain(`CREATE TABLE IF NOT EXISTS \`${tableName}\``);
     }
     expect(sql).toContain('UNIQUE KEY `uk_system_module_code` (`code`)');
+    expect(sql).toContain('`method` varchar(10) NOT NULL');
+    expect(sql).toContain("`source` varchar(20) NOT NULL DEFAULT 'platform'");
   });
 
   it('drops system module registry tables in reverse dependency order', async () => {

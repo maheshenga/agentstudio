@@ -72,7 +72,7 @@ export class CreateSystemModules1760000000020 implements MigrationInterface {
       CREATE TABLE IF NOT EXISTS \`system_module_api\` (
         \`id\` bigint NOT NULL AUTO_INCREMENT,
         \`module_code\` varchar(80) NOT NULL,
-        \`method\` varchar(20) NOT NULL,
+        \`method\` varchar(10) NOT NULL,
         \`path\` varchar(255) NOT NULL,
         \`permission_slug\` varchar(120) NOT NULL DEFAULT '',
         \`tenant_scoped\` tinyint NOT NULL DEFAULT 0,
@@ -88,7 +88,7 @@ export class CreateSystemModules1760000000020 implements MigrationInterface {
         \`tenant_id\` bigint NOT NULL,
         \`module_code\` varchar(80) NOT NULL,
         \`enabled\` tinyint NOT NULL DEFAULT 1,
-        \`source\` varchar(20) NOT NULL,
+        \`source\` varchar(20) NOT NULL DEFAULT 'platform',
         \`config\` json NULL,
         \`start_time\` datetime NULL,
         \`end_time\` datetime NULL,

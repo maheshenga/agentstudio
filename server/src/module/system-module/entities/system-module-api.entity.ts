@@ -10,7 +10,7 @@ export class SystemModuleApiEntity {
   @Column({ type: 'varchar', name: 'module_code', length: 80 })
   moduleCode: string;
 
-  @Column({ type: 'varchar', name: 'method', length: 20 })
+  @Column({ type: 'varchar', name: 'method', length: 10 })
   method: string;
 
   @Column({ type: 'varchar', name: 'path', length: 255 })

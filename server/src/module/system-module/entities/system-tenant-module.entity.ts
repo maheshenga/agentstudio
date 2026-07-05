@@ -17,7 +17,7 @@ export class SystemTenantModuleEntity {
   @Column({ type: 'tinyint', name: 'enabled', default: 1 })
   enabled: number;
 
-  @Column({ type: 'varchar', name: 'source', length: 20 })
+  @Column({ type: 'varchar', name: 'source', length: 20, default: 'platform' })
   source: SystemTenantModuleSource;
 
   @Column({ type: 'json', name: 'config', nullable: true })
