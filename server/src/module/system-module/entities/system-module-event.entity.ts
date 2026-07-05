@@ -5,6 +5,8 @@ import { SystemModuleEventType } from '../constants';
 export type SystemModuleEventStatus = 'success' | 'failed';
 
 @Index('idx_system_module_event_module', ['moduleCode'])
+@Index('idx_system_module_event_type', ['eventType'])
+@Index('idx_system_module_event_operator', ['operatorId'])
 @Entity('system_module_event')
 export class SystemModuleEventEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'id' })

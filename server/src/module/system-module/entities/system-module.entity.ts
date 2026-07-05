@@ -3,6 +3,8 @@ import { Column, CreateDateColumn, DeleteDateColumn, Entity, Index, PrimaryGener
 import { SystemModuleHealthStatus, SystemModuleSource, SystemModuleStatus } from '../constants';
 
 @Index('uk_system_module_code', ['code'], { unique: true })
+@Index('idx_system_module_status', ['status'])
+@Index('idx_system_module_source', ['source'])
 @Entity('system_module')
 export class SystemModuleEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'id' })

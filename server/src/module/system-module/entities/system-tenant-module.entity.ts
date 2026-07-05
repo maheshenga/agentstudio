@@ -3,6 +3,8 @@ import { Column, CreateDateColumn, DeleteDateColumn, Entity, Index, PrimaryGener
 import { SystemTenantModuleSource } from '../constants';
 
 @Index('uk_system_tenant_module_pair', ['tenantId', 'moduleCode'], { unique: true })
+@Index('idx_system_tenant_module_module', ['moduleCode'])
+@Index('idx_system_tenant_module_enabled', ['tenantId', 'enabled'])
 @Entity('system_tenant_module')
 export class SystemTenantModuleEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'id' })
