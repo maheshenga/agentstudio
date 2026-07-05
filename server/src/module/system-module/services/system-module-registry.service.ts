@@ -142,6 +142,10 @@ export class SystemModuleRegistryService implements OnModuleInit {
     }
 
     const module = await this.findModule(code);
+    if (module.status === status) {
+      return this.toResponse(module);
+    }
+
     module.status = status;
     const saved = await this.moduleRepo.save(module);
     await this.recordEvent(

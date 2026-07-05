@@ -13,6 +13,7 @@ type EntityRecord = Record<string, any>;
 
 class MemoryRepository<T extends EntityRecord> {
   public records: T[];
+  public saveCalls = 0;
   private nextId: number;
 
   constructor(seed: T[] = []) {
@@ -28,6 +29,7 @@ class MemoryRepository<T extends EntityRecord> {
   }
 
   async save(input: T | T[]) {
+    this.saveCalls += 1;
     if (Array.isArray(input)) {
       return Promise.all(input.map((item) => this.save(item))) as Promise<T[]>;
     }
@@ -202,6 +204,33 @@ describe('SystemModuleRegistryService', () => {
         operatorId: 99,
       }),
     ]);
+  });
+
+  it('does not save or record event when status is unchanged', async () => {
+    const { service, moduleRepo, eventRepo } = createService();
+    await moduleRepo.save({
+      code: 'ops_monitor',
+      name: 'Ops Monitor',
+      source: 'built_in',
+      version: '1.0.0',
+      description: '',
+      category: 'ops',
+      icon: 'Activity',
+      status: 'enabled',
+      entryRoute: '/tool/crontab',
+      configSchema: {},
+      healthStatus: 'unknown',
+      sort: 70,
+    });
+    moduleRepo.saveCalls = 0;
+    eventRepo.saveCalls = 0;
+
+    const result = await service.updateStatus('ops_monitor', 'enabled', 12);
+
+    expect(result).toEqual(expect.objectContaining({ code: 'ops_monitor', status: 'enabled' }));
+    expect(moduleRepo.saveCalls).toBe(0);
+    expect(eventRepo.saveCalls).toBe(0);
+    expect(eventRepo.records).toHaveLength(0);
   });
 
   it('rejects invalid lifecycle state with BadRequestException', async () => {
