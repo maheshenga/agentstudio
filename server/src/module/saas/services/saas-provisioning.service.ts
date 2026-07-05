@@ -25,7 +25,13 @@ import { SaasQuotaService } from './saas-quota.service';
 
 type ProvisioningResult = { userId: number; tenantId: number };
 
-const TENANT_BASELINE_MENU_CODES = ['TenantSaas', 'TenantBilling', 'TenantQuota', 'TenantMember'] as const;
+const TENANT_BASELINE_MENU_CODES = [
+  'TenantSaas',
+  'TenantBilling',
+  'TenantQuota',
+  'TenantMember',
+  'TenantSystemModules',
+] as const;
 const TENANT_OWNER_ADMIN_PERMISSION_SLUGS = [
   'tenant:billing:view',
   'tenant:billing:upgrade',
@@ -33,8 +39,14 @@ const TENANT_OWNER_ADMIN_PERMISSION_SLUGS = [
   'tenant:resource:buy',
   'tenant:member:index',
   'tenant:member:create',
+  'tenant:module:list',
 ] as const;
-const TENANT_MEMBER_PERMISSION_SLUGS = ['tenant:billing:view', 'tenant:quota:view', 'tenant:member:index'] as const;
+const TENANT_MEMBER_PERMISSION_SLUGS = [
+  'tenant:billing:view',
+  'tenant:quota:view',
+  'tenant:member:index',
+  'tenant:module:list',
+] as const;
 
 @Injectable()
 export class SaasProvisioningService {

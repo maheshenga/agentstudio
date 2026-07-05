@@ -18,6 +18,8 @@ export interface AssertModuleAccessOptions {
   saasModuleCodes?: string[];
 }
 
+const BASELINE_TENANT_SYSTEM_MODULES = new Set(['tenant_saas']);
+
 @Injectable()
 export class SystemModuleAccessService {
   constructor(
@@ -69,6 +71,10 @@ export class SystemModuleAccessService {
       },
     });
     if (explicitTenantModule) {
+      return true;
+    }
+
+    if (BASELINE_TENANT_SYSTEM_MODULES.has(moduleCode)) {
       return true;
     }
 
