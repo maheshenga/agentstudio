@@ -73,7 +73,7 @@ const RESOURCE_PACK_MENUS: Array<{ parentCode: string; menu: MenuSeed }> = [
   {
     parentCode: 'SaasManage',
     menu: {
-      name: 'Resource Packs',
+      name: '资源包管理',
       code: 'SaasResourcePack',
       type: 2,
       path: 'resource-packs',
@@ -86,7 +86,7 @@ const RESOURCE_PACK_MENUS: Array<{ parentCode: string; menu: MenuSeed }> = [
   {
     parentCode: 'TenantSaas',
     menu: {
-      name: 'Resource Packs',
+      name: '资源包',
       code: 'TenantResourcePack',
       type: 2,
       path: 'resource-packs',

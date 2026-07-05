@@ -160,7 +160,7 @@ const PLATFORM_MENUS: MenuSeed[] = [
     remark: 'Seeded SaaS usage overview menu',
   },
   {
-    name: 'Resource Packs',
+    name: '资源包管理',
     code: 'SaasResourcePack',
     type: 2,
     path: 'resource-packs',
@@ -170,7 +170,7 @@ const PLATFORM_MENUS: MenuSeed[] = [
     remark: 'Seeded SaaS resource pack management menu',
   },
   {
-    name: 'Resource Pack Orders',
+    name: '资源包订单',
     code: 'SaasResourcePackOrder',
     type: 2,
     path: 'resource-pack-orders',
@@ -289,7 +289,7 @@ const TENANT_MENUS: MenuSeed[] = [
     remark: 'Seeded tenant quota menu',
   },
   {
-    name: 'Resource Packs',
+    name: '资源包',
     code: 'TenantResourcePack',
     type: 2,
     path: 'resource-packs',

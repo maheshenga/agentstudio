@@ -434,41 +434,67 @@ export const useWorktabStore = defineStore(
      */
     const validateWorktabs = (routerInstance: Router): void => {
       try {
-        // 动态路由校验：优先使用路由 name 判断有效性；否则用 resolve 匹配参数化路径
-        const isTabRouteValid = (tab: Partial<WorkTab>): boolean => {
+        const resolveTabRoute = (tab: Partial<WorkTab>) => {
           try {
             if (tab.name) {
               const routes = routerInstance.getRoutes()
-              if (routes.some((r) => r.name === tab.name)) return true
+              const route = routes.find((r) => r.name === tab.name)
+              if (route) return route
             }
             if (tab.path) {
               const resolved = routerInstance.resolve({
                 path: tab.path,
                 query: (tab.query as LocationQueryRaw) || undefined
               })
-              return resolved.matched.length > 0
+              return resolved.matched[resolved.matched.length - 1]
             }
-            return false
           } catch {
-            return false
+            return undefined
+          }
+          return undefined
+        }
+
+        // 动态路由校验：优先使用路由 name 判断有效性；否则用 resolve 匹配参数化路径
+        const isTabRouteValid = (tab: Partial<WorkTab>): boolean => {
+          return Boolean(resolveTabRoute(tab))
+        }
+
+        const syncTabRouteMeta = (tab: WorkTab): WorkTab => {
+          const route = resolveTabRoute(tab)
+          if (!route) return tab
+          return {
+            ...tab,
+            title: typeof route.meta.title === 'string' ? route.meta.title : tab.title,
+            icon: typeof route.meta.icon === 'string' ? route.meta.icon : tab.icon,
+            fixedTab: typeof route.meta.fixedTab === 'boolean' ? route.meta.fixedTab : tab.fixedTab,
+            keepAlive: typeof route.meta.keepAlive === 'boolean' ? route.meta.keepAlive : tab.keepAlive,
+            name: typeof route.name === 'string' ? route.name : tab.name
           }
         }
 
-        // 过滤出有效的标签页
-        const validTabs = opened.value.filter((tab) => isTabRouteValid(tab))
+        // 过滤出有效的标签页，并同步最新路由标题，避免菜单改名后残留旧标签标题。
+        const validTabs = opened.value.filter((tab) => isTabRouteValid(tab)).map(syncTabRouteMeta)
 
         if (validTabs.length !== opened.value.length) {
           console.warn('发现无效的标签页路由，已自动清理')
-          opened.value = validTabs
         }
+        opened.value = validTabs
 
         // 验证当前激活标签的有效性
         const isCurrentValid = current.value && isTabRouteValid(current.value)
 
-        if (!isCurrentValid && validTabs.length > 0) {
+        if (isCurrentValid) {
+          const currentPath = current.value.path
+          const currentName = current.value.name
+          current.value =
+            validTabs.find(
+              (tab) => (Boolean(currentPath) && tab.path === currentPath) || (Boolean(currentName) && tab.name === currentName)
+            ) ||
+            (current.value as WorkTab)
+        } else if (validTabs.length > 0) {
           console.warn('当前激活标签无效，已自动切换')
           current.value = validTabs[0]
-        } else if (!isCurrentValid) {
+        } else {
           current.value = {}
         }
       } catch (error) {

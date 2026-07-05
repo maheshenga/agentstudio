@@ -21,7 +21,7 @@ type PermissionSeed = {
 };
 
 const RESOURCE_PACK_ORDER_MENU: MenuSeed = {
-  name: 'Resource Pack Orders',
+  name: '资源包订单',
   code: 'SaasResourcePackOrder',
   type: 2,
   path: 'resource-pack-orders',

@@ -29,6 +29,7 @@ const TENANT_BASELINE_MENU_CODES = [
   'TenantSaas',
   'TenantBilling',
   'TenantQuota',
+  'TenantResourcePack',
   'TenantMember',
   'TenantSystemModules',
 ] as const;
@@ -37,6 +38,10 @@ const TENANT_OWNER_ADMIN_PERMISSION_SLUGS = [
   'tenant:billing:upgrade',
   'tenant:quota:view',
   'tenant:resource:buy',
+  'tenant:resource-pack:view',
+  'tenant:resource-pack-order:create',
+  'tenant:resource-pack-order:view',
+  'tenant:resource-pack-order:pay',
   'tenant:member:index',
   'tenant:member:create',
   'tenant:module:list',

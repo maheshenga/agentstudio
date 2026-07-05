@@ -46,7 +46,7 @@ const PLATFORM_DETAIL_MENU: MenuSeed = {
 
 const TENANT_MENU: MenuSeed = {
   parentCode: 'TenantSaas',
-  name: 'Tenant Modules',
+  name: '租户模块',
   code: 'TenantSystemModules',
   path: 'modules',
   component: '/saas/tenant/modules/index',

@@ -4,10 +4,10 @@
       <template #header>
         <div class="tenant-usage-page__header">
           <div>
-            <h1 class="tenant-usage-page__title">Tenant Usage</h1>
-            <p class="tenant-usage-page__subtitle">Review current SaaS quotas, usage, and recent quota changes.</p>
+            <h1 class="tenant-usage-page__title">用量中心</h1>
+            <p class="tenant-usage-page__subtitle">查看当前 SaaS 配额、已用量和最近额度变更。</p>
           </div>
-          <ElButton :loading="loading" @click="loadPage">Refresh</ElButton>
+          <ElButton :loading="loading" @click="loadPage">刷新</ElButton>
         </div>
       </template>
 
@@ -26,17 +26,17 @@
         v-else-if="errorMessage"
         icon="error"
         :title="errorMessage"
-        sub-title="Please try again later."
+        sub-title="请稍后重试。"
       >
         <template #extra>
-          <ElButton type="primary" :loading="loading" @click="loadPage">Retry</ElButton>
+          <ElButton type="primary" :loading="loading" @click="loadPage">重试</ElButton>
         </template>
       </ElResult>
 
       <template v-else>
         <div v-if="!usageRecords.length" class="tenant-usage-page__state">
-          <ElEmpty description="No usage records" />
-          <ElButton type="primary" :loading="loading" @click="loadPage">Refresh</ElButton>
+          <ElEmpty description="暂无用量记录" />
+          <ElButton type="primary" :loading="loading" @click="loadPage">刷新</ElButton>
         </div>
 
         <div v-else class="tenant-usage-page__grid">
@@ -51,10 +51,10 @@
                 <div>
                   <p class="tenant-usage-page__quota-label">{{ card.label }}</p>
                   <p class="tenant-usage-page__quota-meta">
-                    Used {{ card.usedText }} / {{ card.quotaText }} · Remaining {{ card.remainingText }}
+                    已用 {{ card.usedText }} / {{ card.quotaText }} · 剩余 {{ card.remainingText }}
                   </p>
                 </div>
-                <ElTag v-if="card.isUnlimited" type="info" effect="plain">Unlimited</ElTag>
+                <ElTag v-if="card.isUnlimited" type="info" effect="plain">不限量</ElTag>
               </div>
 
               <div class="tenant-usage-page__quota-value">{{ card.usedText }}</div>
@@ -72,42 +72,42 @@
         <section class="tenant-usage-page__ledger">
           <div class="tenant-usage-page__section-header">
             <div>
-              <h2>Quota Ledger</h2>
-              <p>Recent quota grants and consumption records.</p>
+              <h2>额度流水</h2>
+              <p>最近的额度发放和消耗记录。</p>
             </div>
-            <ElButton :loading="ledgerLoading" @click="loadLedgers">Refresh ledger</ElButton>
+            <ElButton :loading="ledgerLoading" @click="loadLedgers">刷新流水</ElButton>
           </div>
 
           <ElTable v-loading="ledgerLoading" :data="ledgerRecords" border>
-            <ElTableColumn label="Resource" min-width="130">
+            <ElTableColumn label="资源" min-width="130">
               <template #default="{ row }">{{ getResourceLabel(row.resource_type) }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Change" width="120">
+            <ElTableColumn label="变更" width="120">
               <template #default="{ row }">
                 <ElTag :type="row.change_type === 'grant' ? 'success' : 'warning'" effect="light">
                   {{ changeTypeLabel(row.change_type) }}
                 </ElTag>
               </template>
             </ElTableColumn>
-            <ElTableColumn label="Quota delta" min-width="130" align="right">
+            <ElTableColumn label="配额变动" min-width="130" align="right">
               <template #default="{ row }">{{ formatSignedNumber(row.quota_delta) }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Used delta" min-width="130" align="right">
+            <ElTableColumn label="已用变动" min-width="130" align="right">
               <template #default="{ row }">{{ formatSignedNumber(row.used_delta) }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Balance" min-width="170" align="right">
+            <ElTableColumn label="余额" min-width="170" align="right">
               <template #default="{ row }">
                 {{ formatCount(row.balance_used_quota) }} / {{ formatCount(row.balance_total_quota) }}
               </template>
             </ElTableColumn>
-            <ElTableColumn label="Source" min-width="160">
+            <ElTableColumn label="来源" min-width="160">
               <template #default="{ row }">{{ formatSource(row) }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Time" min-width="180">
+            <ElTableColumn label="时间" min-width="180">
               <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
             </ElTableColumn>
             <template #empty>
-              <ElEmpty description="No quota ledger records" />
+              <ElEmpty description="暂无额度流水" />
             </template>
           </ElTable>
         </section>
@@ -144,19 +144,19 @@
   const errorMessage = ref('')
 
   const quotaConfigs = [
-    { resourceType: 'users', label: 'Users', formatter: formatCount },
-    { resourceType: 'storage_mb', label: 'Storage', formatter: formatStorageMb },
-    { resourceType: 'ai_calls', label: 'AI Calls', formatter: formatCount },
-    { resourceType: 'rag_documents', label: 'RAG Documents', formatter: formatCount },
-    { resourceType: 'tokens', label: 'Tokens', formatter: formatCount }
+    { resourceType: 'users', label: '用户数', formatter: formatCount },
+    { resourceType: 'storage_mb', label: '存储', formatter: formatStorageMb },
+    { resourceType: 'ai_calls', label: 'AI 调用', formatter: formatCount },
+    { resourceType: 'rag_documents', label: '知识库文档', formatter: formatCount },
+    { resourceType: 'tokens', label: 'Token 用量', formatter: formatCount }
   ] as const
 
   const quotaConfigMap = {
-    users: { label: 'Users', formatter: formatCount },
-    storage_mb: { label: 'Storage', formatter: formatStorageMb },
-    ai_calls: { label: 'AI Calls', formatter: formatCount },
-    rag_documents: { label: 'RAG Documents', formatter: formatCount },
-    tokens: { label: 'Tokens', formatter: formatCount }
+    users: { label: '用户数', formatter: formatCount },
+    storage_mb: { label: '存储', formatter: formatStorageMb },
+    ai_calls: { label: 'AI 调用', formatter: formatCount },
+    rag_documents: { label: '知识库文档', formatter: formatCount },
+    tokens: { label: 'Token 用量', formatter: formatCount }
   } as const
 
   function normalizePayload(payload: any): TenantUsageQuotaRecord[] {
@@ -223,13 +223,17 @@
   }
 
   function changeTypeLabel(changeType: string) {
-    if (changeType === 'grant') return 'Grant'
-    if (changeType === 'consume') return 'Consume'
+    if (changeType === 'grant') return '发放'
+    if (changeType === 'consume') return '消耗'
     return changeType || '-'
   }
 
   function formatSource(row: TenantQuotaLedgerRecord) {
-    const sourceType = row.source_type || '-'
+    const sourceLabels: Record<string, string> = {
+      ai_chat: 'AI 对话',
+      resource_pack_order: '资源包订单'
+    }
+    const sourceType = row.source_type ? (sourceLabels[row.source_type] ?? row.source_type) : '-'
     return row.source_id ? `${sourceType} / ${row.source_id}` : sourceType
   }
 
@@ -245,7 +249,7 @@
       resourceType: record.resource_type,
       label: config?.label ?? record.resource_type,
       usedText: formatter(record.used),
-      quotaText: isUnlimited ? 'Unlimited' : formatQuotaValue(record, formatter),
+      quotaText: isUnlimited ? '不限量' : formatQuotaValue(record, formatter),
       remainingText: remainingNumber === null
         ? '-'
         : record.resource_type === 'storage_mb'
@@ -309,7 +313,7 @@
       await Promise.all([loadUsage(), loadLedgers()])
     } catch (error) {
       console.error('[SaasTenantUsagePage] load usage failed:', error)
-      errorMessage.value = 'Load usage failed'
+      errorMessage.value = '加载用量失败'
       usageRecords.value = []
     } finally {
       loading.value = false

@@ -247,7 +247,8 @@ export class MenuService {
    */
   async getMenuListByUserId(userId: number, tenantId?: number) {
     const tid = tenantId ?? getTenantId() ?? 0;
-    const cacheKey = `${CacheEnum.SYS_MENU_KEY}${tid}:${userId}`;
+    const cacheVersion = await this.getMenuCacheVersion();
+    const cacheKey = `${CacheEnum.SYS_MENU_KEY}${tid}:${userId}:${cacheVersion}`;
     const cached = await this.redisService.get(cacheKey);
     if (cached) return cached;
 
@@ -290,6 +291,27 @@ export class MenuService {
     const tree = this.buildMenuTree(rows);
     await this.redisService.set(cacheKey, tree, 7200 * 1000);
     return tree;
+  }
+
+  private async getMenuCacheVersion(): Promise<string> {
+    try {
+      const row = await this.sysMenuEntityRep
+        .createQueryBuilder('menu')
+        .select('MAX(menu.update_time)', 'version')
+        .where('menu.delete_time IS NULL')
+        .getRawOne<{ version?: Date | string | null }>();
+      const version = row?.version;
+      if (!version) {
+        return '0';
+      }
+      if (version instanceof Date) {
+        return version.toISOString();
+      }
+      return String(version);
+    } catch (error) {
+      this.logger.warn(`获取菜单缓存版本失败: ${(error as Error)?.message}`);
+      return '0';
+    }
   }
 
   async tree() {
