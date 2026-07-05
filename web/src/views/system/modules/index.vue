@@ -159,7 +159,7 @@
   function healthText(status?: string) {
     const map: Record<string, string> = {
       healthy: '正常',
-      warning: '告警',
+      degraded: '降级',
       failed: '异常',
       unknown: '未知'
     }

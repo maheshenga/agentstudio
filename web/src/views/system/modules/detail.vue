@@ -162,7 +162,10 @@
       enabled: '已启用',
       disabled: '已禁用',
       installed: '已安装',
-      failed: '异常'
+      draft: '草稿',
+      upgrading: '升级中',
+      failed: '异常',
+      uninstalled: '未安装'
     }
     return status ? map[status] || status : '-'
   }
@@ -172,7 +175,10 @@
       enabled: 'success',
       disabled: 'info',
       installed: 'warning',
-      failed: 'danger'
+      draft: 'info',
+      upgrading: 'warning',
+      failed: 'danger',
+      uninstalled: 'info'
     }
     return status ? map[status] || 'info' : 'info'
   }
@@ -180,7 +186,7 @@
   function healthText(status?: string) {
     const map: Record<string, string> = {
       healthy: '正常',
-      warning: '告警',
+      degraded: '降级',
       failed: '异常',
       unknown: '未知'
     }
