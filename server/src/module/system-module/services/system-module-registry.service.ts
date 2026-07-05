@@ -10,6 +10,7 @@ import { SystemModulePermissionEntity } from '../entities/system-module-permissi
 import { SystemModuleEntity } from '../entities/system-module.entity';
 import { SystemTenantModuleEntity } from '../entities/system-tenant-module.entity';
 import { BUILT_IN_SYSTEM_MODULES, SystemModuleManifest } from '../manifests/built-in-modules';
+import { PluginModuleManifestDto } from '../dto/plugin-module-manifest.dto';
 
 export interface SystemModuleListQuery {
   keyword?: string;
@@ -41,6 +42,43 @@ export class SystemModuleRegistryService implements OnModuleInit {
 
   async registerBuiltInModules() {
     return this.importManifests(BUILT_IN_SYSTEM_MODULES);
+  }
+
+  async registerPluginManifest(dto: PluginModuleManifestDto, operatorId?: number) {
+    void operatorId;
+    this.assertMetadataOnlyHooks(dto.hooks);
+
+    const manifest: SystemModuleManifest = {
+      code: dto.code,
+      name: dto.name,
+      source: 'plugin',
+      version: dto.version,
+      description: dto.description || '',
+      category: dto.category || 'plugin',
+      icon: dto.icon || 'ri:puzzle-line',
+      status: 'installed',
+      entryRoute: '',
+      sort: 500,
+      dependencies: (dto.dependencies || []).map((dependency) => ({
+        code: dependency.code,
+        versionRange: dependency.version || '',
+        required: true,
+      })),
+      permissions: (dto.permissions || []).map((permission) => ({
+        slug: permission.slug,
+        bindingType: permission.bindingType || 'owned',
+      })),
+      apis: (dto.api_endpoints || []).map((api) => ({
+        method: api.method,
+        path: api.path,
+        permissionSlug: api.permission_slug || '',
+        tenantScoped: Boolean(api.tenant_scoped),
+      })),
+      configSchema: dto.config_schema || {},
+    };
+
+    await this.importManifests([manifest]);
+    return this.getModule(dto.code);
   }
 
   async importManifests(manifests: SystemModuleManifest[]) {
@@ -317,6 +355,14 @@ export class SystemModuleRegistryService implements OnModuleInit {
     if (status === 'enabled') return 'enable';
     if (status === 'disabled') return 'disable';
     return 'upgrade';
+  }
+
+  private assertMetadataOnlyHooks(hooks?: Record<string, unknown>) {
+    if (!hooks) return;
+    const hasExecutableHookValue = Object.values(hooks).some((value) => value !== 'reserved');
+    if (hasExecutableHookValue) {
+      throw new BadRequestException('Plugin hooks are metadata-only and must use reserved values');
+    }
   }
 
   private async recordEvent(

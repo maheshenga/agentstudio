@@ -13,6 +13,7 @@ describe('SystemModulePlatformController', () => {
     updateStatus: jest.fn(),
     listEvents: jest.fn(),
     registerBuiltInModules: jest.fn(),
+    registerPluginManifest: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -50,5 +51,21 @@ describe('SystemModulePlatformController', () => {
 
     expect(registry.updateStatus).toHaveBeenCalledWith('ai_console', 'disabled', 42);
     expect(result.data).toEqual({ code: 'ai_console', status: 'disabled' });
+  });
+
+  it('registers plugin manifests outside tenant scope with operator id', async () => {
+    const body = { code: 'risk_ops_plugin', name: 'Risk Ops Plugin', source: 'plugin', version: '1.2.3' };
+    const module = { code: 'risk_ops_plugin', status: 'installed' };
+    registry.registerPluginManifest.mockResolvedValue(module);
+    const contextSpy = jest.spyOn(TenantContext, 'run');
+
+    const result = await controller.registerPluginManifest(body as any, { userId: 66 } as any);
+
+    expect(registry.registerPluginManifest).toHaveBeenCalledWith(body, 66);
+    expect(result.data).toEqual(module);
+    expect(contextSpy).toHaveBeenCalledWith(
+      { tenantId: undefined, userId: 66, ignoreAudit: false, ignoreTenant: true },
+      expect.any(Function),
+    );
   });
 });

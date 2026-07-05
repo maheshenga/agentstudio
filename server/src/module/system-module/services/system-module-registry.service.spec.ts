@@ -211,6 +211,102 @@ describe('SystemModuleRegistryService', () => {
     expect(moduleRepo.updatedInputs.some((input) => Object.prototype.hasOwnProperty.call(input, 'status'))).toBe(false);
   });
 
+  it('registers plugin manifests as installed metadata only modules', async () => {
+    const { service, moduleRepo, dependencyRepo, permissionRepo, apiRepo, eventRepo } = createService();
+
+    const result = await service.registerPluginManifest(
+      {
+        code: 'risk_ops_plugin',
+        name: 'Risk Ops Plugin',
+        source: 'plugin',
+        version: '1.2.3',
+        description: 'Risk operations metadata plugin.',
+        permissions: [{ slug: 'risk:ops:view', bindingType: 'required' }],
+        dependencies: [{ code: 'core_system', version: '^1.0.0' }],
+        api_endpoints: [
+          {
+            method: 'get',
+            path: '/risk/ops',
+            permission_slug: 'risk:ops:view',
+            tenant_scoped: true,
+          },
+        ],
+        config_schema: { enabled: { type: 'boolean' } },
+        hooks: { dashboard: 'reserved' },
+      },
+      77,
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        code: 'risk_ops_plugin',
+        source: 'plugin',
+        status: 'installed',
+        category: 'plugin',
+        icon: 'ri:puzzle-line',
+        entry_route: '',
+        sort: 500,
+        config_schema: { enabled: { type: 'boolean' } },
+      }),
+    );
+    expect(moduleRepo.records).toEqual([
+      expect.objectContaining({
+        code: 'risk_ops_plugin',
+        source: 'plugin',
+        status: 'installed',
+        category: 'plugin',
+        icon: 'ri:puzzle-line',
+        entryRoute: '',
+        sort: 500,
+      }),
+    ]);
+    expect(dependencyRepo.records).toEqual([
+      expect.objectContaining({
+        moduleCode: 'risk_ops_plugin',
+        dependsOnCode: 'core_system',
+        versionRange: '^1.0.0',
+        required: 1,
+      }),
+    ]);
+    expect(permissionRepo.records).toEqual([
+      expect.objectContaining({
+        moduleCode: 'risk_ops_plugin',
+        permissionSlug: 'risk:ops:view',
+        bindingType: 'required',
+      }),
+    ]);
+    expect(apiRepo.records).toEqual([
+      expect.objectContaining({
+        moduleCode: 'risk_ops_plugin',
+        method: 'GET',
+        path: '/risk/ops',
+        permissionSlug: 'risk:ops:view',
+        tenantScoped: 1,
+      }),
+    ]);
+    expect(eventRepo.records).toEqual([
+      expect.objectContaining({
+        moduleCode: 'risk_ops_plugin',
+        eventType: 'install',
+        status: 'success',
+      }),
+    ]);
+  });
+
+  it('rejects plugin manifests with executable hook values', async () => {
+    const { service } = createService();
+
+    await expect(
+      service.registerPluginManifest({
+        code: 'risk_ops_plugin',
+        name: 'Risk Ops Plugin',
+        source: 'plugin',
+        version: '1.2.3',
+        hooks: { onInstall: 'runInstaller' },
+      }),
+    ).rejects.toThrow(new BadRequestException('Plugin hooks are metadata-only and must use reserved values'));
+  });
+
   it('updates status transactionally and records an enable event with operator id', async () => {
     const { service, dataSource, moduleRepo, eventRepo } = createService();
     await moduleRepo.save({

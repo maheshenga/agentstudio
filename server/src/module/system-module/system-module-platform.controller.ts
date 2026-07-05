@@ -5,6 +5,7 @@ import { RequirePermission } from '../../common/decorators/require-permission.de
 import { TenantContext } from '../../common/tenant/tenant.context';
 import { ResultData } from '../../common/utils/result';
 import { User, UserDto } from '../system/user/user.decorator';
+import { PluginModuleManifestDto } from './dto/plugin-module-manifest.dto';
 import { SystemModuleListQueryDto, UpdateSystemModuleStatusDto } from './dto/save-system-module.dto';
 import { SystemModuleRegistryService } from './services/system-module-registry.service';
 
@@ -19,6 +20,15 @@ export class SystemModulePlatformController {
   @RequirePermission('system:module:list')
   listModules(@Query() query: SystemModuleListQueryDto, @User() user: UserDto) {
     return this.runOutsideTenant(user, () => this.registry.listModules(query).then((data) => ResultData.ok(data)));
+  }
+
+  @Post('plugins/register')
+  @ApiOperation({ summary: 'Register plugin module metadata manifest' })
+  @RequirePermission('system:module:install')
+  registerPluginManifest(@Body() body: PluginModuleManifestDto, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () =>
+      this.registry.registerPluginManifest(body, user?.userId).then((data) => ResultData.ok(data)),
+    );
   }
 
   @Get(':code')
