@@ -5,6 +5,7 @@ import { SystemModuleDependencyEntity } from '../entities/system-module-dependen
 import { SystemModuleEventEntity } from '../entities/system-module-event.entity';
 import { SystemModulePermissionEntity } from '../entities/system-module-permission.entity';
 import { SystemModuleEntity } from '../entities/system-module.entity';
+import { SystemModuleSaasBridgeEntity } from '../entities/system-module-saas-bridge.entity';
 import { SystemTenantModuleEntity } from '../entities/system-tenant-module.entity';
 import { BUILT_IN_SYSTEM_MODULES } from '../manifests/built-in-modules';
 import { SystemModuleRegistryService } from './system-module-registry.service';
@@ -109,6 +110,9 @@ class MemoryRepository<T extends EntityRecord> {
         if (operatorType === 'isNull') {
           return record[key] === null || record[key] === undefined;
         }
+        if (operatorType === 'in') {
+          return (operatorValue as unknown[]).includes(record[key]);
+        }
       }
       return record[key] === expected;
     });
@@ -152,6 +156,7 @@ describe('SystemModuleRegistryService', () => {
     const apiRepo = new MemoryRepository();
     const tenantModuleRepo = new MemoryRepository();
     const eventRepo = new MemoryRepository();
+    const bridgeRepo = new MemoryRepository();
     const saasModuleService = {
       listTenantModules: jest.fn().mockResolvedValue([]),
     };
@@ -163,6 +168,7 @@ describe('SystemModuleRegistryService', () => {
         [SystemModuleApiEntity, apiRepo],
         [SystemTenantModuleEntity, tenantModuleRepo],
         [SystemModuleEventEntity, eventRepo],
+        [SystemModuleSaasBridgeEntity, bridgeRepo],
       ]),
     );
     const service = new SystemModuleRegistryService(
@@ -173,6 +179,7 @@ describe('SystemModuleRegistryService', () => {
       apiRepo as any,
       tenantModuleRepo as any,
       eventRepo as any,
+      bridgeRepo as any,
       saasModuleService as any,
     );
 
@@ -185,6 +192,7 @@ describe('SystemModuleRegistryService', () => {
       apiRepo,
       tenantModuleRepo,
       eventRepo,
+      bridgeRepo,
       saasModuleService,
     };
   };
@@ -612,6 +620,72 @@ describe('SystemModuleRegistryService', () => {
         code: 'ai_console',
         tenant_enabled: true,
         entitlement_source: 'plan',
+      }),
+    ]);
+  });
+
+  it('marks tenant modules enabled from database SaaS bridge rows', async () => {
+    const { service, moduleRepo, bridgeRepo, saasModuleService } = createService();
+    await moduleRepo.save({
+      code: 'custom_workspace',
+      name: 'Custom Workspace',
+      source: 'built_in',
+      version: '1.0.0',
+      description: '',
+      category: 'ai',
+      icon: 'Bot',
+      status: 'enabled',
+      entryRoute: '/custom/workspace',
+      configSchema: {},
+      healthStatus: 'unknown',
+      sort: 40,
+    });
+    await bridgeRepo.save({
+      saasModuleCode: 'custom_ai',
+      systemModuleCode: 'custom_workspace',
+      enabled: 1,
+      source: 'platform',
+    });
+    saasModuleService.listTenantModules.mockResolvedValue([{ code: 'custom_ai' }]);
+
+    await expect(service.listTenantModules(23)).resolves.toEqual([
+      expect.objectContaining({
+        code: 'custom_workspace',
+        tenant_enabled: true,
+        entitlement_source: 'plan',
+      }),
+    ]);
+  });
+
+  it('does not mark tenant modules enabled from disabled database bridge rows', async () => {
+    const { service, moduleRepo, bridgeRepo, saasModuleService } = createService();
+    await moduleRepo.save({
+      code: 'ai_console',
+      name: 'AI Console',
+      source: 'built_in',
+      version: '1.0.0',
+      description: '',
+      category: 'ai',
+      icon: 'Bot',
+      status: 'enabled',
+      entryRoute: '/ai/chat',
+      configSchema: {},
+      healthStatus: 'unknown',
+      sort: 40,
+    });
+    await bridgeRepo.save({
+      saasModuleCode: 'ai_chat',
+      systemModuleCode: 'ai_console',
+      enabled: 0,
+      source: 'platform',
+    });
+    saasModuleService.listTenantModules.mockResolvedValue([{ code: 'ai_chat' }]);
+
+    await expect(service.listTenantModules(23)).resolves.toEqual([
+      expect.objectContaining({
+        code: 'ai_console',
+        tenant_enabled: false,
+        entitlement_source: null,
       }),
     ]);
   });

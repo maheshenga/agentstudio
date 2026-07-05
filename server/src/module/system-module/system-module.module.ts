@@ -7,6 +7,7 @@ import { SystemModuleDependencyEntity } from './entities/system-module-dependenc
 import { SystemModuleEventEntity } from './entities/system-module-event.entity';
 import { SystemModuleMenuEntity } from './entities/system-module-menu.entity';
 import { SystemModulePermissionEntity } from './entities/system-module-permission.entity';
+import { SystemModuleSaasBridgeEntity } from './entities/system-module-saas-bridge.entity';
 import { SystemModuleEntity } from './entities/system-module.entity';
 import { SystemTenantModuleEntity } from './entities/system-tenant-module.entity';
 import { SystemModuleAccessService } from './services/system-module-access.service';
@@ -25,6 +26,7 @@ import { SystemModuleTenantController } from './system-module-tenant.controller'
       SystemModuleMenuEntity,
       SystemTenantModuleEntity,
       SystemModuleEventEntity,
+      SystemModuleSaasBridgeEntity,
     ]),
     SaasModule,
   ],

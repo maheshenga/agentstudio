@@ -1,11 +1,12 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 
 import { SaasModuleService } from '../../saas/services/saas-module.service';
 import { SAAS_TO_SYSTEM_MODULE_BRIDGE } from '../constants';
 import { SystemModuleDependencyEntity } from '../entities/system-module-dependency.entity';
 import { SystemModuleEntity } from '../entities/system-module.entity';
+import { SystemModuleSaasBridgeEntity } from '../entities/system-module-saas-bridge.entity';
 import { SystemTenantModuleEntity } from '../entities/system-tenant-module.entity';
 
 export interface AssertModuleAccessOptions {
@@ -26,6 +27,8 @@ export class SystemModuleAccessService {
     private readonly dependencyRepo: Repository<SystemModuleDependencyEntity>,
     @InjectRepository(SystemTenantModuleEntity)
     private readonly tenantModuleRepo: Repository<SystemTenantModuleEntity>,
+    @InjectRepository(SystemModuleSaasBridgeEntity)
+    private readonly bridgeRepo: Repository<SystemModuleSaasBridgeEntity>,
     private readonly saasModuleService: SaasModuleService,
   ) {}
 
@@ -70,10 +73,9 @@ export class SystemModuleAccessService {
     }
 
     const tenantSaasModuleCodes = saasModuleCodes ?? (await this.loadTenantSaasModuleCodes(tenantId));
+    const entitledSystemModuleCodes = await this.resolveSystemModuleCodesFromSaasModules(tenantSaasModuleCodes);
 
-    return tenantSaasModuleCodes.some((saasModuleCode) =>
-      (SAAS_TO_SYSTEM_MODULE_BRIDGE[saasModuleCode] || []).includes(moduleCode),
-    );
+    return entitledSystemModuleCodes.has(moduleCode);
   }
 
   private async assertDependenciesEnabled(moduleCode: string) {
@@ -97,5 +99,30 @@ export class SystemModuleAccessService {
   private async loadTenantSaasModuleCodes(tenantId: number) {
     const modules = await this.saasModuleService.listTenantModules(tenantId);
     return modules.map((module) => module.code).filter((code): code is string => Boolean(code));
+  }
+
+  private async resolveSystemModuleCodesFromSaasModules(saasModuleCodes: string[]) {
+    const uniqueCodes = [...new Set(saasModuleCodes.filter(Boolean))];
+    if (!uniqueCodes.length) {
+      return new Set<string>();
+    }
+
+    const bridgeRows = await this.bridgeRepo.find({
+      where: {
+        saasModuleCode: In(uniqueCodes),
+        deleteTime: IsNull(),
+      },
+    });
+
+    if (bridgeRows.length) {
+      return new Set(
+        bridgeRows
+          .filter((row) => Number(row.enabled) === 1)
+          .map((row) => row.systemModuleCode)
+          .filter(Boolean),
+      );
+    }
+
+    return new Set(uniqueCodes.flatMap((saasModuleCode) => SAAS_TO_SYSTEM_MODULE_BRIDGE[saasModuleCode] || []));
   }
 }

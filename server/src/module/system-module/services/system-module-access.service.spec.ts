@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, NotFoundException } from '@nes
 
 import { SystemModuleDependencyEntity } from '../entities/system-module-dependency.entity';
 import { SystemModuleEntity } from '../entities/system-module.entity';
+import { SystemModuleSaasBridgeEntity } from '../entities/system-module-saas-bridge.entity';
 import { SystemTenantModuleEntity } from '../entities/system-tenant-module.entity';
 import { SystemModuleAccessService } from './system-module-access.service';
 
@@ -27,8 +28,12 @@ class MemoryRepository<T extends EntityRecord> {
     return Object.entries(where).every(([key, expected]) => {
       if (expected && typeof expected === 'object') {
         const operatorType = expected.type || expected._type;
+        const operatorValue = expected.value ?? expected._value;
         if (operatorType === 'isNull') {
           return record[key] === null || record[key] === undefined;
+        }
+        if (operatorType === 'in') {
+          return (operatorValue as unknown[]).includes(record[key]);
         }
       }
       return record[key] === expected;
@@ -56,6 +61,7 @@ describe('SystemModuleAccessService', () => {
     modules?: EntityRecord[];
     dependencies?: EntityRecord[];
     tenantModules?: EntityRecord[];
+    bridgeRows?: EntityRecord[];
     saasModuleCodes?: string[];
   } = {}) => {
     const moduleRepo = new MemoryRepository<SystemModuleEntity>(options.modules as SystemModuleEntity[]);
@@ -64,6 +70,9 @@ describe('SystemModuleAccessService', () => {
     );
     const tenantModuleRepo = new MemoryRepository<SystemTenantModuleEntity>(
       options.tenantModules as SystemTenantModuleEntity[],
+    );
+    const bridgeRepo = new MemoryRepository<SystemModuleSaasBridgeEntity>(
+      options.bridgeRows as SystemModuleSaasBridgeEntity[],
     );
     const saasModuleService = {
       listTenantModules: jest.fn().mockResolvedValue(
@@ -77,10 +86,11 @@ describe('SystemModuleAccessService', () => {
       moduleRepo as any,
       dependencyRepo as any,
       tenantModuleRepo as any,
+      bridgeRepo as any,
       saasModuleService as any,
     );
 
-    return { service, moduleRepo, dependencyRepo, tenantModuleRepo, saasModuleService };
+    return { service, moduleRepo, dependencyRepo, tenantModuleRepo, bridgeRepo, saasModuleService };
   };
 
   it('allows enabled global + tenant explicit + permission present', async () => {
@@ -134,6 +144,36 @@ describe('SystemModuleAccessService', () => {
         saasModuleCodes: ['ai_chat'],
       }),
     ).resolves.toBe(true);
+  });
+
+  it('uses enabled database bridge rows for SaaS plan entitlement', async () => {
+    const { service } = createService({
+      modules: [enabledModule('custom_workspace')],
+      bridgeRows: [{ saasModuleCode: 'custom_ai', systemModuleCode: 'custom_workspace', enabled: 1 }],
+    });
+
+    await expect(
+      service.assertModuleAccess({
+        tenantId: 10,
+        moduleCode: 'custom_workspace',
+        saasModuleCodes: ['custom_ai'],
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it('ignores disabled database bridge rows without falling back to legacy constants', async () => {
+    const { service } = createService({
+      modules: [enabledModule('ai_console')],
+      bridgeRows: [{ saasModuleCode: 'ai_chat', systemModuleCode: 'ai_console', enabled: 0 }],
+    });
+
+    await expect(
+      service.assertModuleAccess({
+        tenantId: 10,
+        moduleCode: 'ai_console',
+        saasModuleCodes: ['ai_chat'],
+      }),
+    ).rejects.toThrow('Tenant has not enabled this module');
   });
 
   it('derives tenant availability from mocked SaaS tenant modules', async () => {

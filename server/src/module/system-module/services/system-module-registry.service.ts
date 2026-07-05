@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull, Repository } from 'typeorm';
 
 import { SaasModuleService } from '../../saas/services/saas-module.service';
 import {
@@ -14,6 +14,7 @@ import { SystemModuleDependencyEntity } from '../entities/system-module-dependen
 import { SystemModuleEventEntity } from '../entities/system-module-event.entity';
 import { SystemModulePermissionEntity } from '../entities/system-module-permission.entity';
 import { SystemModuleEntity } from '../entities/system-module.entity';
+import { SystemModuleSaasBridgeEntity } from '../entities/system-module-saas-bridge.entity';
 import { SystemTenantModuleEntity } from '../entities/system-tenant-module.entity';
 import { BUILT_IN_SYSTEM_MODULES, SystemModuleManifest } from '../manifests/built-in-modules';
 import { PluginModuleManifestDto } from '../dto/plugin-module-manifest.dto';
@@ -44,6 +45,8 @@ export class SystemModuleRegistryService implements OnModuleInit {
     private readonly tenantModuleRepo: Repository<SystemTenantModuleEntity>,
     @InjectRepository(SystemModuleEventEntity)
     private readonly eventRepo: Repository<SystemModuleEventEntity>,
+    @InjectRepository(SystemModuleSaasBridgeEntity)
+    private readonly bridgeRepo: Repository<SystemModuleSaasBridgeEntity>,
     private readonly saasModuleService: SaasModuleService,
   ) {}
 
@@ -230,12 +233,9 @@ export class SystemModuleRegistryService implements OnModuleInit {
       this.saasModuleService.listTenantModules(tenantId),
     ]);
     const tenantModuleByCode = new Map(tenantModules.map((module) => [module.moduleCode, module]));
-    const planEntitledModuleCodes = new Set<string>();
-    for (const saasModule of saasModules) {
-      for (const systemModuleCode of SAAS_TO_SYSTEM_MODULE_BRIDGE[saasModule.code] || []) {
-        planEntitledModuleCodes.add(systemModuleCode);
-      }
-    }
+    const planEntitledModuleCodes = await this.resolvePlanEntitledSystemModuleCodes(
+      saasModules.map((module) => module.code).filter((code): code is string => Boolean(code)),
+    );
 
     return modules.map((module) => {
       const tenantModule = tenantModuleByCode.get(module.code);
@@ -389,6 +389,31 @@ export class SystemModuleRegistryService implements OnModuleInit {
       throw new NotFoundException(`System module ${code} not found`);
     }
     return module;
+  }
+
+  private async resolvePlanEntitledSystemModuleCodes(saasModuleCodes: string[]) {
+    const uniqueCodes = [...new Set(saasModuleCodes.filter(Boolean))];
+    if (!uniqueCodes.length) {
+      return new Set<string>();
+    }
+
+    const bridgeRows = await this.bridgeRepo.find({
+      where: {
+        saasModuleCode: In(uniqueCodes),
+        deleteTime: IsNull(),
+      },
+    });
+
+    if (bridgeRows.length) {
+      return new Set(
+        bridgeRows
+          .filter((row) => Number(row.enabled) === 1)
+          .map((row) => row.systemModuleCode)
+          .filter(Boolean),
+      );
+    }
+
+    return new Set(uniqueCodes.flatMap((saasModuleCode) => SAAS_TO_SYSTEM_MODULE_BRIDGE[saasModuleCode] || []));
   }
 
   private statusToEventType(status: SystemModuleStatus): SystemModuleEventType {
