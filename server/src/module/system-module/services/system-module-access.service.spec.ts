@@ -186,6 +186,69 @@ describe('SystemModuleAccessService', () => {
     expect(saasModuleService.listTenantModules).toHaveBeenCalledWith(10);
   });
 
+  it('allows access when the required SaaS feature is present', async () => {
+    const { service } = createService({
+      modules: [enabledModule('ai_console')],
+    });
+
+    await expect(
+      service.assertModuleAccess({
+        tenantId: 10,
+        moduleCode: 'ai_console',
+        requiredSaasModuleCode: 'ai_chat',
+        saasModuleCodes: ['ai_chat'],
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it('loads tenant SaaS modules when required feature codes are not pre-supplied', async () => {
+    const { service, saasModuleService } = createService({
+      modules: [enabledModule('ai_console')],
+      saasModuleCodes: ['ai_chat'],
+    });
+
+    await expect(
+      service.assertModuleAccess({
+        tenantId: 10,
+        moduleCode: 'ai_console',
+        requiredSaasModuleCode: 'ai_chat',
+      }),
+    ).resolves.toBe(true);
+
+    expect(saasModuleService.listTenantModules).toHaveBeenCalledWith(10);
+  });
+
+  it('denies access when the exact required SaaS feature is missing', async () => {
+    const { service } = createService({
+      modules: [enabledModule('taixu_workspace')],
+    });
+
+    await expect(
+      service.assertModuleAccess({
+        tenantId: 10,
+        moduleCode: 'taixu_workspace',
+        requiredSaasModuleCode: 'ai_chat',
+        saasModuleCodes: ['rag'],
+      }),
+    ).rejects.toThrow('Current plan has not enabled this module');
+  });
+
+  it('does not let an explicit tenant module bypass a required SaaS feature gate', async () => {
+    const { service } = createService({
+      modules: [enabledModule('ai_console')],
+      tenantModules: [{ tenantId: 10, moduleCode: 'ai_console', enabled: 1 }],
+      saasModuleCodes: ['rag'],
+    });
+
+    await expect(
+      service.assertModuleAccess({
+        tenantId: 10,
+        moduleCode: 'ai_console',
+        requiredSaasModuleCode: 'ai_chat',
+      }),
+    ).rejects.toThrow('Current plan has not enabled this module');
+  });
+
   it('allows tenant SaaS self-service before the tenant has purchased modules', async () => {
     const { service, saasModuleService } = createService({
       modules: [enabledModule('tenant_saas')],

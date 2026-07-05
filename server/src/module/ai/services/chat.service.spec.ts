@@ -5,7 +5,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { AiChatMessageEntity } from '../entities/ai-chat-message.entity';
 import { AiChatSessionEntity } from '../entities/ai-chat-session.entity';
 import { SAAS_QUOTA_AI_CALLS, SAAS_QUOTA_TOKENS } from '../../saas/constants';
-import { SaasModuleService } from '../../saas/services/saas-module.service';
+import { SystemModuleAccessService } from '../../system-module/services/system-module-access.service';
 import { SaasQuotaService } from '../../saas/services/saas-quota.service';
 import { AiConfigService } from './ai-config.service';
 import { ChatService } from './chat.service';
@@ -47,8 +47,8 @@ describe('ChatService SaaS quota integration', () => {
     assertTenantQuotaAvailable: jest.fn(),
     consumeAiUsage: jest.fn(),
   };
-  const saasModuleService = {
-    assertTenantModuleEnabled: jest.fn(),
+  const systemModuleAccessService = {
+    assertModuleAccess: jest.fn(),
   };
   const llmProviderService = {
     streamChat: jest.fn(),
@@ -69,7 +69,7 @@ describe('ChatService SaaS quota integration', () => {
         { provide: ContextBuilderService, useValue: contextBuilder },
         { provide: SessionSummaryService, useValue: sessionSummaryService },
         { provide: SaasQuotaService, useValue: saasQuotaService },
-        { provide: SaasModuleService, useValue: saasModuleService },
+        { provide: SystemModuleAccessService, useValue: systemModuleAccessService },
         { provide: LlmProviderService, useValue: llmProviderService },
       ],
     }).compile();
@@ -87,7 +87,7 @@ describe('ChatService SaaS quota integration', () => {
       defaultModelId: 'model-1',
       messageCount: 0,
     });
-    saasModuleService.assertTenantModuleEnabled.mockRejectedValueOnce(new BadRequestException('Module disabled'));
+    systemModuleAccessService.assertModuleAccess.mockRejectedValueOnce(new BadRequestException('Module disabled'));
 
     await expect(
       service.handleChatSend(
@@ -97,7 +97,12 @@ describe('ChatService SaaS quota integration', () => {
       ),
     ).rejects.toThrow('Module disabled');
 
-    expect(saasModuleService.assertTenantModuleEnabled).toHaveBeenCalledWith(42, 'ai_chat');
+    expect(systemModuleAccessService.assertModuleAccess).toHaveBeenCalledWith({
+      tenantId: 42,
+      userId: 7,
+      moduleCode: 'ai_console',
+      requiredSaasModuleCode: 'ai_chat',
+    });
     expect(saasQuotaService.assertTenantQuotaAvailable).not.toHaveBeenCalled();
     expect(messageRepo.save).not.toHaveBeenCalled();
   });
