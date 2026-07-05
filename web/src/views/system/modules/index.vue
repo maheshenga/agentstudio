@@ -1,52 +1,90 @@
 <template>
   <div class="art-full-height p-5 system-modules-page">
-    <section class="system-modules-page__header">
-      <div>
-        <h1 class="system-modules-page__title">系统模块</h1>
-        <p class="system-modules-page__subtitle">统一查看平台内置模块、安装状态与运行入口。</p>
-      </div>
-      <ElTag type="info" effect="light">平台</ElTag>
-    </section>
-
-    <ElRow :gutter="16">
-      <ElCol :xs="24" :sm="8">
-        <div class="system-modules-page__metric">
-          <span class="system-modules-page__metric-label">已启用</span>
-          <strong>0</strong>
-        </div>
-      </ElCol>
-      <ElCol :xs="24" :sm="8">
-        <div class="system-modules-page__metric">
-          <span class="system-modules-page__metric-label">待安装</span>
-          <strong>0</strong>
-        </div>
-      </ElCol>
-      <ElCol :xs="24" :sm="8">
-        <div class="system-modules-page__metric">
-          <span class="system-modules-page__metric-label">异常模块</span>
-          <strong>0</strong>
-        </div>
-      </ElCol>
-    </ElRow>
-
     <ElCard class="art-table-card" shadow="never">
       <template #header>
-        <div class="system-modules-page__card-header">
+        <div class="system-modules-page__header">
           <div>
-            <h2>模块列表</h2>
-            <p>安装、启停与配置能力将在后续迭代接入。</p>
+            <h1 class="system-modules-page__title">系统模块</h1>
+            <p class="system-modules-page__subtitle">管理平台内置、插件和扩展模块的安装状态与运行入口。</p>
           </div>
-          <ElButton disabled>刷新</ElButton>
+          <ElButton type="primary" :icon="Refresh" :loading="syncing" @click="syncBuiltIns">
+            同步内置模块
+          </ElButton>
         </div>
       </template>
 
-      <ElTable :data="modules" border>
-        <ElTableColumn prop="name" label="模块名称" min-width="160" />
-        <ElTableColumn prop="code" label="模块编码" min-width="160" />
-        <ElTableColumn prop="source" label="来源" width="120" />
-        <ElTableColumn prop="status" label="状态" width="120" />
+      <div class="system-modules-page__filters">
+        <ElInput
+          v-model="filters.keyword"
+          clearable
+          class="system-modules-page__keyword"
+          placeholder="搜索编码或名称"
+          @keyup.enter="loadModules"
+        />
+        <ElSelect
+          v-model="filters.source"
+          clearable
+          class="system-modules-page__select"
+          placeholder="模块来源"
+        >
+          <ElOption label="内置" value="built_in" />
+          <ElOption label="插件" value="plugin" />
+          <ElOption label="扩展" value="extension" />
+        </ElSelect>
+        <ElSelect
+          v-model="filters.status"
+          clearable
+          class="system-modules-page__select"
+          placeholder="模块状态"
+        >
+          <ElOption label="已启用" value="enabled" />
+          <ElOption label="已禁用" value="disabled" />
+          <ElOption label="已安装" value="installed" />
+          <ElOption label="异常" value="failed" />
+        </ElSelect>
+        <ElButton type="primary" :icon="Search" :loading="loading" @click="loadModules">查询</ElButton>
+        <ElButton @click="resetFilters">重置</ElButton>
+      </div>
+
+      <ElTable v-loading="loading" :data="records" border>
+        <ElTableColumn prop="code" label="模块编码" min-width="150" show-overflow-tooltip />
+        <ElTableColumn prop="name" label="模块名称" min-width="150" show-overflow-tooltip />
+        <ElTableColumn label="来源" width="110">
+          <template #default="{ row }">{{ sourceText(row.source) }}</template>
+        </ElTableColumn>
+        <ElTableColumn prop="version" label="版本" width="120" show-overflow-tooltip />
+        <ElTableColumn prop="category" label="分类" min-width="120" show-overflow-tooltip />
+        <ElTableColumn label="状态" width="110">
+          <template #default="{ row }">
+            <ElTag :type="statusTagType(row.status)" effect="light">
+              {{ statusText(row.status) }}
+            </ElTag>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="健康状态" width="120">
+          <template #default="{ row }">
+            <span>{{ healthText(row.health_status) }}</span>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn prop="entry_route" label="入口路由" min-width="220" show-overflow-tooltip />
+        <ElTableColumn label="操作" fixed="right" width="180">
+          <template #default="{ row }">
+            <ElSpace>
+              <ElButton link type="primary" :icon="View" @click="openDetail(row)">详情</ElButton>
+              <ElButton
+                link
+                :type="isEnabled(row.status) ? 'warning' : 'success'"
+                :icon="SwitchButton"
+                :loading="updatingCode === row.code"
+                @click="toggleStatus(row)"
+              >
+                {{ isEnabled(row.status) ? '禁用' : '启用' }}
+              </ElButton>
+            </ElSpace>
+          </template>
+        </ElTableColumn>
         <template #empty>
-          <ElEmpty description="暂无数据" />
+          <ElEmpty description="暂无模块数据" />
         </template>
       </ElTable>
     </ElCard>
@@ -54,16 +92,130 @@
 </template>
 
 <script setup lang="ts">
+  import { ElMessage, ElMessageBox } from 'element-plus'
+  import { Refresh, Search, SwitchButton, View } from '@element-plus/icons-vue'
+  import {
+    fetchSystemModules,
+    registerBuiltInSystemModules,
+    updateSystemModuleStatus,
+    type SystemModuleRecord
+  } from '@/api/system-module'
+
   defineOptions({ name: 'SystemModulesPage' })
 
-  type ModuleRow = {
-    name: string
-    code: string
-    source: string
-    status: string
+  const router = useRouter()
+  const records = ref<SystemModuleRecord[]>([])
+  const loading = ref(false)
+  const syncing = ref(false)
+  const updatingCode = ref('')
+  const filters = reactive({
+    keyword: '',
+    source: '',
+    status: ''
+  })
+
+  function cleanText(value: string) {
+    return value.trim() || undefined
   }
 
-  const modules: ModuleRow[] = []
+  function sourceText(source?: string) {
+    const map: Record<string, string> = {
+      built_in: '内置',
+      plugin: '插件',
+      extension: '扩展'
+    }
+    return source ? map[source] || source : '-'
+  }
+
+  function statusText(status?: string) {
+    const map: Record<string, string> = {
+      enabled: '已启用',
+      disabled: '已禁用',
+      installed: '已安装',
+      failed: '异常'
+    }
+    return status ? map[status] || status : '-'
+  }
+
+  function statusTagType(status?: string) {
+    const map: Record<string, 'success' | 'info' | 'warning' | 'danger'> = {
+      enabled: 'success',
+      disabled: 'info',
+      installed: 'warning',
+      failed: 'danger'
+    }
+    return status ? map[status] || 'info' : 'info'
+  }
+
+  function healthText(status?: string) {
+    const map: Record<string, string> = {
+      healthy: '正常',
+      warning: '告警',
+      failed: '异常',
+      unknown: '未知'
+    }
+    return status ? map[status] || status : '-'
+  }
+
+  function isEnabled(status?: string) {
+    return status === 'enabled'
+  }
+
+  async function loadModules() {
+    loading.value = true
+    try {
+      records.value = await fetchSystemModules({
+        keyword: cleanText(filters.keyword),
+        source: cleanText(filters.source),
+        status: cleanText(filters.status)
+      })
+    } finally {
+      loading.value = false
+    }
+  }
+
+  function resetFilters() {
+    filters.keyword = ''
+    filters.source = ''
+    filters.status = ''
+    loadModules()
+  }
+
+  async function syncBuiltIns() {
+    syncing.value = true
+    try {
+      await registerBuiltInSystemModules()
+      ElMessage.success('内置模块同步完成')
+      await loadModules()
+    } finally {
+      syncing.value = false
+    }
+  }
+
+  function openDetail(row: SystemModuleRecord) {
+    router.push({ path: '/system/modules/detail', query: { code: row.code } })
+  }
+
+  async function toggleStatus(row: SystemModuleRecord) {
+    const nextStatus = isEnabled(row.status) ? 'disabled' : 'enabled'
+    await ElMessageBox.confirm(
+      `确认${nextStatus === 'enabled' ? '启用' : '禁用'}模块「${row.name}」？`,
+      '状态确认',
+      { type: 'warning' }
+    )
+    updatingCode.value = row.code
+    try {
+      await updateSystemModuleStatus(row.code, nextStatus)
+      ElMessage.success(nextStatus === 'enabled' ? '模块已启用' : '模块已禁用')
+      await loadModules()
+    } finally {
+      updatingCode.value = ''
+    }
+  }
+
+  onMounted(() => {
+    loadModules()
+  })
 </script>
 
 <style scoped>
@@ -73,61 +225,51 @@
     gap: 16px;
   }
 
-  .system-modules-page__header,
-  .system-modules-page__card-header {
+  .system-modules-page__header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 16px;
   }
 
-  .system-modules-page__title,
-  .system-modules-page__card-header h2 {
+  .system-modules-page__title {
     margin: 0;
+    font-size: 18px;
+    font-weight: 600;
     line-height: 1.4;
     letter-spacing: 0;
   }
 
-  .system-modules-page__title {
-    font-size: 20px;
-    font-weight: 600;
-  }
-
-  .system-modules-page__subtitle,
-  .system-modules-page__card-header p,
-  .system-modules-page__metric-label {
+  .system-modules-page__subtitle {
     margin: 6px 0 0;
     color: var(--el-text-color-secondary);
     font-size: 13px;
     line-height: 1.5;
   }
 
-  .system-modules-page__metric {
-    display: grid;
-    gap: 6px;
-    min-height: 92px;
-    border: 1px solid var(--el-border-color-light);
-    border-radius: 8px;
-    background: var(--el-bg-color);
-    padding: 18px;
+  .system-modules-page__filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
   }
 
-  .system-modules-page__metric strong {
-    color: var(--el-text-color-primary);
-    font-size: 28px;
-    font-weight: 700;
-    line-height: 1.2;
+  .system-modules-page__keyword {
+    width: 240px;
   }
 
-  .system-modules-page__card-header h2 {
-    font-size: 16px;
-    font-weight: 600;
+  .system-modules-page__select {
+    width: 150px;
   }
 
-  @media (max-width: 768px) {
-    .system-modules-page__header,
-    .system-modules-page__card-header {
+  @media (max-width: 640px) {
+    .system-modules-page__header {
       display: grid;
+    }
+
+    .system-modules-page__keyword,
+    .system-modules-page__select {
+      width: 100%;
     }
   }
 </style>
