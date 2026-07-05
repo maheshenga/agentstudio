@@ -311,6 +311,83 @@ describe('SystemModuleRegistryService', () => {
     ).rejects.toThrow(new BadRequestException('Plugin hooks are metadata-only and must use reserved values'));
   });
 
+  it('rejects plugin manifests that reuse non-plugin module codes without replacing metadata or bindings', async () => {
+    const { service, moduleRepo, dependencyRepo, permissionRepo, apiRepo, eventRepo } = createService();
+    await service.registerBuiltInModules();
+
+    const beforeModule = { ...moduleRepo.records.find((record) => record.code === 'core_system') };
+    const beforeDependencies = dependencyRepo.records
+      .filter((record) => record.moduleCode === 'core_system')
+      .map((record) => ({ ...record }));
+    const beforePermissions = permissionRepo.records
+      .filter((record) => record.moduleCode === 'core_system')
+      .map((record) => ({ ...record }));
+    const beforeApis = apiRepo.records
+      .filter((record) => record.moduleCode === 'core_system')
+      .map((record) => ({ ...record }));
+    const beforeEvents = eventRepo.records.map((record) => ({ ...record }));
+
+    await expect(
+      service.registerPluginManifest({
+        code: 'core_system',
+        name: 'Hijacked Core',
+        source: 'plugin',
+        version: '9.9.9',
+        permissions: [{ slug: 'evil:admin' }],
+        dependencies: [{ code: 'evil_dep', version: '*' }],
+        api_endpoints: [{ method: 'POST', path: '/evil', permission_slug: 'evil:admin' }],
+      }),
+    ).rejects.toThrow(new BadRequestException('Module code is already used by a non-plugin module'));
+
+    expect(moduleRepo.records.find((record) => record.code === 'core_system')).toEqual(beforeModule);
+    expect(dependencyRepo.records.filter((record) => record.moduleCode === 'core_system')).toEqual(beforeDependencies);
+    expect(permissionRepo.records.filter((record) => record.moduleCode === 'core_system')).toEqual(beforePermissions);
+    expect(apiRepo.records.filter((record) => record.moduleCode === 'core_system')).toEqual(beforeApis);
+    expect(eventRepo.records).toEqual(beforeEvents);
+  });
+
+  it('allows existing plugin module codes to be re-registered', async () => {
+    const { service, moduleRepo, permissionRepo, apiRepo, eventRepo } = createService();
+
+    await service.registerPluginManifest({
+      code: 'risk_ops_plugin',
+      name: 'Risk Ops Plugin',
+      source: 'plugin',
+      version: '1.0.0',
+      permissions: [{ slug: 'risk:ops:view' }],
+      api_endpoints: [{ method: 'GET', path: '/risk/ops', permission_slug: 'risk:ops:view' }],
+    });
+
+    const result = await service.registerPluginManifest({
+      code: 'risk_ops_plugin',
+      name: 'Risk Ops Plugin Updated',
+      source: 'plugin',
+      version: '1.1.0',
+      permissions: [{ slug: 'risk:ops:manage', bindingType: 'required' }],
+      api_endpoints: [{ method: 'POST', path: '/risk/ops/manage', permission_slug: 'risk:ops:manage' }],
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        code: 'risk_ops_plugin',
+        name: 'Risk Ops Plugin Updated',
+        source: 'plugin',
+        version: '1.1.0',
+      }),
+    );
+    expect(moduleRepo.records.filter((record) => record.code === 'risk_ops_plugin')).toHaveLength(1);
+    expect(permissionRepo.records.filter((record) => record.moduleCode === 'risk_ops_plugin')).toEqual([
+      expect.objectContaining({ permissionSlug: 'risk:ops:manage', bindingType: 'required' }),
+    ]);
+    expect(apiRepo.records.filter((record) => record.moduleCode === 'risk_ops_plugin')).toEqual([
+      expect.objectContaining({ method: 'POST', path: '/risk/ops/manage' }),
+    ]);
+    expect(eventRepo.records.filter((record) => record.moduleCode === 'risk_ops_plugin').map((record) => record.eventType)).toEqual([
+      'install',
+      'upgrade',
+    ]);
+  });
+
   it('updates status transactionally and records an enable event with operator id', async () => {
     const { service, dataSource, moduleRepo, eventRepo } = createService();
     await moduleRepo.save({

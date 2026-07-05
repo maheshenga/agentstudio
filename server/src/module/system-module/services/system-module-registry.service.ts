@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, IsNull, Repository } from 'typeorm';
+import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
 
 import { SYSTEM_MODULE_STATUSES, SystemModuleEventType, SystemModuleStatus } from '../constants';
 import { SystemModuleApiEntity } from '../entities/system-module-api.entity';
@@ -16,6 +16,10 @@ export interface SystemModuleListQuery {
   keyword?: string;
   status?: SystemModuleStatus | string;
   source?: string;
+}
+
+interface ImportManifestOptions {
+  validateExisting?: (existing: SystemModuleEntity, manifest: SystemModuleManifest) => void;
 }
 
 @Injectable()
@@ -78,49 +82,67 @@ export class SystemModuleRegistryService implements OnModuleInit {
       configSchema: dto.config_schema || {},
     };
 
-    await this.importManifests([manifest]);
+    await this.dataSource.transaction(async (manager) => {
+      const moduleRepo = manager.getRepository(SystemModuleEntity);
+      const existing = await moduleRepo.findOne({
+        where: { code: dto.code },
+        lock: { mode: 'pessimistic_write' },
+      });
+      this.assertPluginCodeAvailable(existing);
+
+      await this.importManifestsWithManager(manager, [manifest], {
+        validateExisting: (module) => this.assertPluginCodeAvailable(module),
+      });
+    });
     return this.getModule(dto.code);
   }
 
   async importManifests(manifests: SystemModuleManifest[]) {
-    return this.dataSource.transaction(async (manager) => {
-      const moduleRepo = manager.getRepository(SystemModuleEntity);
-      const dependencyRepo = manager.getRepository(SystemModuleDependencyEntity);
-      const permissionRepo = manager.getRepository(SystemModulePermissionEntity);
-      const apiRepo = manager.getRepository(SystemModuleApiEntity);
-      const eventRepo = manager.getRepository(SystemModuleEventEntity);
-      const imported = [];
+    return this.dataSource.transaction((manager) => this.importManifestsWithManager(manager, manifests));
+  }
 
-      for (const manifest of manifests) {
-        const inserted = await this.insertManifestModule(moduleRepo, manifest);
-        const existing = await moduleRepo.findOne({
-          where: { code: manifest.code },
-          lock: { mode: 'pessimistic_write' },
-        });
-        if (!existing) {
-          throw new NotFoundException(`System module ${manifest.code} not found after manifest insert`);
-        }
+  private async importManifestsWithManager(
+    manager: EntityManager,
+    manifests: SystemModuleManifest[],
+    options: ImportManifestOptions = {},
+  ) {
+    const moduleRepo = manager.getRepository(SystemModuleEntity);
+    const dependencyRepo = manager.getRepository(SystemModuleDependencyEntity);
+    const permissionRepo = manager.getRepository(SystemModulePermissionEntity);
+    const apiRepo = manager.getRepository(SystemModuleApiEntity);
+    const eventRepo = manager.getRepository(SystemModuleEventEntity);
+    const imported = [];
 
-        const manifestChanged = inserted ? false : this.hasManifestChanged(existing, manifest);
-        const metadata = this.toManifestMetadata(manifest, existing);
-        await moduleRepo.update({ code: manifest.code }, metadata);
-        imported.push(this.toResponse({ ...existing, ...metadata }));
-
-        await this.replaceDependencies(dependencyRepo, manifest);
-        await this.replacePermissions(permissionRepo, manifest);
-        await this.replaceApis(apiRepo, manifest);
-
-        if (inserted) {
-          await this.recordEvent(eventRepo, manifest.code, 'install', 'success', `Imported module ${manifest.code}`);
-        } else if (manifestChanged) {
-          await this.recordEvent(eventRepo, manifest.code, 'upgrade', 'success', `Synced module ${manifest.code}`, {
-            metadata: { version: manifest.version },
-          });
-        }
+    for (const manifest of manifests) {
+      const inserted = await this.insertManifestModule(moduleRepo, manifest);
+      const existing = await moduleRepo.findOne({
+        where: { code: manifest.code },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!existing) {
+        throw new NotFoundException(`System module ${manifest.code} not found after manifest insert`);
       }
+      options.validateExisting?.(existing, manifest);
 
-      return imported;
-    });
+      const manifestChanged = inserted ? false : this.hasManifestChanged(existing, manifest);
+      const metadata = this.toManifestMetadata(manifest, existing);
+      await moduleRepo.update({ code: manifest.code }, metadata);
+      imported.push(this.toResponse({ ...existing, ...metadata }));
+
+      await this.replaceDependencies(dependencyRepo, manifest);
+      await this.replacePermissions(permissionRepo, manifest);
+      await this.replaceApis(apiRepo, manifest);
+
+      if (inserted) {
+        await this.recordEvent(eventRepo, manifest.code, 'install', 'success', `Imported module ${manifest.code}`);
+      } else if (manifestChanged) {
+        await this.recordEvent(eventRepo, manifest.code, 'upgrade', 'success', `Synced module ${manifest.code}`, {
+          metadata: { version: manifest.version },
+        });
+      }
+    }
+
+    return imported;
   }
 
   private async insertManifestModule(repo: Repository<SystemModuleEntity>, manifest: SystemModuleManifest) {
@@ -363,6 +385,12 @@ export class SystemModuleRegistryService implements OnModuleInit {
     const hasExecutableHookValue = Object.values(hooks).some((value) => value !== 'reserved');
     if (hasExecutableHookValue) {
       throw new BadRequestException('Plugin hooks are metadata-only and must use reserved values');
+    }
+  }
+
+  private assertPluginCodeAvailable(existing: SystemModuleEntity | null) {
+    if (existing && existing.source !== 'plugin') {
+      throw new BadRequestException('Module code is already used by a non-plugin module');
     }
   }
 
