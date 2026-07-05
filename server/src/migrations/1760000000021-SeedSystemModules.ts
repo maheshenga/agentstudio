@@ -21,7 +21,7 @@ type PermissionSeed = {
 };
 
 const PLATFORM_MENU: MenuSeed = {
-  parentCode: 'SystemManage',
+  parentCode: 'System',
   name: 'System Modules',
   code: 'SystemModules',
   path: 'modules',
@@ -121,6 +121,7 @@ export class SeedSystemModules1760000000021 implements MigrationInterface {
         SELECT \`parent\`.\`id\`, ?, ?, NULL, 2, ?, ?, ?, ?, 1, ?
         FROM \`sa_system_menu\` \`parent\`
         WHERE \`parent\`.\`code\` = ?
+          ${menu.parentCode === 'System' ? "AND `parent`.`path` = '/system'\n          AND `parent`.`type` = 1" : ''}
           AND \`parent\`.\`delete_time\` IS NULL
           AND NOT EXISTS (
             SELECT 1
@@ -191,7 +192,7 @@ export class SeedSystemModules1760000000021 implements MigrationInterface {
           )
         )
         AND \`menu\`.\`delete_time\` IS NULL
-      WHERE \`role\`.\`code\` = 'admin'
+      WHERE \`role\`.\`code\` IN ('admin', 'super_admin')
         AND \`role\`.\`delete_time\` IS NULL
         AND NOT EXISTS (
           SELECT 1

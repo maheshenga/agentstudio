@@ -8,14 +8,21 @@ describe('SeedSystemModules1760000000021', () => {
 
     const calls = queryRunner.query.mock.calls;
     const sql = calls.map(([statement]) => String(statement)).join('\n');
+    const params = calls.flatMap(([, values]) => values || []);
 
     expect(sql).toContain('SystemModules');
+    expect(sql).toContain("`parent`.`code` = ?");
+    expect(sql).toContain("`parent`.`path` = '/system'");
+    expect(sql).toContain('`parent`.`type` = 1');
     expect(sql).toContain('system:module:list');
     expect(sql).toContain('system:module:read');
     expect(sql).toContain('TenantSystemModules');
     expect(sql).toContain('tenant:module:list');
     expect(sql).toContain('sa_system_role_menu');
+    expect(sql).toContain("`role`.`code` IN ('admin', 'super_admin')");
     expect(sql).toContain('NOT EXISTS');
+    expect(params).toContain('System');
+    expect(params).not.toContain('SystemManage');
   });
 
   it('rolls back role links and only rows created by this seed', async () => {
