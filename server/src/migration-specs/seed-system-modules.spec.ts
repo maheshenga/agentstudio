@@ -24,6 +24,9 @@ describe('SeedSystemModules1760000000021', () => {
     expect(sql).toContain('tenant:module:list');
     expect(sql).toContain('sa_system_role_menu');
     expect(sql).toContain("`role`.`code` IN ('admin', 'super_admin')");
+    expect(sql).toContain("`source_menu`.`code` = 'SystemModules'");
+    expect(sql).toContain("`detail_menu`.`code` = 'SystemModuleDetail'");
+    expect(sql).toContain('`source_role_menu`.`role_id`');
     expect(sql).toContain('NOT EXISTS');
     expect(params).toContain('System');
     expect(params).not.toContain('SystemManage');

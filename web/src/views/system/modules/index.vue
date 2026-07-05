@@ -72,6 +72,7 @@
             <ElSpace>
               <ElButton link type="primary" :icon="View" @click="openDetail(row)">详情</ElButton>
               <ElButton
+                v-if="canToggleStatus(row.status)"
                 link
                 :type="isEnabled(row.status) ? 'warning' : 'success'"
                 :icon="SwitchButton"
@@ -132,7 +133,11 @@
       enabled: '已启用',
       disabled: '已禁用',
       installed: '已安装',
-      failed: '异常'
+      draft: '草稿',
+      upgrading: '升级中',
+      failed: '异常',
+      uninstalled: '未安装',
+      unknown: '未知'
     }
     return status ? map[status] || status : '-'
   }
@@ -142,7 +147,11 @@
       enabled: 'success',
       disabled: 'info',
       installed: 'warning',
-      failed: 'danger'
+      draft: 'info',
+      upgrading: 'warning',
+      failed: 'danger',
+      uninstalled: 'info',
+      unknown: 'info'
     }
     return status ? map[status] || 'info' : 'info'
   }
@@ -159,6 +168,10 @@
 
   function isEnabled(status?: string) {
     return status === 'enabled'
+  }
+
+  function canToggleStatus(status?: string) {
+    return status === 'enabled' || status === 'disabled' || status === 'installed'
   }
 
   async function loadModules() {
@@ -197,6 +210,10 @@
   }
 
   async function toggleStatus(row: SystemModuleRecord) {
+    if (!canToggleStatus(row.status)) {
+      ElMessage.warning('当前状态不支持启停操作')
+      return
+    }
     const nextStatus = isEnabled(row.status) ? 'disabled' : 'enabled'
     await ElMessageBox.confirm(
       `确认${nextStatus === 'enabled' ? '启用' : '禁用'}模块「${row.name}」？`,
