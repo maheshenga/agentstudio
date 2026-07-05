@@ -2,7 +2,13 @@ import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
 
-import { SYSTEM_MODULE_STATUSES, SystemModuleEventType, SystemModuleStatus } from '../constants';
+import { SaasModuleService } from '../../saas/services/saas-module.service';
+import {
+  SAAS_TO_SYSTEM_MODULE_BRIDGE,
+  SYSTEM_MODULE_STATUSES,
+  SystemModuleEventType,
+  SystemModuleStatus,
+} from '../constants';
 import { SystemModuleApiEntity } from '../entities/system-module-api.entity';
 import { SystemModuleDependencyEntity } from '../entities/system-module-dependency.entity';
 import { SystemModuleEventEntity } from '../entities/system-module-event.entity';
@@ -38,6 +44,7 @@ export class SystemModuleRegistryService implements OnModuleInit {
     private readonly tenantModuleRepo: Repository<SystemTenantModuleEntity>,
     @InjectRepository(SystemModuleEventEntity)
     private readonly eventRepo: Repository<SystemModuleEventEntity>,
+    private readonly saasModuleService: SaasModuleService,
   ) {}
 
   async onModuleInit() {
@@ -217,18 +224,28 @@ export class SystemModuleRegistryService implements OnModuleInit {
   }
 
   async listTenantModules(tenantId: number) {
-    const [modules, tenantModules] = await Promise.all([
+    const [modules, tenantModules, saasModules] = await Promise.all([
       this.moduleRepo.find({ where: { status: 'enabled' }, order: { sort: 'ASC', id: 'ASC' } }),
       this.tenantModuleRepo.find({ where: { tenantId }, order: { id: 'ASC' } }),
+      this.saasModuleService.listTenantModules(tenantId),
     ]);
     const tenantModuleByCode = new Map(tenantModules.map((module) => [module.moduleCode, module]));
+    const planEntitledModuleCodes = new Set<string>();
+    for (const saasModule of saasModules) {
+      for (const systemModuleCode of SAAS_TO_SYSTEM_MODULE_BRIDGE[saasModule.code] || []) {
+        planEntitledModuleCodes.add(systemModuleCode);
+      }
+    }
 
     return modules.map((module) => {
       const tenantModule = tenantModuleByCode.get(module.code);
+      const explicitlyEnabled = tenantModule ? Number(tenantModule.enabled) === 1 : false;
+      const planEnabled = planEntitledModuleCodes.has(module.code);
+      const tenantEnabled = explicitlyEnabled || planEnabled;
       return {
         ...this.toResponse(module),
-        tenant_enabled: tenantModule ? Number(tenantModule.enabled) === 1 : false,
-        entitlement_source: tenantModule ? 'platform' : 'plan',
+        tenant_enabled: tenantEnabled,
+        entitlement_source: explicitlyEnabled ? tenantModule?.source || 'platform' : planEnabled ? 'plan' : null,
       };
     });
   }

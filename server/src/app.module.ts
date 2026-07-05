@@ -26,6 +26,7 @@ import { ArticleModule } from './module/article/article.module';
 import { AiModule } from './module/ai/ai.module';
 import { SaasModule } from './module/saas/saas.module';
 import { TaixuModule } from './module/taixu/taixu.module';
+import { SystemModuleGuard } from './module/system-module/system-module.guard';
 
 import { DebugGuard } from './common/guards/debug.guard';
 import { JwtAuthGuard } from './common/guards/auth.guard';
@@ -113,6 +114,7 @@ const nodeEnv = process.env.NODE_ENV ?? 'development';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PermissionGuard },
+    { provide: APP_GUARD, useClass: SystemModuleGuard },
     { provide: APP_INTERCEPTOR, useClass: OperlogInterceptor },
     { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
     { provide: APP_INTERCEPTOR, useClass: MemoryMonitorInterceptor },

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 
 import { SaasModuleService } from '../../saas/services/saas-module.service';
+import { SAAS_TO_SYSTEM_MODULE_BRIDGE } from '../constants';
 import { SystemModuleDependencyEntity } from '../entities/system-module-dependency.entity';
 import { SystemModuleEntity } from '../entities/system-module.entity';
 import { SystemTenantModuleEntity } from '../entities/system-tenant-module.entity';
@@ -15,14 +16,6 @@ export interface AssertModuleAccessOptions {
   userPermissions?: string[];
   saasModuleCodes?: string[];
 }
-
-const SAAS_BRIDGE_MODULES: Record<string, string[]> = {
-  ai_chat: ['ai_console', 'taixu_workspace'],
-  rag: ['taixu_workspace'],
-  member_management: ['tenant_saas'],
-  resource_pack: ['tenant_saas'],
-  advanced_report: ['saas_platform'],
-};
 
 @Injectable()
 export class SystemModuleAccessService {
@@ -79,7 +72,7 @@ export class SystemModuleAccessService {
     const tenantSaasModuleCodes = saasModuleCodes ?? (await this.loadTenantSaasModuleCodes(tenantId));
 
     return tenantSaasModuleCodes.some((saasModuleCode) =>
-      (SAAS_BRIDGE_MODULES[saasModuleCode] || []).includes(moduleCode),
+      (SAAS_TO_SYSTEM_MODULE_BRIDGE[saasModuleCode] || []).includes(moduleCode),
     );
   }
 

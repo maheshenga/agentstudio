@@ -152,6 +152,9 @@ describe('SystemModuleRegistryService', () => {
     const apiRepo = new MemoryRepository();
     const tenantModuleRepo = new MemoryRepository();
     const eventRepo = new MemoryRepository();
+    const saasModuleService = {
+      listTenantModules: jest.fn().mockResolvedValue([]),
+    };
     const dataSource = new MemoryDataSource(
       new Map<Function, MemoryRepository<EntityRecord>>([
         [SystemModuleEntity, moduleRepo],
@@ -170,9 +173,20 @@ describe('SystemModuleRegistryService', () => {
       apiRepo as any,
       tenantModuleRepo as any,
       eventRepo as any,
+      saasModuleService as any,
     );
 
-    return { service, dataSource, moduleRepo, dependencyRepo, permissionRepo, apiRepo, tenantModuleRepo, eventRepo };
+    return {
+      service,
+      dataSource,
+      moduleRepo,
+      dependencyRepo,
+      permissionRepo,
+      apiRepo,
+      tenantModuleRepo,
+      eventRepo,
+      saasModuleService,
+    };
   };
 
   it('imports built-in manifests idempotently and includes core system and SaaS platform modules', async () => {
@@ -536,11 +550,67 @@ describe('SystemModuleRegistryService', () => {
       expect.objectContaining({
         code: 'ai_console',
         tenant_enabled: false,
-        entitlement_source: 'platform',
+        entitlement_source: null,
       }),
       expect.objectContaining({
         code: 'audit_center',
         tenant_enabled: false,
+        entitlement_source: null,
+      }),
+    ]);
+  });
+
+  it('marks tenant modules enabled by SaaS plan bridge entitlements', async () => {
+    const { service, moduleRepo, tenantModuleRepo, saasModuleService } = createService();
+    await moduleRepo.save({
+      code: 'ai_console',
+      name: 'AI Console',
+      source: 'built_in',
+      version: '1.0.0',
+      description: '',
+      category: 'ai',
+      icon: 'Bot',
+      status: 'enabled',
+      entryRoute: '/ai/chat',
+      configSchema: {},
+      healthStatus: 'unknown',
+      sort: 40,
+    });
+    await moduleRepo.save({
+      code: 'tenant_saas',
+      name: 'Tenant SaaS',
+      source: 'built_in',
+      version: '1.0.0',
+      description: '',
+      category: 'saas',
+      icon: 'Building2',
+      status: 'enabled',
+      entryRoute: '/tenant-saas/usage',
+      configSchema: {},
+      healthStatus: 'unknown',
+      sort: 30,
+    });
+    await tenantModuleRepo.save({
+      tenantId: 23,
+      moduleCode: 'tenant_saas',
+      enabled: 0,
+      source: 'manual',
+      config: null,
+    });
+    saasModuleService.listTenantModules.mockResolvedValue([{ code: 'ai_chat' }, { code: 'member_management' }]);
+
+    const result = await service.listTenantModules(23);
+
+    expect(saasModuleService.listTenantModules).toHaveBeenCalledWith(23);
+    expect(result).toEqual([
+      expect.objectContaining({
+        code: 'tenant_saas',
+        tenant_enabled: true,
+        entitlement_source: 'plan',
+      }),
+      expect.objectContaining({
+        code: 'ai_console',
+        tenant_enabled: true,
         entitlement_source: 'plan',
       }),
     ]);

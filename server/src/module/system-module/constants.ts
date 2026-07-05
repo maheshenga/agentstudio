@@ -18,6 +18,14 @@ export type SystemModuleHealthStatus = (typeof SYSTEM_MODULE_HEALTH_STATUSES)[nu
 export const SYSTEM_TENANT_MODULE_SOURCES = ['platform', 'plan', 'plugin', 'manual'] as const;
 export type SystemTenantModuleSource = (typeof SYSTEM_TENANT_MODULE_SOURCES)[number];
 
+export const SAAS_TO_SYSTEM_MODULE_BRIDGE: Record<string, string[]> = {
+  ai_chat: ['ai_console', 'taixu_workspace'],
+  rag: ['taixu_workspace'],
+  member_management: ['tenant_saas'],
+  resource_pack: ['tenant_saas'],
+  advanced_report: ['saas_platform'],
+};
+
 export const SYSTEM_MODULE_EVENT_TYPES = [
   'install',
   'enable',
