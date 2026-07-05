@@ -221,6 +221,7 @@ describe('SystemModuleRegistryService', () => {
         source: 'plugin',
         version: '1.2.3',
         description: 'Risk operations metadata plugin.',
+        routes: ['/risk/ops', '/risk/ops/detail'],
         permissions: [{ slug: 'risk:ops:view', bindingType: 'required' }],
         dependencies: [{ code: 'core_system', version: '^1.0.0' }],
         api_endpoints: [
@@ -258,6 +259,9 @@ describe('SystemModuleRegistryService', () => {
         icon: 'ri:puzzle-line',
         entryRoute: '',
         sort: 500,
+        manifest: expect.objectContaining({
+          routes: ['/risk/ops', '/risk/ops/detail'],
+        }),
       }),
     ]);
     expect(dependencyRepo.records).toEqual([

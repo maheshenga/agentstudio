@@ -59,6 +59,7 @@ export class SystemModuleRegistryService implements OnModuleInit {
       status: 'installed',
       entryRoute: '',
       sort: 500,
+      routes: dto.routes || [],
       dependencies: (dto.dependencies || []).map((dependency) => ({
         code: dependency.code,
         versionRange: dependency.version || '',

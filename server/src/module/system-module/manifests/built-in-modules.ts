@@ -29,6 +29,7 @@ export interface SystemModuleManifest {
   status: SystemModuleStatus;
   entryRoute: string;
   sort: number;
+  routes?: string[];
   dependencies: SystemModuleManifestDependency[];
   permissions: SystemModuleManifestPermission[];
   apis: SystemModuleManifestApi[];
