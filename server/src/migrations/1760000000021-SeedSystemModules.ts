@@ -86,6 +86,7 @@ export class SeedSystemModules1760000000021 implements MigrationInterface {
 
     await this.grantAdminRole(queryRunner);
     await this.grantDetailRouteToSystemModuleRoles(queryRunner);
+    await this.grantReadPermissionToSystemModuleRoles(queryRunner);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
@@ -249,6 +250,27 @@ export class SeedSystemModules1760000000021 implements MigrationInterface {
         FROM \`sa_system_role_menu\` \`existing\`
         WHERE \`existing\`.\`role_id\` = \`source_role_menu\`.\`role_id\`
           AND \`existing\`.\`menu_id\` = \`detail_menu\`.\`id\`
+      )
+    `);
+  }
+
+  private async grantReadPermissionToSystemModuleRoles(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
+      INSERT INTO \`sa_system_role_menu\` (\`role_id\`, \`menu_id\`)
+      SELECT \`source_role_menu\`.\`role_id\`, \`read_permission\`.\`id\`
+      FROM \`sa_system_role_menu\` \`source_role_menu\`
+      INNER JOIN \`sa_system_menu\` \`source_menu\`
+        ON \`source_menu\`.\`id\` = \`source_role_menu\`.\`menu_id\`
+        AND \`source_menu\`.\`code\` = 'SystemModules'
+        AND \`source_menu\`.\`delete_time\` IS NULL
+      INNER JOIN \`sa_system_menu\` \`read_permission\`
+        ON \`read_permission\`.\`slug\` = 'system:module:read'
+        AND \`read_permission\`.\`delete_time\` IS NULL
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM \`sa_system_role_menu\` \`existing\`
+        WHERE \`existing\`.\`role_id\` = \`source_role_menu\`.\`role_id\`
+          AND \`existing\`.\`menu_id\` = \`read_permission\`.\`id\`
       )
     `);
   }

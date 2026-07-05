@@ -122,7 +122,7 @@
   })
 
   const moduleEvents = computed(() => {
-    return moduleData.value?.events?.length ? moduleData.value.events : fetchedEvents.value
+    return Array.isArray(moduleData.value?.events) ? moduleData.value.events : fetchedEvents.value
   })
 
   function parseJsonValue(value: unknown) {
@@ -214,7 +214,7 @@
     try {
       const detail = await fetchSystemModule(moduleCode.value)
       moduleData.value = detail
-      if (!detail.events?.length) {
+      if (!Array.isArray(detail.events)) {
         fetchedEvents.value = await fetchSystemModuleEvents(moduleCode.value)
       } else {
         fetchedEvents.value = []
