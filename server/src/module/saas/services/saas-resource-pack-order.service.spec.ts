@@ -6,7 +6,7 @@ import { DataSource } from 'typeorm';
 import { SAAS_ORDER_PAID, SAAS_ORDER_PENDING, SAAS_PAYMENT_ALIPAY } from '../constants';
 import { SaasResourcePackOrderEntity } from '../entities/saas-resource-pack-order.entity';
 import { SaasResourcePackEntity } from '../entities/saas-resource-pack.entity';
-import { SaasModuleService } from './saas-module.service';
+import { SystemModuleAccessService } from '../../system-module/services/system-module-access.service';
 import { SaasQuotaService } from './saas-quota.service';
 import { SaasResourcePackOrderService } from './saas-resource-pack-order.service';
 
@@ -24,7 +24,7 @@ describe('SaasResourcePackOrderService', () => {
   const dataSource = { transaction: jest.fn() };
   const manager = { getRepository: jest.fn() };
   const txOrderRepo = { findOne: jest.fn(), save: jest.fn() };
-  const saasModuleService = { assertTenantModuleEnabled: jest.fn() };
+  const systemModuleAccessService = { assertModuleAccess: jest.fn() };
   const saasQuotaService = { grantTenantQuota: jest.fn() };
 
   beforeEach(async () => {
@@ -45,7 +45,7 @@ describe('SaasResourcePackOrderService', () => {
         { provide: getRepositoryToken(SaasResourcePackEntity), useValue: packRepo },
         { provide: getRepositoryToken(SaasResourcePackOrderEntity), useValue: orderRepo },
         { provide: DataSource, useValue: dataSource },
-        { provide: SaasModuleService, useValue: saasModuleService },
+        { provide: SystemModuleAccessService, useValue: systemModuleAccessService },
         { provide: SaasQuotaService, useValue: saasQuotaService },
       ],
     }).compile();
@@ -74,7 +74,11 @@ describe('SaasResourcePackOrderService', () => {
       payment_method: 'alipay',
     });
 
-    expect(saasModuleService.assertTenantModuleEnabled).toHaveBeenCalledWith(12, 'resource_pack');
+    expect(systemModuleAccessService.assertModuleAccess).toHaveBeenCalledWith({
+      tenantId: 12,
+      moduleCode: 'tenant_saas',
+      requiredSaasModuleCode: 'resource_pack',
+    });
     expect(packRepo.findOne).toHaveBeenCalledWith({ where: { code: 'tokens_1m', status: 1 } });
     expect(orderRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -290,13 +294,18 @@ describe('SaasResourcePackOrderService', () => {
     );
   });
 
-  it('checks resource pack module before looking up packs', async () => {
-    saasModuleService.assertTenantModuleEnabled.mockRejectedValueOnce(new BadRequestException('Module disabled'));
+  it('checks resource pack module access before looking up packs', async () => {
+    systemModuleAccessService.assertModuleAccess.mockRejectedValueOnce(new BadRequestException('Module disabled'));
 
     await expect(
       service.createTenantOrder(12, { resource_pack_code: 'tokens_1m', payment_method: 'alipay' }),
     ).rejects.toThrow('Module disabled');
 
+    expect(systemModuleAccessService.assertModuleAccess).toHaveBeenCalledWith({
+      tenantId: 12,
+      moduleCode: 'tenant_saas',
+      requiredSaasModuleCode: 'resource_pack',
+    });
     expect(packRepo.findOne).not.toHaveBeenCalled();
     expect(orderRepo.create).not.toHaveBeenCalled();
   });

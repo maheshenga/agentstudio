@@ -6,7 +6,7 @@ import { SAAS_ORDER_PAID, SAAS_ORDER_PENDING, SAAS_PAYMENT_ALIPAY } from '../con
 import { CreateResourcePackOrderDto } from '../dto/create-resource-pack-order.dto';
 import { SaasResourcePackOrderEntity } from '../entities/saas-resource-pack-order.entity';
 import { SaasResourcePackEntity } from '../entities/saas-resource-pack.entity';
-import { SaasModuleService } from './saas-module.service';
+import { SystemModuleAccessService } from '../../system-module/services/system-module-access.service';
 import { SaasQuotaService } from './saas-quota.service';
 
 export interface SaasResourcePackOrderListQuery {
@@ -28,12 +28,16 @@ export class SaasResourcePackOrderService {
     @InjectRepository(SaasResourcePackOrderEntity)
     private readonly resourcePackOrderRepo: Repository<SaasResourcePackOrderEntity>,
     private readonly dataSource: DataSource,
-    private readonly saasModuleService: SaasModuleService,
+    private readonly systemModuleAccessService: SystemModuleAccessService,
     private readonly saasQuotaService: SaasQuotaService,
   ) {}
 
   async createTenantOrder(tenantId: number, dto: CreateResourcePackOrderDto): Promise<SaasResourcePackOrderEntity> {
-    await this.saasModuleService.assertTenantModuleEnabled(tenantId, 'resource_pack');
+    await this.systemModuleAccessService.assertModuleAccess({
+      tenantId,
+      moduleCode: 'tenant_saas',
+      requiredSaasModuleCode: 'resource_pack',
+    });
 
     const pack = await this.resourcePackRepo.findOne({
       where: {
