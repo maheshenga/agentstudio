@@ -55,7 +55,7 @@ class MemoryRepository<T extends EntityRecord> {
     return record;
   }
 
-  async findOne(options: { where: EntityRecord }) {
+  async findOne(options: { where: EntityRecord; lock?: EntityRecord }) {
     return this.records.find((record) => this.matchesWhere(record, options.where)) ?? null;
   }
 
@@ -75,11 +75,13 @@ class MemoryRepository<T extends EntityRecord> {
 
   private matchesWhere(record: EntityRecord, where: EntityRecord) {
     return Object.entries(where).every(([key, expected]) => {
-      if (expected && typeof expected === 'object' && 'value' in expected) {
-        if (expected.type === 'like') {
-          return String(record[key] ?? '').includes(String(expected.value).replace(/%/g, ''));
+      if (expected && typeof expected === 'object') {
+        const operatorType = expected.type || expected._type;
+        const operatorValue = expected.value ?? expected._value;
+        if (operatorType === 'like') {
+          return String(record[key] ?? '').includes(String(operatorValue).replace(/%/g, ''));
         }
-        if (expected.type === 'isNull') {
+        if (operatorType === 'isNull') {
           return record[key] === null || record[key] === undefined;
         }
       }
@@ -208,7 +210,7 @@ describe('SystemModuleRegistryService', () => {
   });
 
   it('does not save or record event when status is unchanged', async () => {
-    const { service, moduleRepo, eventRepo } = createService();
+    const { service, dataSource, moduleRepo, eventRepo } = createService();
     await moduleRepo.save({
       code: 'ops_monitor',
       name: 'Ops Monitor',
@@ -229,6 +231,7 @@ describe('SystemModuleRegistryService', () => {
     const result = await service.updateStatus('ops_monitor', 'enabled', 12);
 
     expect(result).toEqual(expect.objectContaining({ code: 'ops_monitor', status: 'enabled' }));
+    expect(dataSource.transactionCalls).toBe(1);
     expect(moduleRepo.saveCalls).toBe(0);
     expect(eventRepo.saveCalls).toBe(0);
     expect(eventRepo.records).toHaveLength(0);

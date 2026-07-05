@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, IsNull, Repository } from 'typeorm';
 
 import { SYSTEM_MODULE_STATUSES, SystemModuleEventType, SystemModuleStatus } from '../constants';
 import { SystemModuleApiEntity } from '../entities/system-module-api.entity';
@@ -141,14 +141,20 @@ export class SystemModuleRegistryService implements OnModuleInit {
       throw new BadRequestException(`Invalid system module status: ${status}`);
     }
 
-    const module = await this.findModule(code);
-    if (module.status === status) {
-      return this.toResponse(module);
-    }
-
     return this.dataSource.transaction(async (manager) => {
       const moduleRepo = manager.getRepository(SystemModuleEntity);
       const eventRepo = manager.getRepository(SystemModuleEventEntity);
+      const module = await moduleRepo.findOne({
+        where: { code, deleteTime: IsNull() },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!module) {
+        throw new NotFoundException(`System module ${code} not found`);
+      }
+      if (module.status === status) {
+        return this.toResponse(module);
+      }
+
       module.status = status;
       const saved = await moduleRepo.save(module);
       await this.recordEvent(
