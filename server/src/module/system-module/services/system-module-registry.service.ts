@@ -146,20 +146,24 @@ export class SystemModuleRegistryService implements OnModuleInit {
       return this.toResponse(module);
     }
 
-    module.status = status;
-    const saved = await this.moduleRepo.save(module);
-    await this.recordEvent(
-      this.eventRepo,
-      code,
-      this.statusToEventType(status),
-      'success',
-      `Module ${code} status changed to ${status}`,
-      {
-        operatorId,
-        metadata: { status },
-      },
-    );
-    return this.toResponse(saved);
+    return this.dataSource.transaction(async (manager) => {
+      const moduleRepo = manager.getRepository(SystemModuleEntity);
+      const eventRepo = manager.getRepository(SystemModuleEventEntity);
+      module.status = status;
+      const saved = await moduleRepo.save(module);
+      await this.recordEvent(
+        eventRepo,
+        code,
+        this.statusToEventType(status),
+        'success',
+        `Module ${code} status changed to ${status}`,
+        {
+          operatorId,
+          metadata: { status },
+        },
+      );
+      return this.toResponse(saved);
+    });
   }
 
   async listEvents(code: string) {

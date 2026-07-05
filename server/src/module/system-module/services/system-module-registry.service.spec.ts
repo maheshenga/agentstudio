@@ -176,8 +176,8 @@ describe('SystemModuleRegistryService', () => {
     await expect(service.getModule('core_system')).resolves.toEqual(expect.objectContaining({ status: 'disabled' }));
   });
 
-  it('updates status and records an enable event with operator id', async () => {
-    const { service, moduleRepo, eventRepo } = createService();
+  it('updates status transactionally and records an enable event with operator id', async () => {
+    const { service, dataSource, moduleRepo, eventRepo } = createService();
     await moduleRepo.save({
       code: 'ai_console',
       name: 'AI Console',
@@ -196,6 +196,7 @@ describe('SystemModuleRegistryService', () => {
     const result = await service.updateStatus('ai_console', 'enabled', 99);
 
     expect(result).toEqual(expect.objectContaining({ code: 'ai_console', status: 'enabled' }));
+    expect(dataSource.transactionCalls).toBe(1);
     expect(eventRepo.records).toEqual([
       expect.objectContaining({
         moduleCode: 'ai_console',
