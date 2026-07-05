@@ -66,6 +66,119 @@ describe('SystemModuleGuard', () => {
     });
   });
 
+  it('passes member management SaaS feature requirements for tenant member routes', async () => {
+    const access = {
+      assertModuleAccess: jest.fn().mockResolvedValue(true),
+    };
+    const guard = new SystemModuleGuard(new Reflector(), access as unknown as SystemModuleAccessService);
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/saas/tenant/members', {
+          userId: 9,
+          tenantId: 23,
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(access.assertModuleAccess).toHaveBeenCalledWith({
+      moduleCode: 'tenant_saas',
+      tenantId: 23,
+      userId: 9,
+      requiredSaasModuleCode: 'member_management',
+    });
+  });
+
+  it('passes resource pack SaaS feature requirements for tenant resource pack order routes', async () => {
+    const access = {
+      assertModuleAccess: jest.fn().mockResolvedValue(true),
+    };
+    const guard = new SystemModuleGuard(new Reflector(), access as unknown as SystemModuleAccessService);
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/saas/tenant/resource-pack-orders', {
+          userId: 9,
+          tenantId: 23,
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(access.assertModuleAccess).toHaveBeenCalledWith({
+      moduleCode: 'tenant_saas',
+      tenantId: 23,
+      userId: 9,
+      requiredSaasModuleCode: 'resource_pack',
+    });
+  });
+
+  it('keeps feature bindings scoped to route segment boundaries', async () => {
+    const access = {
+      assertModuleAccess: jest.fn().mockResolvedValue(true),
+    };
+    const guard = new SystemModuleGuard(new Reflector(), access as unknown as SystemModuleAccessService);
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/saas/tenant/resource-pack-orders-admin', {
+          userId: 9,
+          tenantId: 23,
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(access.assertModuleAccess).toHaveBeenCalledWith({
+      moduleCode: 'tenant_saas',
+      tenantId: 23,
+      userId: 9,
+    });
+  });
+
+  it('passes AI chat SaaS feature requirements for tenant chat routes', async () => {
+    const access = {
+      assertModuleAccess: jest.fn().mockResolvedValue(true),
+    };
+    const guard = new SystemModuleGuard(new Reflector(), access as unknown as SystemModuleAccessService);
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/ai/sessions', {
+          userId: 9,
+          tenantId: 23,
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(access.assertModuleAccess).toHaveBeenCalledWith({
+      moduleCode: 'ai_console',
+      tenantId: 23,
+      userId: 9,
+      requiredSaasModuleCode: 'ai_chat',
+    });
+  });
+
+  it('does not require ai_chat for AI admin routes', async () => {
+    const access = {
+      assertModuleAccess: jest.fn().mockResolvedValue(true),
+    };
+    const guard = new SystemModuleGuard(new Reflector(), access as unknown as SystemModuleAccessService);
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/ai/admin/providers/list', {
+          userId: 9,
+          tenantId: 23,
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(access.assertModuleAccess).toHaveBeenCalledWith({
+      moduleCode: 'ai_console',
+      tenantId: 23,
+      userId: 9,
+    });
+  });
+
   it('matches managed routes behind a deployment prefix', async () => {
     const access = {
       assertModuleAccess: jest.fn().mockResolvedValue(true),

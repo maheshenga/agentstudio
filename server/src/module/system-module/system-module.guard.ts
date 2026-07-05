@@ -2,15 +2,53 @@ import { BadRequestException, CanActivate, ExecutionContext, Injectable } from '
 import { Reflector } from '@nestjs/core';
 
 import { IS_PUBLIC_KEY } from '../../common/constant';
-import { SystemModuleAccessService } from './services/system-module-access.service';
+import { SystemModuleAccessService, type AssertModuleAccessOptions } from './services/system-module-access.service';
 
 type SystemModuleRouteBinding = {
   prefix: string;
   moduleCode: string;
   tenantScoped: boolean;
+  requiredSaasModuleCode?: string;
 };
 
 const ROUTE_BINDINGS: SystemModuleRouteBinding[] = [
+  {
+    prefix: '/api/saas/tenant/members',
+    moduleCode: 'tenant_saas',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'member_management',
+  },
+  {
+    prefix: '/api/saas/tenant/resource-pack-orders',
+    moduleCode: 'tenant_saas',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'resource_pack',
+  },
+  {
+    prefix: '/api/saas/tenant/resource-packs',
+    moduleCode: 'tenant_saas',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'resource_pack',
+  },
+  { prefix: '/api/ai/admin', moduleCode: 'ai_console', tenantScoped: true },
+  {
+    prefix: '/api/ai/sessions',
+    moduleCode: 'ai_console',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'ai_chat',
+  },
+  {
+    prefix: '/api/ai/models/options',
+    moduleCode: 'ai_console',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'ai_chat',
+  },
+  {
+    prefix: '/api/ai/agents/options',
+    moduleCode: 'ai_console',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'ai_chat',
+  },
   { prefix: '/api/saas/platform', moduleCode: 'saas_platform', tenantScoped: false },
   { prefix: '/api/saas/tenant', moduleCode: 'tenant_saas', tenantScoped: true },
   { prefix: '/api/ai', moduleCode: 'ai_console', tenantScoped: true },
@@ -45,11 +83,16 @@ export class SystemModuleGuard implements CanActivate {
       throw new BadRequestException('Tenant context is required for this module');
     }
 
-    await this.accessService.assertModuleAccess({
+    const accessOptions: AssertModuleAccessOptions = {
       moduleCode: binding.moduleCode,
       tenantId,
       userId: this.resolveUserId(user),
-    });
+    };
+    if (binding.requiredSaasModuleCode) {
+      accessOptions.requiredSaasModuleCode = binding.requiredSaasModuleCode;
+    }
+
+    await this.accessService.assertModuleAccess(accessOptions);
     return true;
   }
 
@@ -59,7 +102,9 @@ export class SystemModuleGuard implements CanActivate {
     if (apiIndex > 0) {
       normalizedPath = normalizedPath.slice(apiIndex);
     }
-    return ROUTE_BINDINGS.find((binding) => normalizedPath.startsWith(binding.prefix));
+    return ROUTE_BINDINGS.filter(
+      (binding) => normalizedPath === binding.prefix || normalizedPath.startsWith(`${binding.prefix}/`),
+    ).sort((left, right) => right.prefix.length - left.prefix.length)[0];
   }
 
   private resolveTenantId(user: Record<string, any>): number | undefined {
