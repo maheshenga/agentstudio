@@ -572,7 +572,7 @@ onBeforeUnmount(() => {
 }
 
 // 深色模式
-::deep(.dark) {
+:deep(.dark) {
   .card-list .art-custom-card {
     background: #1f1f1f !important;
 
