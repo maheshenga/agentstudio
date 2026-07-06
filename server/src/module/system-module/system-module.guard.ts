@@ -52,6 +52,90 @@ const ROUTE_BINDINGS: SystemModuleRouteBinding[] = [
   { prefix: '/api/saas/platform', moduleCode: 'saas_platform', tenantScoped: false },
   { prefix: '/api/saas/tenant', moduleCode: 'tenant_saas', tenantScoped: true },
   { prefix: '/api/ai', moduleCode: 'ai_console', tenantScoped: true },
+  {
+    prefix: '/llm/chat',
+    moduleCode: 'taixu_workspace',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'ai_chat',
+  },
+  {
+    prefix: '/image/generate',
+    moduleCode: 'taixu_workspace',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'ai_chat',
+  },
+  {
+    prefix: '/api/taixu/agent/invoke',
+    moduleCode: 'taixu_workspace',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'ai_chat',
+  },
+  {
+    prefix: '/api/taixu/agentic/invoke',
+    moduleCode: 'taixu_workspace',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'ai_chat',
+  },
+  {
+    prefix: '/api/taixu/search/invoke',
+    moduleCode: 'taixu_workspace',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'ai_chat',
+  },
+  {
+    prefix: '/api/taixu/topic/invoke',
+    moduleCode: 'taixu_workspace',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'ai_chat',
+  },
+  {
+    prefix: '/api/taixu/travel/invoke',
+    moduleCode: 'taixu_workspace',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'ai_chat',
+  },
+  {
+    prefix: '/api/taixu/llm/chat',
+    moduleCode: 'taixu_workspace',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'ai_chat',
+  },
+  {
+    prefix: '/api/taixu/image/generate',
+    moduleCode: 'taixu_workspace',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'ai_chat',
+  },
+  {
+    prefix: '/api/taixu/retrieval',
+    moduleCode: 'taixu_workspace',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'rag',
+  },
+  {
+    prefix: '/api/taixu/special',
+    moduleCode: 'taixu_workspace',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'rag',
+  },
+  {
+    prefix: '/api/taixu/program',
+    moduleCode: 'taixu_workspace',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'rag',
+  },
+  {
+    prefix: '/api/taixu/arxiv',
+    moduleCode: 'taixu_workspace',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'rag',
+  },
+  {
+    prefix: '/api/taixu/document',
+    moduleCode: 'taixu_workspace',
+    tenantScoped: true,
+    requiredSaasModuleCode: 'rag',
+  },
   { prefix: '/api/taixu', moduleCode: 'taixu_workspace', tenantScoped: true },
 ];
 
@@ -97,14 +181,28 @@ export class SystemModuleGuard implements CanActivate {
   }
 
   private matchBinding(path: string): SystemModuleRouteBinding | undefined {
-    let normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    const candidatePaths = this.buildCandidatePaths(normalizedPath);
+    return ROUTE_BINDINGS.filter((binding) =>
+      candidatePaths.some((candidatePath) => this.matchesRoutePrefix(candidatePath, binding.prefix)),
+    ).sort((left, right) => right.prefix.length - left.prefix.length)[0];
+  }
+
+  private buildCandidatePaths(normalizedPath: string): string[] {
+    const paths = new Set<string>([normalizedPath]);
     const apiIndex = normalizedPath.indexOf('/api/');
     if (apiIndex > 0) {
-      normalizedPath = normalizedPath.slice(apiIndex);
+      paths.add(normalizedPath.slice(apiIndex));
     }
-    return ROUTE_BINDINGS.filter(
-      (binding) => normalizedPath === binding.prefix || normalizedPath.startsWith(`${binding.prefix}/`),
-    ).sort((left, right) => right.prefix.length - left.prefix.length)[0];
+    const secondSlashIndex = normalizedPath.indexOf('/', 1);
+    if (secondSlashIndex > 0) {
+      paths.add(normalizedPath.slice(secondSlashIndex));
+    }
+    return [...paths];
+  }
+
+  private matchesRoutePrefix(path: string, prefix: string): boolean {
+    return path === prefix || path.startsWith(`${prefix}/`);
   }
 
   private resolveTenantId(user: Record<string, any>): number | undefined {
