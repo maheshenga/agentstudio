@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import { decryptAiSecret, encryptAiSecret } from '../../../common/utils/ai-crypto.util';
 import { UpdateAlipayConfigDto } from '../dto/update-alipay-config.dto';
 import { SaasPaymentConfigEntity } from '../entities/saas-payment-config.entity';
 
@@ -64,12 +65,12 @@ export class SaasPaymentConfigService {
       config.appId = config.appId || '';
     }
     if (dto.private_key !== undefined && dto.private_key.trim() !== '') {
-      config.privateKey = dto.private_key;
+      config.privateKey = encryptAiSecret(dto.private_key.trim());
     } else {
       config.privateKey = config.privateKey || '';
     }
     if (dto.public_key !== undefined && dto.public_key.trim() !== '') {
-      config.publicKey = dto.public_key;
+      config.publicKey = encryptAiSecret(dto.public_key.trim());
     } else {
       config.publicKey = config.publicKey || '';
     }
@@ -123,8 +124,8 @@ export class SaasPaymentConfigService {
     return {
       enabled: config?.enabled === 1,
       appId: config?.appId || '',
-      privateKey: config?.privateKey || '',
-      publicKey: config?.publicKey || '',
+      privateKey: decryptAiSecret(config?.privateKey || ''),
+      publicKey: decryptAiSecret(config?.publicKey || ''),
       notifyUrl: config?.notifyUrl || '',
       returnUrl: config?.returnUrl || '',
       gatewayUrl: config?.gatewayUrl || ALIPAY_DEFAULT_GATEWAY,

@@ -333,6 +333,25 @@ describe('SaasResourcePackOrderService', () => {
     );
   });
 
+  it('does not mutate order as paid when quota delivery fails', async () => {
+    const order: Partial<SaasResourcePackOrderEntity> = {
+      orderNo: 'RPO1',
+      tenantId: 12,
+      resourceType: 'tokens',
+      quotaAmount: 1000,
+      status: SAAS_ORDER_PENDING,
+    };
+    txOrderRepo.findOne.mockResolvedValue(order);
+    saasQuotaService.grantTenantQuota.mockRejectedValueOnce(new Error('grant failed'));
+
+    await expect(service.confirmDevPayment(12, 'RPO1')).rejects.toThrow('grant failed');
+
+    expect(order.status).toBe(SAAS_ORDER_PENDING);
+    expect(order.paidAt).toBeUndefined();
+    expect(order.deliveredAt).toBeUndefined();
+    expect(txOrderRepo.save).not.toHaveBeenCalled();
+  });
+
   it('rejects invalid platform tenant id filters instead of broadening resource pack order queries', async () => {
     await expect(service.listPlatformOrders({ tenant_id: 'abc' })).rejects.toBeInstanceOf(BadRequestException);
 

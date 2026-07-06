@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
+import { IsNull } from 'typeorm';
 
 import { SAAS_QUOTA_USERS } from '../constants';
 import { SaasTenantMemberService } from './saas-tenant-member.service';
@@ -83,7 +84,9 @@ describe('SaasTenantMemberService', () => {
     expect(manager.findOne).toHaveBeenCalledWith(expect.any(Function), {
       where: { tenantId: 12, resourceType: SAAS_QUOTA_USERS, status: 1 },
     });
-    expect(manager.count).toHaveBeenCalledWith(expect.any(Function), { where: { tenantId: 12 } });
+    expect(manager.count).toHaveBeenCalledWith(expect.any(Function), {
+      where: { tenantId: 12, deleteTime: IsNull() },
+    });
     expect(manager.save).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({ username: 'bob', password: expect.not.stringMatching(/^123456$/), status: 1 }),
@@ -91,6 +94,29 @@ describe('SaasTenantMemberService', () => {
     expect(manager.save).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({ userId: 8, tenantId: 12 }));
     expect(manager.save).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({ userId: 8, roleId: 22, tenantId: 12 }));
     expect(result).toMatchObject({ user_id: 8, username: 'bob', role: 'member' });
+  });
+
+  it('excludes soft-deleted tenant memberships from user quota checks', async () => {
+    manager.findOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ totalQuota: 2 })
+      .mockResolvedValueOnce({ id: 22, code: 'tenant:12:member' });
+    manager.count.mockResolvedValue(1);
+    manager.save
+      .mockResolvedValueOnce({ id: 8, username: 'bob', realname: 'Bob', status: 1 })
+      .mockResolvedValueOnce({ id: 30 })
+      .mockResolvedValueOnce({ id: 31 });
+
+    await service.createMember(12, {
+      username: 'bob',
+      password: '123456',
+      realname: 'Bob',
+      role: 'member',
+    });
+
+    expect(manager.count).toHaveBeenCalledWith(expect.any(Function), {
+      where: { tenantId: 12, deleteTime: IsNull() },
+    });
   });
 
   it('rejects member creation when tenant user quota is full', async () => {

@@ -107,7 +107,8 @@ describe('SaasQuotaService', () => {
       { quotaType: 'rag_documents', totalQuota: 20, status: 1 },
       { quotaType: 'tokens', totalQuota: 100000, status: 1 },
     ]);
-    tenantResourceRepo.upsert.mockResolvedValue(undefined);
+    tenantResourceRepo.findOne.mockResolvedValue(null);
+    tenantResourceRepo.save.mockResolvedValue(undefined);
 
     await service.initializeTenantQuota(42, 7);
 
@@ -120,21 +121,22 @@ describe('SaasQuotaService', () => {
         id: 'ASC',
       },
     });
-    expect(tenantResourceRepo.upsert).toHaveBeenCalledWith(
-      [
-        { tenantId: 42, resourceType: 'users', totalQuota: 3, usedQuota: 0, status: 1 },
-        { tenantId: 42, resourceType: 'storage_mb', totalQuota: 1024, usedQuota: 0, status: 1 },
-        { tenantId: 42, resourceType: 'ai_calls', totalQuota: 50, usedQuota: 0, status: 1 },
-        { tenantId: 42, resourceType: 'rag_documents', totalQuota: 20, usedQuota: 0, status: 1 },
-        { tenantId: 42, resourceType: 'tokens', totalQuota: 100000, usedQuota: 0, status: 1 },
-      ],
-      ['tenantId', 'resourceType'],
+    expect(tenantResourceRepo.save).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ tenantId: 42, resourceType: 'users', totalQuota: 3, usedQuota: 0, status: 1 }),
+        expect.objectContaining({ tenantId: 42, resourceType: 'storage_mb', totalQuota: 1024, usedQuota: 0, status: 1 }),
+        expect.objectContaining({ tenantId: 42, resourceType: 'ai_calls', totalQuota: 50, usedQuota: 0, status: 1 }),
+        expect.objectContaining({ tenantId: 42, resourceType: 'rag_documents', totalQuota: 20, usedQuota: 0, status: 1 }),
+        expect.objectContaining({ tenantId: 42, resourceType: 'tokens', totalQuota: 100000, usedQuota: 0, status: 1 }),
+      ]),
     );
+    expect(tenantResourceRepo.upsert).not.toHaveBeenCalled();
   });
 
   it('uses the transaction manager repositories when one is provided', async () => {
     txPlanQuotaRepo.find.mockResolvedValue([{ quotaType: 'users', totalQuota: 5, status: 1 }]);
-    txTenantResourceRepo.upsert.mockResolvedValue(undefined);
+    txTenantResourceRepo.findOne.mockResolvedValue(null);
+    txTenantResourceRepo.save.mockResolvedValue(undefined);
 
     await service.initializeTenantQuota(88, 12, txManager as any);
 
@@ -149,11 +151,40 @@ describe('SaasQuotaService', () => {
         id: 'ASC',
       },
     });
-    expect(txTenantResourceRepo.upsert).toHaveBeenCalledWith(
-      [{ tenantId: 88, resourceType: 'users', totalQuota: 5, usedQuota: 0, status: 1 }],
-      ['tenantId', 'resourceType'],
-    );
+    expect(txTenantResourceRepo.save).toHaveBeenCalledWith([
+      expect.objectContaining({ tenantId: 88, resourceType: 'users', totalQuota: 5, usedQuota: 0, status: 1 }),
+    ]);
     expect(planQuotaRepo.find).not.toHaveBeenCalled();
+    expect(tenantResourceRepo.upsert).not.toHaveBeenCalled();
+  });
+
+  it('preserves existing used quota when plan initialization refreshes quota totals', async () => {
+    planQuotaRepo.find.mockResolvedValue([{ quotaType: 'users', totalQuota: 10, status: 1 }]);
+    tenantResourceRepo.findOne.mockResolvedValue({
+      id: 3,
+      tenantId: 42,
+      resourceType: 'users',
+      totalQuota: 5,
+      usedQuota: 2,
+      status: 1,
+    });
+    tenantResourceRepo.save.mockResolvedValue(undefined);
+
+    await service.initializeTenantQuota(42, 7);
+
+    expect(tenantResourceRepo.findOne).toHaveBeenCalledWith({
+      where: { tenantId: 42, resourceType: 'users' },
+    });
+    expect(tenantResourceRepo.save).toHaveBeenCalledWith([
+      expect.objectContaining({
+        id: 3,
+        tenantId: 42,
+        resourceType: 'users',
+        totalQuota: 10,
+        usedQuota: 2,
+        status: 1,
+      }),
+    ]);
     expect(tenantResourceRepo.upsert).not.toHaveBeenCalled();
   });
 

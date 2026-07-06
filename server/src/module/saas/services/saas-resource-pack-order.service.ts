@@ -222,10 +222,7 @@ export class SaasResourcePackOrderService {
       }
 
       const paidAt = new Date();
-      order.status = SAAS_ORDER_PAID;
-      order.paidAt = paidAt;
-      order.deliveredAt = paidAt;
-      order.alipayTradeNo = options.resolveTradeNo(order);
+      const tradeNo = options.resolveTradeNo(order);
 
       await this.saasQuotaService.grantTenantQuota(
         order.tenantId,
@@ -238,6 +235,11 @@ export class SaasResourcePackOrderService {
         },
         manager,
       );
+
+      order.status = SAAS_ORDER_PAID;
+      order.paidAt = paidAt;
+      order.deliveredAt = paidAt;
+      order.alipayTradeNo = tradeNo;
 
       return orderRepo.save(order);
     });

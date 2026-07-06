@@ -57,16 +57,22 @@ export class SaasQuotaService {
       return;
     }
 
-    await tenantResourceRepo.upsert(
-      planQuotas.map((item) => ({
+    const resources: Array<Partial<SaasTenantResourceEntity>> = [];
+    for (const item of planQuotas) {
+      const existing = await tenantResourceRepo.findOne({
+        where: { tenantId, resourceType: item.quotaType },
+      });
+      resources.push({
+        ...(existing || {}),
         tenantId,
         resourceType: item.quotaType,
         totalQuota: Number(item.totalQuota),
-        usedQuota: 0,
+        usedQuota: existing ? Number(existing.usedQuota) || 0 : 0,
         status: 1,
-      })),
-      ['tenantId', 'resourceType'],
-    );
+      });
+    }
+
+    await tenantResourceRepo.save(resources);
   }
 
   async getTenantUsageSummary(tenantId: number): Promise<Array<{ resource_type: string; quota: number; used: number; remaining: number }>> {

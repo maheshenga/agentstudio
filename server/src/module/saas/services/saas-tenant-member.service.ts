@@ -231,7 +231,9 @@ export class SaasTenantMemberService {
       return;
     }
 
-    const currentUsers = await manager.count(SysUserTenantEntity, { where: { tenantId } });
+    const currentUsers = await manager.count(SysUserTenantEntity, {
+      where: { tenantId, deleteTime: IsNull() },
+    });
     if (currentUsers >= totalQuota) {
       throw new BadRequestException('租户用户数额度不足');
     }
