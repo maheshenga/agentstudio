@@ -23,9 +23,41 @@ interface SourceTarget {
 }
 
 const REPO_ROOT = join(__dirname, '../../../..');
-const SAAS_VISIBLE_TEXT_TARGETS: SourceTarget[] = [
+const VISIBLE_TEXT_TARGETS: SourceTarget[] = [
+  {
+    relativePath: 'database/init.sql',
+    extensions: ['.sql'],
+  },
   {
     relativePath: 'server/src/module/saas',
+    extensions: ['.ts'],
+    exclude: (relativePath) => relativePath.endsWith('.spec.ts'),
+  },
+  {
+    relativePath: 'server/src/module/ai',
+    extensions: ['.ts'],
+    exclude: (relativePath) => relativePath.endsWith('.spec.ts'),
+  },
+  {
+    relativePath: 'server/src/module/taixu',
+    extensions: ['.ts'],
+    exclude: (relativePath) => relativePath.endsWith('.spec.ts'),
+  },
+  {
+    relativePath: 'server/src/module/main/main.controller.ts',
+    extensions: ['.ts'],
+  },
+  {
+    relativePath: 'server/src/module/main/main.service.ts',
+    extensions: ['.ts'],
+  },
+  {
+    relativePath: 'server/src/module/system/user',
+    extensions: ['.ts'],
+    exclude: (relativePath) => relativePath.endsWith('.spec.ts'),
+  },
+  {
+    relativePath: 'server/src/common',
     extensions: ['.ts'],
     exclude: (relativePath) => relativePath.endsWith('.spec.ts'),
   },
@@ -40,6 +72,18 @@ const SAAS_VISIBLE_TEXT_TARGETS: SourceTarget[] = [
   {
     relativePath: 'web/src/views/saas',
     extensions: ['.vue', '.ts'],
+  },
+  {
+    relativePath: 'web/src/views/ai',
+    extensions: ['.vue', '.ts'],
+  },
+  {
+    relativePath: 'web/src/views/taixu',
+    extensions: ['.vue', '.ts'],
+  },
+  {
+    relativePath: 'web/src/views/auth/login/index.vue',
+    extensions: ['.vue'],
   },
 ];
 const MOJIBAKE_FIXTURE = '璧勬簮棰濆害涓嶈冻';
@@ -58,8 +102,8 @@ const MOJIBAKE_SIGNAL_PATTERNS = [
   /鐮佸凡|瀛樺湪|璇锋崲|鍚庨噸璇|鎵撳寘|瀹屾垚|繍琛/g,
 ];
 
-function collectActiveSaasSourceFiles(): SourceFile[] {
-  return SAAS_VISIBLE_TEXT_TARGETS.flatMap((target) => collectSourceFiles(join(REPO_ROOT, target.relativePath), target)).sort(
+function collectVisibleTextSourceFiles(): SourceFile[] {
+  return VISIBLE_TEXT_TARGETS.flatMap((target) => collectSourceFiles(join(REPO_ROOT, target.relativePath), target)).sort(
     (left, right) => left.relativePath.localeCompare(right.relativePath),
   );
 }
@@ -104,7 +148,18 @@ function shouldScanSourceFile(relativePath: string, target: SourceTarget): boole
 }
 
 function findVisibleTextEncodingFindings(sourceFiles: SourceFile[]): VisibleTextEncodingFinding[] {
-  return sourceFiles.flatMap((sourceFile) => findMojibakeFindingsInSource(sourceFile));
+  return sourceFiles
+    .filter((sourceFile) => extname(sourceFile.relativePath) !== '.sql')
+    .flatMap((sourceFile) => findMojibakeFindingsInSource(sourceFile));
+}
+
+function findReplacementCharacterFindings(sourceFiles: SourceFile[]): VisibleTextEncodingFinding[] {
+  return sourceFiles.flatMap((sourceFile) => {
+    const lines = sourceFile.source.split(/\r?\n/);
+    return lines.flatMap((line, lineIndex) =>
+      findAllIndexes(line, '\uFFFD').map((startIndex) => createFinding(sourceFile, line, lineIndex, startIndex, '\uFFFD')),
+    );
+  });
 }
 
 function findMojibakeFindingsInSource(sourceFile: SourceFile): VisibleTextEncodingFinding[] {
@@ -259,24 +314,40 @@ describe('SaaS visible text encoding audit', () => {
     expect(findings).toEqual([]);
   });
 
-  it('scans active SaaS UI, API, backend, and migration sources', () => {
-    const sourcePaths = collectActiveSaasSourceFiles().map(({ relativePath }) => relativePath);
+  it('scans active visible text UI, API, backend, seed SQL, and migration sources', () => {
+    const sourcePaths = collectVisibleTextSourceFiles().map(({ relativePath }) => relativePath);
 
     expect(sourcePaths).toEqual(
       expect.arrayContaining([
+        'database/init.sql',
         'server/src/module/saas/saas-tenant.controller.ts',
+        'server/src/module/ai/ai.controller.ts',
+        'server/src/module/taixu/agent/taixu-agent.controller.ts',
+        'server/src/module/main/main.controller.ts',
+        'server/src/module/system/user/user.controller.ts',
         'server/src/migrations/1760000000001-SeedSaasFoundationData.ts',
         'server/src/migrations/1760000000017-SeedSaasModules.ts',
         'server/src/migrations/1760000000021-SeedSystemModules.ts',
         'web/src/api/saas.ts',
+        'web/src/views/auth/login/index.vue',
       ]),
     );
     expect(sourcePaths.some((path) => path.startsWith('web/src/views/saas/') && path.endsWith('.vue'))).toBe(true);
+    expect(sourcePaths.some((path) => path.startsWith('web/src/views/ai/') && path.endsWith('.vue'))).toBe(true);
+    expect(sourcePaths.some((path) => path.startsWith('web/src/views/taixu/') && path.endsWith('.vue'))).toBe(true);
     expect(sourcePaths).not.toContain('server/src/module/saas/saas-visible-text-encoding.spec.ts');
   });
 
-  it('keeps active SaaS source visible text free of mojibake', () => {
-    const sourceFiles = collectActiveSaasSourceFiles();
+  it('keeps active visible text free of Unicode replacement characters', () => {
+    const sourceFiles = collectVisibleTextSourceFiles();
+    const findings = findReplacementCharacterFindings(sourceFiles);
+
+    expect(formatFindings(findings)).toBe('');
+    expect(findings).toEqual([]);
+  });
+
+  it('keeps active visible text free of mojibake', () => {
+    const sourceFiles = collectVisibleTextSourceFiles();
     const findings = findVisibleTextEncodingFindings(sourceFiles);
 
     expect(formatFindings(findings)).toBe('');

@@ -4,7 +4,7 @@ import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../../common/constant';
 import { SystemModuleAccessService, type AssertModuleAccessOptions } from './services/system-module-access.service';
 
-type SystemModuleRouteBinding = {
+export type SystemModuleRouteBinding = {
   prefix: string;
   moduleCode: string;
   tenantScoped: boolean;
@@ -24,7 +24,7 @@ const resolveTaixuSettingSource = (request: Record<string, any>, path: string) =
   return normalizedPath.endsWith('/api/taixu/setting/save') ? request.body?.source : request.query?.source;
 };
 
-const ROUTE_BINDINGS: SystemModuleRouteBinding[] = [
+export const SYSTEM_MODULE_ROUTE_BINDINGS: readonly SystemModuleRouteBinding[] = [
   {
     prefix: '/api/saas/tenant/members',
     moduleCode: 'tenant_saas',
@@ -229,7 +229,7 @@ export class SystemModuleGuard implements CanActivate {
   private matchBinding(path: string): SystemModuleRouteBinding | undefined {
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     const candidatePaths = this.buildCandidatePaths(normalizedPath);
-    return ROUTE_BINDINGS.filter((binding) =>
+    return SYSTEM_MODULE_ROUTE_BINDINGS.filter((binding) =>
       candidatePaths.some((candidatePath) => this.matchesRoutePrefix(candidatePath, binding.prefix)),
     ).sort((left, right) => right.prefix.length - left.prefix.length)[0];
   }

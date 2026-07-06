@@ -42,7 +42,12 @@ describe('BUILT_IN_SYSTEM_MODULES', () => {
     expect(findModule('ai_console').apis).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ method: 'POST', path: '/api/ai/sessions', permissionSlug: 'ai:chat:use' }),
-        expect.objectContaining({ method: 'GET', path: '/api/ai/admin/providers', permissionSlug: 'ai:provider:list' }),
+        expect.objectContaining({
+          method: 'GET',
+          path: '/api/ai/admin/providers/list',
+          permissionSlug: 'ai:provider:list',
+          tenantScoped: true,
+        }),
       ]),
     );
 
@@ -51,6 +56,32 @@ describe('BUILT_IN_SYSTEM_MODULES', () => {
         expect.objectContaining({ method: 'POST', path: '/api/taixu/agent/invoke', tenantScoped: true }),
         expect.objectContaining({ method: 'POST', path: '/api/taixu/retrieval/rag', tenantScoped: true }),
         expect.objectContaining({ method: 'GET', path: '/api/taixu/model/page', tenantScoped: true }),
+      ]),
+    );
+  });
+
+  it('uses real content and ops API routes in built-in manifests', () => {
+    expect(findModule('content_article').apis).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ method: 'GET', path: '/api/article/list', permissionSlug: 'article:list' }),
+        expect.objectContaining({ method: 'POST', path: '/api/article/create', permissionSlug: 'article:create' }),
+        expect.objectContaining({ method: 'PUT', path: '/api/article/update/:id', permissionSlug: 'article:update' }),
+      ]),
+    );
+
+    expect(findModule('ops_monitor').apis).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ method: 'GET', path: '/api/tool/crontab/list', permissionSlug: 'tool:crontab:index' }),
+        expect.objectContaining({
+          method: 'GET',
+          path: '/api/core/logs/getLoginLogPageList',
+          permissionSlug: 'core:logs:login',
+        }),
+        expect.objectContaining({
+          method: 'GET',
+          path: '/api/core/logs/getOperLogPageList',
+          permissionSlug: 'core:logs:Oper',
+        }),
       ]),
     );
   });

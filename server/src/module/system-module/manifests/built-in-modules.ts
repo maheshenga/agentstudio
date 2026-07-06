@@ -72,6 +72,7 @@ export const BUILT_IN_SYSTEM_MODULES: SystemModuleManifest[] = [
     status: 'enabled',
     entryRoute: '/saas-platform/usage',
     sort: 20,
+    routes: ['/api/saas/platform'],
     dependencies: [{ code: 'core_system' }],
     permissions: [
       { slug: 'saas:usage:index' },
@@ -96,6 +97,7 @@ export const BUILT_IN_SYSTEM_MODULES: SystemModuleManifest[] = [
     status: 'enabled',
     entryRoute: '/tenant-saas/usage',
     sort: 30,
+    routes: ['/api/saas/tenant'],
     dependencies: [{ code: 'core_system' }, { code: 'saas_platform' }],
     permissions: [
       { slug: 'tenant:quota:view' },
@@ -127,12 +129,13 @@ export const BUILT_IN_SYSTEM_MODULES: SystemModuleManifest[] = [
     status: 'enabled',
     entryRoute: '/ai/chat',
     sort: 40,
+    routes: ['/api/ai'],
     dependencies: [],
     permissions: [{ slug: 'ai:chat:use' }, { slug: 'ai:provider:list' }, { slug: 'ai:model:list' }],
     apis: [
       { method: 'POST', path: '/api/ai/sessions', permissionSlug: 'ai:chat:use', tenantScoped: true },
-      { method: 'GET', path: '/api/ai/admin/providers', permissionSlug: 'ai:provider:list' },
-      { method: 'GET', path: '/api/ai/admin/models', permissionSlug: 'ai:model:list' },
+      { method: 'GET', path: '/api/ai/admin/providers/list', permissionSlug: 'ai:provider:list', tenantScoped: true },
+      { method: 'GET', path: '/api/ai/admin/models/list', permissionSlug: 'ai:model:list', tenantScoped: true },
     ],
     configSchema: {},
   },
@@ -147,6 +150,7 @@ export const BUILT_IN_SYSTEM_MODULES: SystemModuleManifest[] = [
     status: 'enabled',
     entryRoute: '/dashboard/taixu',
     sort: 50,
+    routes: ['/api/taixu', '/llm/chat', '/image/generate'],
     dependencies: [],
     permissions: [{ slug: 'taixu:workspace:use' }],
     apis: [
@@ -170,9 +174,9 @@ export const BUILT_IN_SYSTEM_MODULES: SystemModuleManifest[] = [
     dependencies: [],
     permissions: [{ slug: 'article:list' }, { slug: 'article:create' }, { slug: 'article:update' }],
     apis: [
-      { method: 'GET', path: '/article', permissionSlug: 'article:list' },
-      { method: 'POST', path: '/article', permissionSlug: 'article:create' },
-      { method: 'PATCH', path: '/article/:id', permissionSlug: 'article:update' },
+      { method: 'GET', path: '/api/article/list', permissionSlug: 'article:list' },
+      { method: 'POST', path: '/api/article/create', permissionSlug: 'article:create' },
+      { method: 'PUT', path: '/api/article/update/:id', permissionSlug: 'article:update' },
     ],
     configSchema: {},
   },
@@ -191,8 +195,8 @@ export const BUILT_IN_SYSTEM_MODULES: SystemModuleManifest[] = [
     permissions: [{ slug: 'tool:crontab:index' }, { slug: 'core:logs:login' }, { slug: 'core:logs:Oper' }],
     apis: [
       { method: 'GET', path: '/api/tool/crontab/list', permissionSlug: 'tool:crontab:index' },
-      { method: 'GET', path: '/api/monitor/loginlog/list', permissionSlug: 'core:logs:login' },
-      { method: 'GET', path: '/api/monitor/operlog/list', permissionSlug: 'core:logs:Oper' },
+      { method: 'GET', path: '/api/core/logs/getLoginLogPageList', permissionSlug: 'core:logs:login' },
+      { method: 'GET', path: '/api/core/logs/getOperLogPageList', permissionSlug: 'core:logs:Oper' },
     ],
     configSchema: {},
   },
