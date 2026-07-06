@@ -17,6 +17,7 @@ import { ChunkFileDto, ChunkMergeFileDto } from './dto/index';
 @Injectable()
 export class UploadService {
   private readonly thunkDir = 'thunk';
+  private readonly safeUploadIdPattern = /^[A-Za-z0-9_-]{6,80}$/;
 
   constructor(
     @InjectRepository(UploadEntity)
@@ -28,6 +29,60 @@ export class UploadService {
 
   private getUploadDir() {
     return path.resolve(process.cwd(), this.config.get('file.uploadDir') || '../upload');
+  }
+
+  private isPathInside(candidatePath: string, rootPath: string) {
+    const resolvedRoot = path.resolve(rootPath);
+    const resolvedCandidate = path.resolve(candidatePath);
+    const root = process.platform === 'win32' ? resolvedRoot.toLowerCase() : resolvedRoot;
+    const candidate =
+      process.platform === 'win32' ? resolvedCandidate.toLowerCase() : resolvedCandidate;
+    const rootWithSep = root.endsWith(path.sep) ? root : `${root}${path.sep}`;
+    return candidate === root || candidate.startsWith(rootWithSep);
+  }
+
+  private resolveUploadPath(...segments: string[]) {
+    const uploadDir = this.getUploadDir();
+    const targetPath = path.resolve(uploadDir, ...segments);
+    if (!this.isPathInside(targetPath, uploadDir)) {
+      throw new BadRequestException('Invalid upload path');
+    }
+    return targetPath;
+  }
+
+  private getSafeUploadId(uploadId: unknown) {
+    const value = String(uploadId || '').trim();
+    if (!this.safeUploadIdPattern.test(value)) {
+      throw new BadRequestException('Invalid upload id');
+    }
+    return value;
+  }
+
+  private getSafeChunkIndex(index: unknown) {
+    const value = Number(index);
+    if (!Number.isInteger(value) || value < 0) {
+      throw new BadRequestException('Invalid chunk index');
+    }
+    return value;
+  }
+
+  private normalizeStoragePath(storagePath: string) {
+    const serveRoot = String(this.config.get('file.serveRoot') || '/profile')
+      .replace(/\\/g, '/')
+      .replace(/^\/+|\/+$/g, '');
+    let value = String(storagePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+    if (serveRoot && value === serveRoot) return '';
+    if (serveRoot && value.startsWith(`${serveRoot}/`)) {
+      value = value.slice(serveRoot.length + 1);
+    }
+    return value;
+  }
+
+  private getChunkFileIndex(fileName: string) {
+    const chunkMatch = /^chunk-(\d+)\.part$/.exec(fileName);
+    if (chunkMatch) return Number(chunkMatch[1]);
+    const legacyIndex = Number(fileName.split('@')[1]);
+    return Number.isInteger(legacyIndex) && legacyIndex >= 0 ? legacyIndex : Number.MAX_SAFE_INTEGER;
   }
 
   /**
@@ -136,11 +191,18 @@ export class UploadService {
    * @returns 操作结果
    */
   async chunkFileUpload(file: Express.Multer.File, body: ChunkFileDto) {
-    const baseDirPath = path.join(this.getUploadDir(), this.thunkDir, body.uploadId);
+    if (!file) throw new BadRequestException('Please select upload file');
+    const uploadId = this.getSafeUploadId(body.uploadId);
+    const chunkIndex = this.getSafeChunkIndex(body.index);
+    const baseDirPath = this.resolveUploadPath(this.thunkDir, uploadId);
     if (!fs.existsSync(baseDirPath)) {
       this.mkdirsSync(baseDirPath);
     }
-    const chunkFilePath = path.join(baseDirPath, `${body.uploadId}${body.fileName}@${body.index}`);
+    const chunkFilePath = this.resolveUploadPath(
+      this.thunkDir,
+      uploadId,
+      `chunk-${chunkIndex}.part`,
+    );
     if (!fs.existsSync(chunkFilePath)) {
       fs.writeFileSync(chunkFilePath, file.buffer);
     }
@@ -154,14 +216,21 @@ export class UploadService {
    * @returns 包含文件名、新文件名、URL 的合并结果
    */
   async chunkMergeFile(body: ChunkMergeFileDto) {
+    let uploadId: string;
+    try {
+      uploadId = this.getSafeUploadId(body.uploadId);
+    } catch {
+      return ResultData.fail(400, 'Invalid upload id');
+    }
+
     const uploadDir = this.getUploadDir();
-    const sourceFilesDir = path.join(uploadDir, this.thunkDir, body.uploadId);
+    const sourceFilesDir = this.resolveUploadPath(this.thunkDir, uploadId);
     if (!fs.existsSync(sourceFilesDir)) {
       return ResultData.fail(500, '文件不存在');
     }
 
     const newFileName = this.getNewFileName(body.fileName);
-    const targetFile = path.join(uploadDir, newFileName);
+    const targetFile = this.resolveUploadPath(newFileName);
     await this.thunkStreamMerge(sourceFilesDir, targetFile);
 
     const serveRoot = this.config.get('file.serveRoot') || '/profile';
@@ -198,7 +267,7 @@ export class UploadService {
     const fileList = fs
       .readdirSync(sourceFilesDir)
       .filter((file) => fs.lstatSync(path.join(sourceFilesDir, file)).isFile())
-      .sort((a, b) => parseInt(a.split('@')[1]) - parseInt(b.split('@')[1]))
+      .sort((a, b) => this.getChunkFileIndex(a) - this.getChunkFileIndex(b))
       .map((name) => ({ name, filePath: path.join(sourceFilesDir, name) }));
 
     const fileWriteStream = fs.createWriteStream(targetFile);
@@ -457,7 +526,34 @@ export class UploadService {
   }
 
   async download(id: number) {
-    return ResultData.ok('ok');
+    const data = await this.uploadRepo.findOne({
+      where: { id, deleteTime: IsNull() },
+    });
+    if (!data) {
+      return ResultData.fail(404, 'Attachment not found');
+    }
+
+    const storagePath = this.normalizeStoragePath(data.storagePath || data.objectName);
+    if (!storagePath) {
+      return ResultData.fail(404, 'Attachment not found');
+    }
+
+    let filePath: string;
+    try {
+      filePath = this.resolveUploadPath(...storagePath.split('/').filter(Boolean));
+    } catch {
+      return ResultData.fail(404, 'Attachment not found');
+    }
+
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+      return ResultData.fail(404, 'Attachment not found');
+    }
+
+    return ResultData.ok({
+      filePath,
+      fileName: data.originName || path.basename(filePath),
+      mimeType: data.mimeType || (mime.lookup(filePath) as string) || 'application/octet-stream',
+    });
   }
 
   async stats() {

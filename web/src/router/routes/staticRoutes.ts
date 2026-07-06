@@ -37,6 +37,18 @@ export const staticRoutes: AppRouteRecordRaw[] = [
     meta: { title: 'menus.forgetPassword.title', isHideTab: true }
   },
   {
+    path: '/privacy-policy',
+    name: 'PrivacyPolicy',
+    component: () => import('@views/legal/privacy-policy.vue'),
+    meta: { title: 'Privacy Policy', isHideTab: true }
+  },
+  {
+    path: '/terms',
+    name: 'TermsOfService',
+    component: () => import('@views/legal/terms.vue'),
+    meta: { title: 'Terms of Service', isHideTab: true }
+  },
+  {
     path: '/403',
     name: 'Exception403',
     component: () => import('@views/exception/403/index.vue'),

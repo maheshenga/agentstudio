@@ -157,12 +157,31 @@ async function bootstrap(): Promise<void> {
       }),
     );
 
+    const cspDisabled = configService.get<boolean>('security.cspDisabled', false);
+    const cspReportOnly = configService.get<boolean>('security.cspReportOnly', true);
+    const cspIsReportOnly = ['development', 'test'].includes(env) ? true : cspReportOnly;
+
     // Web 安全防护
     app.use(
       helmet({
         crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
         crossOriginResourcePolicy: false,
-        contentSecurityPolicy: false,
+        contentSecurityPolicy: cspDisabled
+          ? false
+          : {
+              reportOnly: cspIsReportOnly,
+              directives: {
+                defaultSrc: ["'self'"],
+                baseUri: ["'self'"],
+                objectSrc: ["'none'"],
+                frameAncestors: ["'self'"],
+                imgSrc: ["'self'", 'data:', 'blob:'],
+                scriptSrc: ["'self'", "'unsafe-inline'"],
+                styleSrc: ["'self'", "'unsafe-inline'"],
+                connectSrc: ["'self'", 'http:', 'https:', 'ws:', 'wss:'],
+                fontSrc: ["'self'", 'data:'],
+              },
+            },
       }),
     );
 

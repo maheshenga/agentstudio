@@ -10,12 +10,14 @@ import {
   UploadedFile,
   UseInterceptors,
   HttpCode,
+  Res,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import type { Response } from 'express';
 
 import { UploadService } from './upload.service';
-import { ResultData } from '../../common/utils/result';
+import { ResultData, SUCCESS_CODE } from '../../common/utils/result';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { ChunkFileDto } from './dto/index';
 
@@ -124,8 +126,12 @@ export class AttachmentController {
   @ApiOperation({ summary: '下载附件' })
   @RequirePermission('core:attachment:index')
   @Get('download/:id')
-  download(@Param('id') id: string) {
-    return this.uploadService.download(+id);
+  async download(@Param('id') id: string, @Res() res: Response) {
+    const result = await this.uploadService.download(+id);
+    if (result.code !== SUCCESS_CODE || !result.data?.filePath) {
+      return res.status(result.code || 500).json(result);
+    }
+    return res.download(result.data.filePath, result.data.fileName);
   }
 
   @ApiOperation({ summary: '附件统计' })

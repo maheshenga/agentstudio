@@ -83,8 +83,12 @@
             <ElFormItem prop="agreement" class="signup-form__agreement">
               <ElCheckbox v-model="formData.agreement">
                 {{ copy.agreementPrefix }}
+                <RouterLink class="text-theme signup-form__link" to="/terms">
+                  {{ copy.agreementTerms }}
+                </RouterLink>
+                {{ copy.agreementAnd }}
                 <RouterLink class="text-theme signup-form__link" to="/privacy-policy">
-                  {{ copy.agreementLink }}
+                  {{ copy.agreementPrivacy }}
                 </RouterLink>
               </ElCheckbox>
             </ElFormItem>
@@ -156,7 +160,9 @@
         hasAccount: '已有账号？',
         toLogin: '去登录',
         agreementPrefix: '我已阅读并同意',
-        agreementLink: '《服务协议与隐私政策》',
+        agreementTerms: '《服务协议》',
+        agreementAnd: '和',
+        agreementPrivacy: '《隐私政策》',
         success: '注册成功，请登录并开始使用。',
         placeholder: {
           tenant_name: '请输入租户名称',
@@ -195,7 +201,9 @@
       hasAccount: 'Already have an account? ',
       toLogin: 'Login',
       agreementPrefix: 'I have read and agree to the ',
-      agreementLink: 'Terms and Privacy Policy',
+      agreementTerms: 'Terms of Service',
+      agreementAnd: ' and ',
+      agreementPrivacy: 'Privacy Policy',
       success: 'Signup successful. Please log in to continue.',
       placeholder: {
         tenant_name: 'Enter tenant name',

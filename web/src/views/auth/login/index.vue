@@ -103,12 +103,12 @@
               </ElButton>
             </div>
 
-            <!-- <div class="mt-5 text-sm text-gray-600">
+            <div class="mt-5 text-sm text-gray-600">
               <span>{{ $t('login.noAccount') }}</span>
               <RouterLink class="text-theme" :to="{ name: 'Register' }">{{
                 $t('login.register')
               }}</RouterLink>
-            </div> -->
+            </div>
           </ElForm>
         </div>
       </div>
@@ -182,13 +182,14 @@
   const tenantInputFirstPlaceholder = '请先输入用户名'
   const defaultTenantLabel = '(默认)'
 
+  const demoLoginEnabled = import.meta.env.VITE_DEMO_LOGIN === 'true'
   const formData = reactive({
-    username: 'admin',
-    password: '123456',
-    code: '1234',
+    username: demoLoginEnabled ? import.meta.env.VITE_DEMO_USERNAME || '' : '',
+    password: demoLoginEnabled ? import.meta.env.VITE_DEMO_PASSWORD || '' : '',
+    code: demoLoginEnabled ? import.meta.env.VITE_DEMO_CODE || '' : '',
     uuid: '',
     tenant_id: undefined as number | undefined,
-    rememberPassword: true
+    rememberPassword: demoLoginEnabled
   })
 
   const tenantList = ref<Api.Auth.TenantItem[]>([])
