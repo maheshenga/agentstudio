@@ -21,4 +21,14 @@ describe('verify database init script', () => {
     expect(isSafeDatabaseName('db;drop')).toBe(false);
     expect(isSafeDatabaseName('')).toBe(false);
   });
+
+  it('reports sanitized bootstrap identity counts', () => {
+    const script = readFileSync(join(__dirname, '../../scripts/verify-db-init.cjs'), 'utf8');
+
+    expect(script).toContain("'bootstrap_users'");
+    expect(script).toContain("'bootstrap_roles'");
+    expect(script).toContain("'bootstrap_tenants'");
+    expect(script).toContain("'casbin_rules'");
+    expect(script).toContain('Missing bootstrap verification rows');
+  });
 });
