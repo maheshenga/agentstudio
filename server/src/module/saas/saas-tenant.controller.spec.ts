@@ -182,7 +182,7 @@ describe('SaasTenantController', () => {
       ['plans', 'tenant:billing:view'],
       ['usage', 'tenant:quota:view'],
       ['quotaLedgers', 'tenant:quota:view'],
-      ['modules', 'tenant:billing:view'],
+      ['modules', 'tenant:module:list'],
       ['members', 'tenant:member:index'],
       ['createMember', 'tenant:member:create'],
       ['changeMemberRole', 'tenant:member:create'],

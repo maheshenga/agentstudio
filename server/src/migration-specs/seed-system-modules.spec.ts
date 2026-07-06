@@ -12,6 +12,8 @@ describe('SeedSystemModules1760000000021', () => {
 
     expect(sql).toContain('SystemModules');
     expect(params).toContain('SystemModuleDetail');
+    expect(params).toContain('租户模块');
+    expect(params).not.toContain('绉熸埛妯″潡');
     expect(params).toContain('modules/detail');
     expect(params).toContain('/system/modules/detail');
     expect(sql).toContain("`parent`.`code` = ?");

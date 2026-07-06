@@ -87,7 +87,7 @@ export class SaasTenantController {
   }
 
   @Get('modules')
-  @RequirePermission('tenant:billing:view')
+  @RequirePermission('tenant:module:list')
   @ApiOperation({ summary: 'Get current tenant SaaS modules' })
   async modules() {
     const tenantId = getTenantId();

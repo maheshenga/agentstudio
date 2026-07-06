@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { RequestMethod } from '@nestjs/common';
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
@@ -12,6 +12,7 @@ import { SystemModuleTenantController } from '../system-module/system-module-ten
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 type RouteExpectation = { method: HttpMethod; path: string };
+type RoutePermissionExpectation = RouteExpectation & { permissions: string[] };
 type SeededMenuComponent = { code: string; routePath: string; component: string };
 type MenuSeedLiteral = { code: string; path: string; component: string };
 
@@ -72,6 +73,19 @@ describe('SaaS route consistency', () => {
 
     expect(frontendRoutes).toContainEqual({ method: 'GET', path: '/api/tenant/modules' });
     expect(missingRoutes).toEqual([]);
+  });
+
+  it('keeps SaaS controller permissions backed by seeded menu permissions', () => {
+    const routePermissions = collectBackendRoutePermissions();
+    const seededPermissions = collectSeededPermissionSlugs();
+    const missingPermissions = routePermissions.flatMap((route) =>
+      route.permissions
+        .filter((permission) => /^(saas|tenant):/.test(permission) && !seededPermissions.has(permission))
+        .map((permission) => `${route.method} ${route.path} -> ${permission}`),
+    );
+
+    expect(findRoutePermissions(routePermissions, 'GET', '/api/saas/tenant/modules')).toEqual(['tenant:module:list']);
+    expect(missingPermissions).toEqual([]);
   });
 
   it('keeps seeded SaaS module route paths aligned with tenant/platform route surfaces', () => {
@@ -140,6 +154,55 @@ function collectBackendRoutes(): Set<string> {
   }
 
   return routes;
+}
+
+function collectBackendRoutePermissions(): RoutePermissionExpectation[] {
+  const routes: RoutePermissionExpectation[] = [];
+
+  for (const controller of CONTROLLERS) {
+    const controllerPath = Reflect.getMetadata(PATH_METADATA, controller);
+    const prototype = controller.prototype;
+
+    for (const propertyName of Object.getOwnPropertyNames(prototype)) {
+      if (propertyName === 'constructor') continue;
+
+      const handler = prototype[propertyName];
+      const method = Reflect.getMetadata(METHOD_METADATA, handler) as RequestMethod | undefined;
+      const handlerPath = Reflect.getMetadata(PATH_METADATA, handler);
+      const permissions = Reflect.getMetadata('requirePermission', handler) as string[] | undefined;
+      if (method === undefined || handlerPath === undefined || !permissions?.length) continue;
+
+      const httpMethod = RequestMethod[method] as HttpMethod;
+      for (const path of expandPaths(controllerPath, handlerPath)) {
+        routes.push({ method: httpMethod, path, permissions });
+      }
+    }
+  }
+
+  return routes;
+}
+
+function findRoutePermissions(
+  routes: RoutePermissionExpectation[],
+  method: HttpMethod,
+  path: string,
+): string[] {
+  return routes.find((route) => routeKey(route) === routeKey({ method, path }))?.permissions ?? [];
+}
+
+function collectSeededPermissionSlugs(): Set<string> {
+  const migrationsDir = join(REPO_ROOT, 'server/src/migrations');
+  const slugs = new Set<string>();
+
+  for (const filename of readdirSync(migrationsDir)) {
+    if (!filename.endsWith('.ts')) continue;
+    const source = readFileSync(join(migrationsDir, filename), 'utf8');
+    for (const match of source.matchAll(/['"`]((?:saas|tenant):[a-z0-9:-]+)['"`]/g)) {
+      slugs.add(match[1]);
+    }
+  }
+
+  return slugs;
 }
 
 function extractFrontendRequests(source: string, shouldIncludePath: (path: string) => boolean): RouteExpectation[] {
