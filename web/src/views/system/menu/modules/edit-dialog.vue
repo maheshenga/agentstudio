@@ -174,7 +174,10 @@
   /**
    * 处理自动查找视图文件
    */
-  const modules = import.meta.glob('/src/views/**/*.vue')
+  const modules = import.meta.glob([
+    '/src/views/**/*.vue',
+    '!/src/views/system/menu/modules/edit-dialog.vue'
+  ])
   const getModulesKey = () => {
     return Object.keys(modules).map((item) => item.replace('/src/views/', '/').replace('.vue', ''))
   }
