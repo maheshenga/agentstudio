@@ -12,6 +12,7 @@ import {
 } from '../constants';
 import { SaasOrderEntity } from '../entities/saas-order.entity';
 import { SaasResourcePackOrderEntity } from '../entities/saas-resource-pack-order.entity';
+import { SystemModuleAccessService } from '../../system-module/services/system-module-access.service';
 import { SaasOrderRiskService } from './saas-order-risk.service';
 
 describe('SaasOrderRiskService', () => {
@@ -31,6 +32,17 @@ describe('SaasOrderRiskService', () => {
     update: jest.fn(),
     count: jest.fn(),
   };
+  const systemModuleAccessService = {
+    assertModuleAccess: jest.fn(),
+  };
+
+  const expectResourcePackAccessGate = (tenantId: number) => {
+    expect(systemModuleAccessService.assertModuleAccess).toHaveBeenCalledWith({
+      tenantId,
+      moduleCode: 'tenant_saas',
+      requiredSaasModuleCode: 'resource_pack',
+    });
+  };
 
   beforeEach(async () => {
     jest.resetAllMocks();
@@ -40,6 +52,7 @@ describe('SaasOrderRiskService', () => {
         SaasOrderRiskService,
         { provide: getRepositoryToken(SaasOrderEntity), useValue: planOrderRepo },
         { provide: getRepositoryToken(SaasResourcePackOrderEntity), useValue: resourcePackOrderRepo },
+        { provide: SystemModuleAccessService, useValue: systemModuleAccessService },
       ],
     }).compile();
 
@@ -186,6 +199,7 @@ describe('SaasOrderRiskService', () => {
       closedAt: now,
       closeReason: SAAS_ORDER_CLOSE_REASON_TENANT_CANCELLED,
     });
+    expectResourcePackAccessGate(12);
     expect(resourcePackOrderRepo.update).toHaveBeenCalledWith(
       { tenantId: 12, orderNo: 'RPO1', status: SAAS_ORDER_PENDING, paymentRequestedAt: IsNull() },
       { status: SAAS_ORDER_CLOSED, closedAt: now, closeReason: SAAS_ORDER_CLOSE_REASON_TENANT_CANCELLED },
@@ -242,6 +256,16 @@ describe('SaasOrderRiskService', () => {
     resourcePackOrderRepo.findOne.mockResolvedValue(null);
 
     await expect(service.closeTenantResourcePackOrder(12, 'RPO1')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('checks resource pack access before tenant resource-pack cancellation', async () => {
+    systemModuleAccessService.assertModuleAccess.mockRejectedValueOnce(new BadRequestException('Module disabled'));
+
+    await expect(service.closeTenantResourcePackOrder(12, 'RPO1')).rejects.toThrow('Module disabled');
+
+    expectResourcePackAccessGate(12);
+    expect(resourcePackOrderRepo.update).not.toHaveBeenCalled();
+    expect(resourcePackOrderRepo.findOne).not.toHaveBeenCalled();
   });
 
   it('decorates order close metadata with null fallback', () => {

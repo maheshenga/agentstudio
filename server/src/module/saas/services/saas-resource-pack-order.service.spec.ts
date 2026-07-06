@@ -27,6 +27,14 @@ describe('SaasResourcePackOrderService', () => {
   const systemModuleAccessService = { assertModuleAccess: jest.fn() };
   const saasQuotaService = { grantTenantQuota: jest.fn() };
 
+  const expectResourcePackAccessGate = (tenantId: number) => {
+    expect(systemModuleAccessService.assertModuleAccess).toHaveBeenCalledWith({
+      tenantId,
+      moduleCode: 'tenant_saas',
+      requiredSaasModuleCode: 'resource_pack',
+    });
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
     orderRepo.create.mockImplementation((payload) => payload);
@@ -74,11 +82,7 @@ describe('SaasResourcePackOrderService', () => {
       payment_method: 'alipay',
     });
 
-    expect(systemModuleAccessService.assertModuleAccess).toHaveBeenCalledWith({
-      tenantId: 12,
-      moduleCode: 'tenant_saas',
-      requiredSaasModuleCode: 'resource_pack',
-    });
+    expectResourcePackAccessGate(12);
     expect(packRepo.findOne).toHaveBeenCalledWith({ where: { code: 'tokens_1m', status: 1 } });
     expect(orderRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -301,11 +305,7 @@ describe('SaasResourcePackOrderService', () => {
       service.createTenantOrder(12, { resource_pack_code: 'tokens_1m', payment_method: 'alipay' }),
     ).rejects.toThrow('Module disabled');
 
-    expect(systemModuleAccessService.assertModuleAccess).toHaveBeenCalledWith({
-      tenantId: 12,
-      moduleCode: 'tenant_saas',
-      requiredSaasModuleCode: 'resource_pack',
-    });
+    expectResourcePackAccessGate(12);
     expect(packRepo.findOne).not.toHaveBeenCalled();
     expect(orderRepo.create).not.toHaveBeenCalled();
   });
@@ -373,5 +373,81 @@ describe('SaasResourcePackOrderService', () => {
     orderRepo.findOne.mockResolvedValue({ orderNo: 'RPO1', tenantId: 12, status: 'closed' });
 
     await expect(service.markTenantPaymentRequested(12, 'RPO1')).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('checks resource pack access before reading a tenant order', async () => {
+    systemModuleAccessService.assertModuleAccess.mockRejectedValueOnce(new BadRequestException('Module disabled'));
+
+    await expect(service.findTenantOrder(12, 'RPO1')).rejects.toThrow('Module disabled');
+
+    expectResourcePackAccessGate(12);
+    expect(orderRepo.findOne).not.toHaveBeenCalled();
+  });
+
+  it('checks resource pack access before listing tenant orders', async () => {
+    systemModuleAccessService.assertModuleAccess.mockRejectedValueOnce(new BadRequestException('Module disabled'));
+
+    await expect(service.listTenantOrders(12, { status: 'pending' })).rejects.toThrow('Module disabled');
+
+    expectResourcePackAccessGate(12);
+    expect(orderRepo.findAndCount).not.toHaveBeenCalled();
+  });
+
+  it('checks resource pack access before marking tenant payment requested', async () => {
+    systemModuleAccessService.assertModuleAccess.mockRejectedValueOnce(new BadRequestException('Module disabled'));
+
+    await expect(service.markTenantPaymentRequested(12, 'RPO1')).rejects.toThrow('Module disabled');
+
+    expectResourcePackAccessGate(12);
+    expect(orderRepo.update).not.toHaveBeenCalled();
+    expect(orderRepo.findOne).not.toHaveBeenCalled();
+  });
+
+  it('checks resource pack access before dev payment delivers quota', async () => {
+    txOrderRepo.findOne.mockResolvedValue({
+      orderNo: 'RPO1',
+      tenantId: 12,
+      resourceType: 'tokens',
+      quotaAmount: 1000,
+      status: SAAS_ORDER_PENDING,
+    });
+    systemModuleAccessService.assertModuleAccess.mockRejectedValueOnce(new BadRequestException('Module disabled'));
+
+    await expect(service.confirmDevPayment(12, 'RPO1')).rejects.toThrow('Module disabled');
+
+    expect(txOrderRepo.findOne).toHaveBeenCalledWith({
+      where: { tenantId: 12, orderNo: 'RPO1' },
+      lock: { mode: 'pessimistic_write' },
+    });
+    expectResourcePackAccessGate(12);
+    expect(txOrderRepo.findOne.mock.invocationCallOrder[0]).toBeLessThan(
+      systemModuleAccessService.assertModuleAccess.mock.invocationCallOrder[0],
+    );
+    expect(saasQuotaService.grantTenantQuota).not.toHaveBeenCalled();
+    expect(txOrderRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('checks resource pack access before alipay notify delivers quota', async () => {
+    txOrderRepo.findOne.mockResolvedValue({
+      orderNo: 'RPO1',
+      tenantId: 12,
+      resourceType: 'tokens',
+      quotaAmount: 1000,
+      status: SAAS_ORDER_PENDING,
+    });
+    systemModuleAccessService.assertModuleAccess.mockRejectedValueOnce(new BadRequestException('Module disabled'));
+
+    await expect(service.confirmAlipayPayment('RPO1', 'trade-no')).rejects.toThrow('Module disabled');
+
+    expect(txOrderRepo.findOne).toHaveBeenCalledWith({
+      where: { orderNo: 'RPO1' },
+      lock: { mode: 'pessimistic_write' },
+    });
+    expectResourcePackAccessGate(12);
+    expect(txOrderRepo.findOne.mock.invocationCallOrder[0]).toBeLessThan(
+      systemModuleAccessService.assertModuleAccess.mock.invocationCallOrder[0],
+    );
+    expect(saasQuotaService.grantTenantQuota).not.toHaveBeenCalled();
+    expect(txOrderRepo.save).not.toHaveBeenCalled();
   });
 });

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, LessThanOrEqual, MoreThanOrEqual, Repository } from 'typeorm';
 
 import { Task } from '../../../common/decorators/task.decorator';
+import { SystemModuleAccessService } from '../../system-module/services/system-module-access.service';
 import {
   SAAS_ORDER_CLOSED,
   SAAS_ORDER_CLOSE_REASON_TENANT_CANCELLED,
@@ -59,6 +60,7 @@ export class SaasOrderRiskService {
     private readonly planOrderRepo: Repository<SaasOrderEntity>,
     @InjectRepository(SaasResourcePackOrderEntity)
     private readonly resourcePackOrderRepo: Repository<SaasResourcePackOrderEntity>,
+    private readonly systemModuleAccessService: SystemModuleAccessService,
   ) {}
 
   async closeExpiredPendingOrders(
@@ -127,6 +129,8 @@ export class SaasOrderRiskService {
     orderNo: string,
     now = new Date(),
   ): Promise<SaasResourcePackOrderEntity> {
+    await this.assertTenantResourcePackAccess(tenantId);
+
     const updateResult = await this.resourcePackOrderRepo.update(
       { tenantId, orderNo, status: SAAS_ORDER_PENDING, paymentRequestedAt: IsNull() },
       { status: SAAS_ORDER_CLOSED, closedAt: now, closeReason: SAAS_ORDER_CLOSE_REASON_TENANT_CANCELLED },
@@ -257,6 +261,14 @@ export class SaasOrderRiskService {
   })
   paymentReconciliationOverviewTask() {
     return this.getPaymentReconciliationOverview();
+  }
+
+  private async assertTenantResourcePackAccess(tenantId: number): Promise<void> {
+    await this.systemModuleAccessService.assertModuleAccess({
+      tenantId,
+      moduleCode: 'tenant_saas',
+      requiredSaasModuleCode: 'resource_pack',
+    });
   }
 
   private sumAmount(orders: Array<Partial<SaasOrderEntity> | Partial<SaasResourcePackOrderEntity>>): number {

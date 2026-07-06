@@ -33,11 +33,7 @@ export class SaasResourcePackOrderService {
   ) {}
 
   async createTenantOrder(tenantId: number, dto: CreateResourcePackOrderDto): Promise<SaasResourcePackOrderEntity> {
-    await this.systemModuleAccessService.assertModuleAccess({
-      tenantId,
-      moduleCode: 'tenant_saas',
-      requiredSaasModuleCode: 'resource_pack',
-    });
+    await this.assertTenantResourcePackAccess(tenantId);
 
     const pack = await this.resourcePackRepo.findOne({
       where: {
@@ -68,6 +64,8 @@ export class SaasResourcePackOrderService {
   }
 
   async findTenantOrder(tenantId: number, orderNo: string): Promise<SaasResourcePackOrderEntity | null> {
+    await this.assertTenantResourcePackAccess(tenantId);
+
     return this.resourcePackOrderRepo.findOne({
       where: {
         tenantId,
@@ -81,6 +79,8 @@ export class SaasResourcePackOrderService {
     orderNo: string,
     now = new Date(),
   ): Promise<SaasResourcePackOrderEntity> {
+    await this.assertTenantResourcePackAccess(tenantId);
+
     const updateResult = await this.resourcePackOrderRepo.update(
       { tenantId, orderNo, status: SAAS_ORDER_PENDING },
       { paymentRequestedAt: now },
@@ -99,6 +99,8 @@ export class SaasResourcePackOrderService {
   }
 
   async listTenantOrders(tenantId: number, query: SaasResourcePackOrderListQuery = {}) {
+    await this.assertTenantResourcePackAccess(tenantId);
+
     const { page, limit, skip } = this.resolvePagination(query);
     const where: FindOptionsWhere<SaasResourcePackOrderEntity> = { tenantId };
     if (query.resource_pack_code) {
@@ -214,6 +216,7 @@ export class SaasResourcePackOrderService {
       if (order.status === SAAS_ORDER_PAID && order.deliveredAt) {
         return order;
       }
+      await this.assertTenantResourcePackAccess(order.tenantId);
       if (order.status !== SAAS_ORDER_PENDING) {
         throw new BadRequestException('Only pending resource pack orders can be paid');
       }
@@ -237,6 +240,14 @@ export class SaasResourcePackOrderService {
       );
 
       return orderRepo.save(order);
+    });
+  }
+
+  private async assertTenantResourcePackAccess(tenantId: number): Promise<void> {
+    await this.systemModuleAccessService.assertModuleAccess({
+      tenantId,
+      moduleCode: 'tenant_saas',
+      requiredSaasModuleCode: 'resource_pack',
     });
   }
 
