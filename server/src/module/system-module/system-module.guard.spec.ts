@@ -27,6 +27,87 @@ describe('SystemModuleGuard', () => {
       getHandler: () => handler,
     }) as unknown as ExecutionContext;
 
+  type EntityRecord = Record<string, any>;
+
+  class MemoryRepository<T extends EntityRecord> {
+    public records: T[];
+
+    constructor(seed: T[] = []) {
+      this.records = seed.map((record, index) => ({ id: record.id ?? index + 1, ...record })) as T[];
+    }
+
+    async findOne(options: { where: EntityRecord }) {
+      return this.records.find((record) => this.matchesWhere(record, options.where)) ?? null;
+    }
+
+    async find(options: { where?: EntityRecord } = {}) {
+      if (!options.where) return [...this.records];
+      return this.records.filter((record) => this.matchesWhere(record, options.where));
+    }
+
+    private matchesWhere(record: EntityRecord, where: EntityRecord) {
+      return Object.entries(where).every(([key, expected]) => {
+        if (expected && typeof expected === 'object') {
+          const operatorType = expected.type || expected._type;
+          const operatorValue = expected.value ?? expected._value;
+          if (operatorType === 'isNull') {
+            return record[key] === null || record[key] === undefined;
+          }
+          if (operatorType === 'in') {
+            return (operatorValue as unknown[]).includes(record[key]);
+          }
+        }
+        return record[key] === expected;
+      });
+    }
+  }
+
+  const enabledModule = (code: string) => ({
+    code,
+    name: code,
+    source: 'built_in',
+    version: '1.0.0',
+    description: '',
+    category: '',
+    icon: '',
+    status: 'enabled',
+    entryRoute: '',
+    configSchema: {},
+    healthStatus: 'unknown',
+    sort: 100,
+  });
+
+  const createRealAccessGuard = (
+    options: {
+      saasModuleCodes?: string[];
+      tenantModules?: EntityRecord[];
+      bridgeRows?: EntityRecord[];
+    } = {},
+  ) => {
+    const moduleRepo = new MemoryRepository([enabledModule('taixu_workspace')]);
+    const dependencyRepo = new MemoryRepository([]);
+    const tenantModuleRepo = new MemoryRepository(options.tenantModules || []);
+    const bridgeRepo = new MemoryRepository(options.bridgeRows || []);
+    const saasModuleService = {
+      listTenantModules: jest.fn().mockResolvedValue(
+        (options.saasModuleCodes || []).map((code) => ({
+          code,
+          status: 1,
+        })),
+      ),
+    };
+    const accessService = new SystemModuleAccessService(
+      moduleRepo as any,
+      dependencyRepo as any,
+      tenantModuleRepo as any,
+      bridgeRepo as any,
+      saasModuleService as any,
+    );
+    const guard = new SystemModuleGuard(new Reflector(), accessService);
+
+    return { guard, saasModuleService };
+  };
+
   it('blocks a tenant SaaS route when the system module access gate rejects it', async () => {
     const access = {
       assertModuleAccess: jest.fn().mockRejectedValue(new Error('Module is disabled')),
@@ -280,6 +361,33 @@ describe('SystemModuleGuard', () => {
   });
 
   it.each([
+    ['/api/taixu/llm/chat', ['ai_chat'], true],
+    ['/api/taixu/llm/chat', ['rag'], false],
+    ['/api/taixu/retrieval/rag', ['rag'], true],
+    ['/api/taixu/retrieval/rag', ['ai_chat'], false],
+  ])(
+    'enforces static exact Taixu route %s through the real access service with SaaS modules %p',
+    async (path, saasModuleCodes, shouldAllow) => {
+      const { guard } = createRealAccessGuard({
+        saasModuleCodes: saasModuleCodes as string[],
+      });
+
+      const request = guard.canActivate(
+        createContext(path as string, {
+          userId: 9,
+          tenantId: 23,
+        }),
+      );
+
+      if (shouldAllow) {
+        await expect(request).resolves.toBe(true);
+      } else {
+        await expect(request).rejects.toThrow('Current plan has not enabled this module');
+      }
+    },
+  );
+
+  it.each([
     '/api/taixu/model/page',
     '/api/taixu/model/list',
     '/api/taixu/history/records',
@@ -310,6 +418,73 @@ describe('SystemModuleGuard', () => {
       requiredAnySaasModuleCodes: ['ai_chat', 'rag'],
     });
   });
+
+  it('denies shared Taixu routes through the real access service when AI and RAG are both missing', async () => {
+    const { guard, saasModuleService } = createRealAccessGuard();
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/taixu/model/page', {
+          userId: 9,
+          tenantId: 23,
+        }),
+      ),
+    ).rejects.toThrow('Current plan has not enabled this module');
+
+    expect(saasModuleService.listTenantModules).toHaveBeenCalledWith(23);
+  });
+
+  it('allows shared Taixu routes through the real access service when RAG is enabled', async () => {
+    const { guard, saasModuleService } = createRealAccessGuard({
+      saasModuleCodes: ['rag'],
+    });
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/taixu/model/page', {
+          userId: 9,
+          tenantId: 23,
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(saasModuleService.listTenantModules).toHaveBeenCalledWith(23);
+  });
+
+  it('allows shared Taixu routes through the real access service when AI chat is enabled', async () => {
+    const { guard, saasModuleService } = createRealAccessGuard({
+      saasModuleCodes: ['ai_chat'],
+    });
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/taixu/model/page', {
+          userId: 9,
+          tenantId: 23,
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(saasModuleService.listTenantModules).toHaveBeenCalledWith(23);
+  });
+
+  it.each(['/api/taixu/model/page', '/api/taixu/llm/chat'])(
+    'does not let explicit tenant module grants bypass SaaS feature gates for %s',
+    async (path) => {
+      const { guard } = createRealAccessGuard({
+        tenantModules: [{ tenantId: 23, moduleCode: 'taixu_workspace', enabled: 1 }],
+      });
+
+      await expect(
+        guard.canActivate(
+          createContext(path, {
+            userId: 9,
+            tenantId: 23,
+          }),
+        ),
+      ).rejects.toThrow('Current plan has not enabled this module');
+    },
+  );
 
   it.each([
     ['/api/taixu/setting/detail', { query: { source: 'llm' } }, 'ai_chat'],
@@ -504,6 +679,73 @@ describe('SystemModuleGuard', () => {
     });
   });
 
+  it('denies LLM setting routes through the real access service when only RAG is enabled', async () => {
+    const { guard } = createRealAccessGuard({
+      saasModuleCodes: ['rag'],
+    });
+
+    await expect(
+      guard.canActivate(
+        createContext(
+          '/api/taixu/setting/detail',
+          {
+            userId: 9,
+            tenantId: 23,
+          },
+          jest.fn(),
+          { query: { source: 'llm' } },
+        ),
+      ),
+    ).rejects.toThrow('Current plan has not enabled this module');
+  });
+
+  it('denies RAG setting routes through the real access service when only AI chat is enabled', async () => {
+    const { guard } = createRealAccessGuard({
+      saasModuleCodes: ['ai_chat'],
+    });
+
+    await expect(
+      guard.canActivate(
+        createContext(
+          '/api/taixu/setting/list',
+          {
+            userId: 9,
+            tenantId: 23,
+          },
+          jest.fn(),
+          { query: { source: 'rag' } },
+        ),
+      ),
+    ).rejects.toThrow('Current plan has not enabled this module');
+  });
+
+  it.each([
+    ['/api/taixu/setting/detail', { query: { source: 'llm' } }, ['ai_chat']],
+    ['/api/taixu/setting/list', { query: { source: 'rag' } }, ['rag']],
+    ['/api/taixu/setting/save', { body: { source: 'rag' } }, ['rag']],
+  ])(
+    'allows matching Taixu setting source %s through the real access service',
+    async (path, request, saasModuleCodes) => {
+      const { guard } = createRealAccessGuard({
+        saasModuleCodes: saasModuleCodes as string[],
+      });
+
+      await expect(
+        guard.canActivate(
+          createContext(
+            path as string,
+            {
+              userId: 9,
+              tenantId: 23,
+            },
+            jest.fn(),
+            request as { query?: Record<string, any>; body?: Record<string, any> },
+          ),
+        ),
+      ).resolves.toBe(true);
+    },
+  );
+
   it('keeps generic Taixu workspace routes on the broad workspace gate', async () => {
     const access = {
       assertModuleAccess: jest.fn().mockResolvedValue(true),
@@ -524,6 +766,23 @@ describe('SystemModuleGuard', () => {
       tenantId: 23,
       userId: 9,
     });
+  });
+
+  it('allows broad Taixu home routes through explicit tenant system-module entitlement', async () => {
+    const { guard, saasModuleService } = createRealAccessGuard({
+      tenantModules: [{ tenantId: 23, moduleCode: 'taixu_workspace', enabled: 1 }],
+    });
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/taixu/home/current_weather', {
+          userId: 9,
+          tenantId: 23,
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(saasModuleService.listTenantModules).not.toHaveBeenCalled();
   });
 
   it('keeps Taixu user routes on the broad workspace gate', async () => {
