@@ -35,6 +35,10 @@ describe('SaasResourcePackOrderService', () => {
     });
   };
 
+  const expectResourcePackAccessGateNotChecked = () => {
+    expect(systemModuleAccessService.assertModuleAccess).not.toHaveBeenCalled();
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
     orderRepo.create.mockImplementation((payload) => payload);
@@ -187,6 +191,7 @@ describe('SaasResourcePackOrderService', () => {
     expect(order.status).toBe(SAAS_ORDER_PAID);
     expect(saasQuotaService.grantTenantQuota).not.toHaveBeenCalled();
     expect(txOrderRepo.save).not.toHaveBeenCalled();
+    expectResourcePackAccessGateNotChecked();
   });
 
   it('rejects non-pending resource pack orders that are not already delivered', async () => {
@@ -229,6 +234,7 @@ describe('SaasResourcePackOrderService', () => {
       skip: 10,
       take: 10,
     });
+    expectResourcePackAccessGateNotChecked();
   });
 
   it('lists tenant resource pack orders scoped to the current tenant', async () => {
@@ -296,6 +302,7 @@ describe('SaasResourcePackOrderService', () => {
         where: { orderNo: 'RPO20260703120000001000001', closeReason: 'timeout' },
       }),
     );
+    expectResourcePackAccessGateNotChecked();
   });
 
   it('checks resource pack module access before looking up packs', async () => {
@@ -330,6 +337,7 @@ describe('SaasResourcePackOrderService', () => {
     await expect(service.listPlatformOrders({ tenant_id: 'abc' })).rejects.toBeInstanceOf(BadRequestException);
 
     expect(orderRepo.findAndCount).not.toHaveBeenCalled();
+    expectResourcePackAccessGateNotChecked();
   });
 
   it('finds a platform resource pack order by order number', async () => {
@@ -347,6 +355,7 @@ describe('SaasResourcePackOrderService', () => {
     expect(orderRepo.findOne).toHaveBeenCalledWith({
       where: { orderNo: 'RPO20260703120000001000001' },
     });
+    expectResourcePackAccessGateNotChecked();
   });
 
   it('marks a tenant pending resource pack order as payment requested', async () => {

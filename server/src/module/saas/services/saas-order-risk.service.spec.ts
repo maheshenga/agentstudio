@@ -44,6 +44,10 @@ describe('SaasOrderRiskService', () => {
     });
   };
 
+  const expectResourcePackAccessGateNotChecked = () => {
+    expect(systemModuleAccessService.assertModuleAccess).not.toHaveBeenCalled();
+  };
+
   beforeEach(async () => {
     jest.resetAllMocks();
 
@@ -92,6 +96,7 @@ describe('SaasOrderRiskService', () => {
       { orderNo: expect.any(Object), status: SAAS_ORDER_PENDING, paymentRequestedAt: IsNull() },
       { status: SAAS_ORDER_CLOSED, closedAt: now, closeReason: SAAS_ORDER_CLOSE_REASON_TIMEOUT },
     );
+    expectResourcePackAccessGateNotChecked();
   });
 
   it('does not update when no stale pending orders exist', async () => {
@@ -105,6 +110,7 @@ describe('SaasOrderRiskService', () => {
     });
     expect(planOrderRepo.update).not.toHaveBeenCalled();
     expect(resourcePackOrderRepo.update).not.toHaveBeenCalled();
+    expectResourcePackAccessGateNotChecked();
   });
 
   it('closes a tenant pending plan order', async () => {
@@ -133,6 +139,7 @@ describe('SaasOrderRiskService', () => {
       planOrderRepo.findOne.mock.invocationCallOrder[0],
     );
     expect(planOrderRepo.save).not.toHaveBeenCalled();
+    expectResourcePackAccessGateNotChecked();
   });
 
   it('returns already closed tenant orders idempotently', async () => {
@@ -304,6 +311,7 @@ describe('SaasOrderRiskService', () => {
         closedAt: MoreThanOrEqual(new Date('2026-06-26T12:00:00.000Z')),
       },
     });
+    expectResourcePackAccessGateNotChecked();
   });
 
   it('summarizes stale payment requested orders for reconciliation', async () => {
@@ -386,5 +394,6 @@ describe('SaasOrderRiskService', () => {
       order: { paymentRequestedAt: 'ASC', id: 'DESC' },
       take: 20,
     });
+    expectResourcePackAccessGateNotChecked();
   });
 });
