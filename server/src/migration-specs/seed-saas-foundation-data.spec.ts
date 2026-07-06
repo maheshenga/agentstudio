@@ -1,6 +1,18 @@
 import { SeedSaasFoundationData1760000000001 } from '../migrations/1760000000001-SeedSaasFoundationData';
 
 describe('SeedSaasFoundationData1760000000001', () => {
+  it('does not write resource pack rows before the resource pack table migration runs', async () => {
+    const queryRunner = {
+      query: jest.fn().mockResolvedValue(undefined),
+    };
+
+    await new SeedSaasFoundationData1760000000001().up(queryRunner as any);
+
+    const sql = queryRunner.query.mock.calls.map(([statement]) => statement).join('\n');
+
+    expect(sql).not.toContain('INSERT INTO `saas_resource_pack`');
+  });
+
   it('seeds the SaaS platform permissions required by platform operations APIs', async () => {
     const queryRunner = {
       query: jest.fn().mockResolvedValue(undefined),
@@ -13,8 +25,6 @@ describe('SeedSaasFoundationData1760000000001', () => {
     expect(params).toContain('/saas-platform');
     expect(params).toContain('saas:order:list');
     expect(params).toContain('saas:subscription:list');
-    expect(params).toContain('ai_calls_1k');
-    expect(params).toContain('tokens_1m');
     expect(params).toContain('saas:resource-pack:index');
     expect(params).toContain('tenant:resource-pack:view');
     expect(params).toContain('/saas/platform/resource-pack');
