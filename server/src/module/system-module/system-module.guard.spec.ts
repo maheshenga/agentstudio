@@ -79,12 +79,13 @@ describe('SystemModuleGuard', () => {
 
   const createRealAccessGuard = (
     options: {
+      modules?: EntityRecord[];
       saasModuleCodes?: string[];
       tenantModules?: EntityRecord[];
       bridgeRows?: EntityRecord[];
     } = {},
   ) => {
-    const moduleRepo = new MemoryRepository([enabledModule('taixu_workspace')]);
+    const moduleRepo = new MemoryRepository(options.modules || [enabledModule('taixu_workspace')]);
     const dependencyRepo = new MemoryRepository([]);
     const tenantModuleRepo = new MemoryRepository(options.tenantModules || []);
     const bridgeRepo = new MemoryRepository(options.bridgeRows || []);
@@ -107,6 +108,18 @@ describe('SystemModuleGuard', () => {
 
     return { guard, saasModuleService };
   };
+
+  const createRealTenantSaasGuard = (
+    options: {
+      saasModuleCodes?: string[];
+      tenantModules?: EntityRecord[];
+      bridgeRows?: EntityRecord[];
+    } = {},
+  ) =>
+    createRealAccessGuard({
+      ...options,
+      modules: [enabledModule('tenant_saas')],
+    });
 
   it('blocks a tenant SaaS route when the system module access gate rejects it', async () => {
     const access = {
@@ -220,6 +233,84 @@ describe('SystemModuleGuard', () => {
       tenantId: 23,
       userId: 9,
     });
+  });
+
+  it('allows broad tenant SaaS routes through the real access service without purchased modules', async () => {
+    const { guard, saasModuleService } = createRealTenantSaasGuard();
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/saas/tenant/usage', {
+          userId: 9,
+          tenantId: 23,
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(saasModuleService.listTenantModules).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['/api/saas/tenant/members', ['member_management'], true],
+    ['/api/saas/tenant/members', ['resource_pack'], false],
+    ['/api/saas/tenant/resource-pack-orders', ['resource_pack'], true],
+    ['/api/saas/tenant/resource-pack-orders', ['member_management'], false],
+    ['/api/saas/tenant/resource-packs', ['resource_pack'], true],
+    ['/api/saas/tenant/resource-packs', ['member_management'], false],
+  ])(
+    'enforces tenant SaaS feature route %s through the real access service with SaaS modules %p',
+    async (path, saasModuleCodes, shouldAllow) => {
+      const { guard, saasModuleService } = createRealTenantSaasGuard({
+        saasModuleCodes: saasModuleCodes as string[],
+      });
+
+      const request = guard.canActivate(
+        createContext(path as string, {
+          userId: 9,
+          tenantId: 23,
+        }),
+      );
+
+      if (shouldAllow) {
+        await expect(request).resolves.toBe(true);
+      } else {
+        await expect(request).rejects.toThrow('Current plan has not enabled this module');
+      }
+      expect(saasModuleService.listTenantModules).toHaveBeenCalledWith(23);
+    },
+  );
+
+  it.each(['/api/saas/tenant/members', '/api/saas/tenant/resource-pack-orders'])(
+    'does not let explicit tenant_saas grants bypass SaaS feature gates for %s',
+    async (path) => {
+      const { guard } = createRealTenantSaasGuard({
+        tenantModules: [{ tenantId: 23, moduleCode: 'tenant_saas', enabled: 1 }],
+      });
+
+      await expect(
+        guard.canActivate(
+          createContext(path, {
+            userId: 9,
+            tenantId: 23,
+          }),
+        ),
+      ).rejects.toThrow('Current plan has not enabled this module');
+    },
+  );
+
+  it('keeps tenant resource-pack feature bindings scoped to route segment boundaries through the real access service', async () => {
+    const { guard, saasModuleService } = createRealTenantSaasGuard();
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/saas/tenant/resource-pack-orders-admin', {
+          userId: 9,
+          tenantId: 23,
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(saasModuleService.listTenantModules).not.toHaveBeenCalled();
   });
 
   it('passes AI chat SaaS feature requirements for tenant chat routes', async () => {
