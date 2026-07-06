@@ -121,6 +121,18 @@ describe('SystemModuleGuard', () => {
       modules: [enabledModule('tenant_saas')],
     });
 
+  const createRealAiConsoleGuard = (
+    options: {
+      saasModuleCodes?: string[];
+      tenantModules?: EntityRecord[];
+      bridgeRows?: EntityRecord[];
+    } = {},
+  ) =>
+    createRealAccessGuard({
+      ...options,
+      modules: [enabledModule('ai_console')],
+    });
+
   it('blocks a tenant SaaS route when the system module access gate rejects it', async () => {
     const access = {
       assertModuleAccess: jest.fn().mockRejectedValue(new Error('Module is disabled')),
@@ -334,6 +346,66 @@ describe('SystemModuleGuard', () => {
       userId: 9,
       requiredSaasModuleCode: 'ai_chat',
     });
+  });
+
+  it.each([
+    ['/api/ai/sessions', ['ai_chat'], true],
+    ['/api/ai/sessions', ['rag'], false],
+    ['/api/ai/models/options', ['ai_chat'], true],
+    ['/api/ai/agents/options', ['ai_chat'], true],
+  ])(
+    'enforces AI console feature route %s through the real access service with SaaS modules %p',
+    async (path, saasModuleCodes, shouldAllow) => {
+      const { guard, saasModuleService } = createRealAiConsoleGuard({
+        saasModuleCodes: saasModuleCodes as string[],
+      });
+
+      const request = guard.canActivate(
+        createContext(path as string, {
+          userId: 9,
+          tenantId: 23,
+        }),
+      );
+
+      if (shouldAllow) {
+        await expect(request).resolves.toBe(true);
+      } else {
+        await expect(request).rejects.toThrow('Current plan has not enabled this module');
+      }
+      expect(saasModuleService.listTenantModules).toHaveBeenCalledWith(23);
+    },
+  );
+
+  it('does not let explicit ai_console grants bypass AI chat feature gates', async () => {
+    const { guard } = createRealAiConsoleGuard({
+      tenantModules: [{ tenantId: 23, moduleCode: 'ai_console', enabled: 1 }],
+    });
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/ai/sessions', {
+          userId: 9,
+          tenantId: 23,
+        }),
+      ),
+    ).rejects.toThrow('Current plan has not enabled this module');
+  });
+
+  it('keeps AI feature bindings scoped to route segment boundaries through the real access service', async () => {
+    const { guard, saasModuleService } = createRealAiConsoleGuard({
+      tenantModules: [{ tenantId: 23, moduleCode: 'ai_console', enabled: 1 }],
+    });
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/ai/sessions-archive', {
+          userId: 9,
+          tenantId: 23,
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(saasModuleService.listTenantModules).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -965,6 +1037,55 @@ describe('SystemModuleGuard', () => {
       tenantId: 23,
       userId: 9,
     });
+  });
+
+  it('denies broad AI admin routes through the real access service without AI console entitlement', async () => {
+    const { guard, saasModuleService } = createRealAiConsoleGuard();
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/ai/admin/providers/list', {
+          userId: 9,
+          tenantId: 23,
+        }),
+      ),
+    ).rejects.toThrow('Tenant has not enabled this module');
+
+    expect(saasModuleService.listTenantModules).toHaveBeenCalledWith(23);
+  });
+
+  it('allows broad AI admin routes through the real access service with AI chat bridge entitlement', async () => {
+    const { guard, saasModuleService } = createRealAiConsoleGuard({
+      saasModuleCodes: ['ai_chat'],
+    });
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/ai/admin/providers/list', {
+          userId: 9,
+          tenantId: 23,
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(saasModuleService.listTenantModules).toHaveBeenCalledWith(23);
+  });
+
+  it('allows broad AI admin routes through explicit tenant ai_console entitlement', async () => {
+    const { guard, saasModuleService } = createRealAiConsoleGuard({
+      tenantModules: [{ tenantId: 23, moduleCode: 'ai_console', enabled: 1 }],
+    });
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/ai/admin/providers/list', {
+          userId: 9,
+          tenantId: 23,
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(saasModuleService.listTenantModules).not.toHaveBeenCalled();
   });
 
   it('matches managed routes behind a deployment prefix', async () => {
