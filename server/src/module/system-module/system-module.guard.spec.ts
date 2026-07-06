@@ -272,6 +272,38 @@ describe('SystemModuleGuard', () => {
     });
   });
 
+  it.each([
+    '/api/taixu/model/page',
+    '/api/taixu/model/list',
+    '/api/taixu/history/records',
+    '/api/taixu/history/update',
+    '/api/taixu/memory/details',
+    '/api/taixu/memory/download',
+    '/api/taixu/setting/list',
+    '/api/taixu/setting/save',
+  ])('passes any AI/RAG SaaS feature requirements for shared Taixu route %s', async (path) => {
+    const access = {
+      assertModuleAccess: jest.fn().mockResolvedValue(true),
+    };
+    const guard = new SystemModuleGuard(new Reflector(), access as unknown as SystemModuleAccessService);
+
+    await expect(
+      guard.canActivate(
+        createContext(path, {
+          userId: 9,
+          tenantId: 23,
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(access.assertModuleAccess).toHaveBeenCalledWith({
+      moduleCode: 'taixu_workspace',
+      tenantId: 23,
+      userId: 9,
+      requiredAnySaasModuleCodes: ['ai_chat', 'rag'],
+    });
+  });
+
   it('keeps generic Taixu workspace routes on the broad workspace gate', async () => {
     const access = {
       assertModuleAccess: jest.fn().mockResolvedValue(true),
@@ -280,7 +312,7 @@ describe('SystemModuleGuard', () => {
 
     await expect(
       guard.canActivate(
-        createContext('/api/taixu/model/page', {
+        createContext('/api/taixu/home/current_weather', {
           userId: 9,
           tenantId: 23,
         }),
@@ -293,6 +325,53 @@ describe('SystemModuleGuard', () => {
       userId: 9,
     });
   });
+
+  it('keeps Taixu user routes on the broad workspace gate', async () => {
+    const access = {
+      assertModuleAccess: jest.fn().mockResolvedValue(true),
+    };
+    const guard = new SystemModuleGuard(new Reflector(), access as unknown as SystemModuleAccessService);
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/taixu/user/page', {
+          userId: 9,
+          tenantId: 23,
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(access.assertModuleAccess).toHaveBeenCalledWith({
+      moduleCode: 'taixu_workspace',
+      tenantId: 23,
+      userId: 9,
+    });
+  });
+
+  it.each(['/api/taixu/modeling/page', '/api/taixu/settings/list'])(
+    'keeps shared Taixu feature bindings scoped to route segment boundaries for %s',
+    async (path) => {
+      const access = {
+        assertModuleAccess: jest.fn().mockResolvedValue(true),
+      };
+      const guard = new SystemModuleGuard(new Reflector(), access as unknown as SystemModuleAccessService);
+
+      await expect(
+        guard.canActivate(
+          createContext(path, {
+            userId: 9,
+            tenantId: 23,
+          }),
+        ),
+      ).resolves.toBe(true);
+
+      expect(access.assertModuleAccess).toHaveBeenCalledWith({
+        moduleCode: 'taixu_workspace',
+        tenantId: 23,
+        userId: 9,
+      });
+    },
+  );
 
   it('keeps Taixu feature bindings scoped to route segment boundaries', async () => {
     const access = {

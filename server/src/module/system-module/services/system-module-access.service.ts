@@ -17,6 +17,7 @@ export interface AssertModuleAccessOptions {
   userPermissions?: string[];
   saasModuleCodes?: string[];
   requiredSaasModuleCode?: string;
+  requiredAnySaasModuleCodes?: string[];
 }
 
 const BASELINE_TENANT_SYSTEM_MODULES = new Set(['tenant_saas']);
@@ -49,14 +50,22 @@ export class SystemModuleAccessService {
     await this.assertDependenciesEnabled(options.moduleCode);
 
     if (options.tenantId !== undefined) {
+      const requiredAnySaasModuleCodes = (options.requiredAnySaasModuleCodes || []).filter(Boolean);
       const tenantSaasModuleCodes =
-        options.requiredSaasModuleCode || options.saasModuleCodes
+        options.requiredSaasModuleCode || requiredAnySaasModuleCodes.length || options.saasModuleCodes
           ? options.saasModuleCodes ?? (await this.loadTenantSaasModuleCodes(options.tenantId))
           : undefined;
 
       if (
         options.requiredSaasModuleCode &&
         !(tenantSaasModuleCodes || []).includes(options.requiredSaasModuleCode)
+      ) {
+        throw new BadRequestException('Current plan has not enabled this module');
+      }
+
+      if (
+        requiredAnySaasModuleCodes.length &&
+        !requiredAnySaasModuleCodes.some((code) => (tenantSaasModuleCodes || []).includes(code))
       ) {
         throw new BadRequestException('Current plan has not enabled this module');
       }

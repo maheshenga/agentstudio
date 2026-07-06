@@ -249,6 +249,52 @@ describe('SystemModuleAccessService', () => {
     ).rejects.toThrow('Current plan has not enabled this module');
   });
 
+  it('allows access when any required SaaS feature is present', async () => {
+    const { service } = createService({
+      modules: [enabledModule('taixu_workspace')],
+    });
+
+    await expect(
+      service.assertModuleAccess({
+        tenantId: 10,
+        moduleCode: 'taixu_workspace',
+        requiredAnySaasModuleCodes: ['ai_chat', 'rag'],
+        saasModuleCodes: ['rag'],
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it('denies access when all required-any SaaS features are missing', async () => {
+    const { service } = createService({
+      modules: [enabledModule('taixu_workspace')],
+    });
+
+    await expect(
+      service.assertModuleAccess({
+        tenantId: 10,
+        moduleCode: 'taixu_workspace',
+        requiredAnySaasModuleCodes: ['ai_chat', 'rag'],
+        saasModuleCodes: ['member_management'],
+      }),
+    ).rejects.toThrow('Current plan has not enabled this module');
+  });
+
+  it('does not let an explicit tenant module bypass required-any SaaS feature gates', async () => {
+    const { service } = createService({
+      modules: [enabledModule('taixu_workspace')],
+      tenantModules: [{ tenantId: 10, moduleCode: 'taixu_workspace', enabled: 1 }],
+      saasModuleCodes: ['member_management'],
+    });
+
+    await expect(
+      service.assertModuleAccess({
+        tenantId: 10,
+        moduleCode: 'taixu_workspace',
+        requiredAnySaasModuleCodes: ['ai_chat', 'rag'],
+      }),
+    ).rejects.toThrow('Current plan has not enabled this module');
+  });
+
   it('allows tenant SaaS self-service before the tenant has purchased modules', async () => {
     const { service, saasModuleService } = createService({
       modules: [enabledModule('tenant_saas')],

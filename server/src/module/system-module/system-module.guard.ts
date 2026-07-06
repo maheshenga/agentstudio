@@ -9,7 +9,10 @@ type SystemModuleRouteBinding = {
   moduleCode: string;
   tenantScoped: boolean;
   requiredSaasModuleCode?: string;
+  requiredAnySaasModuleCodes?: string[];
 };
+
+const TAIXU_SHARED_SAAS_MODULE_CODES = ['ai_chat', 'rag'];
 
 const ROUTE_BINDINGS: SystemModuleRouteBinding[] = [
   {
@@ -136,6 +139,30 @@ const ROUTE_BINDINGS: SystemModuleRouteBinding[] = [
     tenantScoped: true,
     requiredSaasModuleCode: 'rag',
   },
+  {
+    prefix: '/api/taixu/model',
+    moduleCode: 'taixu_workspace',
+    tenantScoped: true,
+    requiredAnySaasModuleCodes: TAIXU_SHARED_SAAS_MODULE_CODES,
+  },
+  {
+    prefix: '/api/taixu/history',
+    moduleCode: 'taixu_workspace',
+    tenantScoped: true,
+    requiredAnySaasModuleCodes: TAIXU_SHARED_SAAS_MODULE_CODES,
+  },
+  {
+    prefix: '/api/taixu/memory',
+    moduleCode: 'taixu_workspace',
+    tenantScoped: true,
+    requiredAnySaasModuleCodes: TAIXU_SHARED_SAAS_MODULE_CODES,
+  },
+  {
+    prefix: '/api/taixu/setting',
+    moduleCode: 'taixu_workspace',
+    tenantScoped: true,
+    requiredAnySaasModuleCodes: TAIXU_SHARED_SAAS_MODULE_CODES,
+  },
   { prefix: '/api/taixu', moduleCode: 'taixu_workspace', tenantScoped: true },
 ];
 
@@ -174,6 +201,9 @@ export class SystemModuleGuard implements CanActivate {
     };
     if (binding.requiredSaasModuleCode) {
       accessOptions.requiredSaasModuleCode = binding.requiredSaasModuleCode;
+    }
+    if (binding.requiredAnySaasModuleCodes?.length) {
+      accessOptions.requiredAnySaasModuleCodes = binding.requiredAnySaasModuleCodes;
     }
 
     await this.accessService.assertModuleAccess(accessOptions);
