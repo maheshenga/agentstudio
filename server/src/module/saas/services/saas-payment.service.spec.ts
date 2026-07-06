@@ -1,6 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createSign, createVerify, generateKeyPairSync } from 'crypto';
+import { createSign, createVerify, generateKeyPairSync, type KeyObject } from 'crypto';
 
 import { SAAS_ORDER_PAID, SAAS_ORDER_PENDING } from '../constants';
 import { SaasOrderService } from './saas-order.service';
@@ -299,6 +299,130 @@ describe('SaasPaymentService', () => {
     await expect(service.verifyAlipayNotify({ ...body, sign })).resolves.toBe(true);
   });
 
+  it('accepts a paid Alipay notify only when signature, app, order, status, and amount match', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+    });
+    paymentConfigService.resolveAlipayConfig.mockResolvedValue({
+      enabled: true,
+      appId: '2026070200000001',
+      privateKey: 'unused-private-key',
+      publicKey: publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+      notifyUrl: 'http://127.0.0.1:8181/api/saas/payment/alipay/notify',
+      returnUrl: 'http://127.0.0.1:5731/#/tenant-saas/plan',
+      gatewayUrl: 'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+      source: 'database',
+    });
+    const body = signAlipayNotify(
+      {
+        app_id: '2026070200000001',
+        out_trade_no: 'SO20260702000000001000001',
+        trade_no: '2026070222000000000001',
+        trade_status: 'TRADE_SUCCESS',
+        total_amount: '990.00',
+        sign_type: 'RSA2',
+      },
+      privateKey,
+    );
+
+    await expect(
+      service.verifyAlipayPaidNotify(body, {
+        orderNo: 'SO20260702000000001000001',
+        amountCents: 99000,
+      }),
+    ).resolves.toEqual({
+      valid: true,
+      tradeNo: '2026070222000000000001',
+    });
+  });
+
+  it.each([
+    ['mismatched app id', { app_id: 'wrong-app' }, 'app_id_mismatch'],
+    ['unpaid trade status', { trade_status: 'WAIT_BUYER_PAY' }, 'trade_not_paid'],
+    ['mismatched order number', { out_trade_no: 'SO20260702000000001000999' }, 'order_mismatch'],
+    ['mismatched amount', { total_amount: '9.90' }, 'amount_mismatch'],
+    ['malformed amount', { total_amount: 'not-a-number' }, 'amount_mismatch'],
+  ])('rejects paid Alipay notify validation for %s', async (_name, overrides, reason) => {
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+    });
+    paymentConfigService.resolveAlipayConfig.mockResolvedValue({
+      enabled: true,
+      appId: '2026070200000001',
+      privateKey: 'unused-private-key',
+      publicKey: publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+      notifyUrl: 'http://127.0.0.1:8181/api/saas/payment/alipay/notify',
+      returnUrl: 'http://127.0.0.1:5731/#/tenant-saas/plan',
+      gatewayUrl: 'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+      source: 'database',
+    });
+    const body = signAlipayNotify(
+      {
+        app_id: '2026070200000001',
+        out_trade_no: 'SO20260702000000001000001',
+        trade_no: '2026070222000000000001',
+        trade_status: 'TRADE_SUCCESS',
+        total_amount: '990.00',
+        sign_type: 'RSA2',
+        ...overrides,
+      },
+      privateKey,
+    );
+
+    await expect(
+      service.verifyAlipayPaidNotify(body, {
+        orderNo: 'SO20260702000000001000001',
+        amountCents: 99000,
+      }),
+    ).resolves.toEqual({
+      valid: false,
+      reason,
+    });
+  });
+
+  it('rejects paid Alipay notify validation when the signature is invalid', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+    });
+    paymentConfigService.resolveAlipayConfig.mockResolvedValue({
+      enabled: true,
+      appId: '2026070200000001',
+      privateKey: 'unused-private-key',
+      publicKey: publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+      notifyUrl: 'http://127.0.0.1:8181/api/saas/payment/alipay/notify',
+      returnUrl: 'http://127.0.0.1:5731/#/tenant-saas/plan',
+      gatewayUrl: 'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+      source: 'database',
+    });
+    const body = signAlipayNotify(
+      {
+        app_id: '2026070200000001',
+        out_trade_no: 'SO20260702000000001000001',
+        trade_no: '2026070222000000000001',
+        trade_status: 'TRADE_SUCCESS',
+        total_amount: '990.00',
+        sign_type: 'RSA2',
+      },
+      privateKey,
+    );
+
+    await expect(
+      service.verifyAlipayPaidNotify(
+        {
+          ...body,
+          total_amount: '990.01',
+        },
+        {
+          orderNo: 'SO20260702000000001000001',
+          amountCents: 99000,
+        },
+      ),
+    ).resolves.toEqual({
+      valid: false,
+      reason: 'invalid_signature',
+    });
+  });
+
   it('rejects Alipay notify payloads without a usable signature', async () => {
     configService.get.mockReturnValue('');
 
@@ -368,4 +492,9 @@ function buildAlipaySignContent(body: Record<string, string>) {
     .sort()
     .map((key) => `${key}=${body[key]}`)
     .join('&');
+}
+
+function signAlipayNotify(body: Record<string, string>, privateKey: KeyObject) {
+  const sign = createSign('RSA-SHA256').update(buildAlipaySignContent(body), 'utf8').sign(privateKey, 'base64');
+  return { ...body, sign };
 }

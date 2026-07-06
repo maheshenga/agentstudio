@@ -387,9 +387,34 @@ describe('UserService tenant lookup before login', () => {
     expect(userRepo.findOne).not.toHaveBeenCalled();
   });
 
-  it('trims usernames before tenant lookup', async () => {
+  it('does not expose tenant memberships from username-only lookup', async () => {
     const userRepo = {
-      findOne: jest.fn().mockResolvedValue({ id: 7, username: 'founder' }),
+      findOne: jest.fn(),
+    };
+    const userTenantRepo = {
+      find: jest.fn(),
+    };
+    const tenantRepo = {
+      find: jest.fn(),
+    };
+    const service = createTenantLookupService(userRepo, userTenantRepo, tenantRepo);
+
+    const result = await service.getTenantsByUsername(' founder ');
+
+    expect(result.code).toBe(200);
+    expect(result.data).toEqual([]);
+    expect(userRepo.findOne).not.toHaveBeenCalled();
+    expect(userTenantRepo.find).not.toHaveBeenCalled();
+    expect(tenantRepo.find).not.toHaveBeenCalled();
+  });
+
+  it('trims usernames before credential-gated tenant lookup', async () => {
+    const userRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 7,
+        username: 'founder',
+        password: bcrypt.hashSync('Passw0rd!', 10),
+      }),
     };
     const userTenantRepo = {
       find: jest.fn().mockResolvedValue([{ userId: 7, tenantId: 9, isDefault: 1 }]),
@@ -399,7 +424,7 @@ describe('UserService tenant lookup before login', () => {
     };
     const service = createTenantLookupService(userRepo, userTenantRepo, tenantRepo);
 
-    const result = await service.getTenantsByUsername(' founder ');
+    const result = await service.getTenantsByCredentials(' founder ', 'Passw0rd!');
 
     expect(result.data).toEqual([
       {
@@ -410,7 +435,122 @@ describe('UserService tenant lookup before login', () => {
         status: 1,
       },
     ]);
-    expect(userRepo.findOne).toHaveBeenCalledWith({ where: { username: 'founder' } });
+    expect(userRepo.findOne).toHaveBeenCalledWith({
+      where: { username: 'founder' },
+      select: { id: true, username: true, password: true },
+    });
+  });
+
+  it('returns an empty tenant list for invalid credentials without revealing account existence', async () => {
+    const userRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 7,
+        username: 'founder',
+        password: bcrypt.hashSync('Passw0rd!', 10),
+      }),
+    };
+    const userTenantRepo = {
+      find: jest.fn(),
+    };
+    const tenantRepo = {
+      find: jest.fn(),
+    };
+    const service = createTenantLookupService(userRepo, userTenantRepo, tenantRepo);
+
+    const result = await service.getTenantsByCredentials('founder', 'wrong-password');
+
+    expect(result.code).toBe(200);
+    expect(result.data).toEqual([]);
+    expect(userTenantRepo.find).not.toHaveBeenCalled();
+    expect(tenantRepo.find).not.toHaveBeenCalled();
+  });
+});
+
+describe('UserService refresh token tenant context', () => {
+  function createRefreshService(redisService: any) {
+    return new UserService(
+      {} as any,
+      { findOne: jest.fn() } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      { findOne: jest.fn() } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      { sign: jest.fn().mockReturnValue('new-access-token'), verify: jest.fn() } as any,
+      redisService as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+  }
+
+  it('stores tenant metadata with new refresh tokens', async () => {
+    const redisService = {
+      set: jest.fn().mockResolvedValue('OK'),
+    };
+    const service = createRefreshService(redisService);
+
+    const rawToken = await service.createRefreshToken(7, 12);
+
+    expect(rawToken).toHaveLength(128);
+    expect(redisService.set).toHaveBeenCalledWith(
+      expect.stringMatching(/^refresh_tokens:/),
+      { userId: 7, tenantId: 12 },
+      expect.any(Number),
+    );
+  });
+
+  it('preserves tenant metadata while rotating a refresh token without falling back to another default tenant', async () => {
+    const redisService = {
+      get: jest.fn(async (key: string) => {
+        if (key.startsWith('refresh_tokens:')) {
+          return { userId: 7, tenantId: 12 };
+        }
+        return null;
+      }),
+      del: jest.fn().mockResolvedValue(1),
+      set: jest.fn().mockResolvedValue('OK'),
+    };
+    const service = createRefreshService(redisService);
+    const defaultTenantSpy = jest.spyOn(service as any, 'getDefaultTenantId').mockImplementation(() => {
+      throw new Error('default tenant fallback should not run');
+    });
+    jest.spyOn(service as any, 'getUserinfo').mockResolvedValue({
+      id: 7,
+      username: 'alice',
+      realname: 'Alice',
+      avatar: '',
+      deptId: null,
+      deleteTime: null,
+      status: 1,
+      roles: [{ code: 'tenant:12:owner' }],
+    });
+    jest.spyOn(service as any, 'getUserPermissions').mockImplementation(async () => [`tenant:${getTenantId()}:billing:view`]);
+    jest.spyOn(service as any, 'createToken').mockReturnValue('new-access-token');
+    const createRefreshTokenSpy = jest.spyOn(service as any, 'createRefreshToken').mockResolvedValue('new-refresh-token');
+    const updateRedisTokenSpy = jest.spyOn(service as any, 'updateRedisToken').mockResolvedValue(undefined);
+
+    const result = await service.refreshToken({ refreshToken: 'old-refresh-token' });
+
+    expect(result.code).toBe(200);
+    expect(result.data).toEqual({
+      access_token: 'new-access-token',
+      refresh_token: 'new-refresh-token',
+      expires_in: expect.any(Number),
+    });
+    expect(defaultTenantSpy).not.toHaveBeenCalled();
+    expect(createRefreshTokenSpy).toHaveBeenCalledWith(7, 12);
+    expect(updateRedisTokenSpy).toHaveBeenCalledWith(
+      'test-uuid',
+      expect.objectContaining({
+        tenantId: 12,
+        permissions: ['tenant:12:billing:view'],
+      }),
+    );
   });
 });
 

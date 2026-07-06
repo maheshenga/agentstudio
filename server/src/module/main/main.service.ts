@@ -197,6 +197,10 @@ export class MainService {
     return this.userService.getTenantsByUsername(username);
   }
 
+  async getTenantsByCredentials(body: { username?: string; password?: string } = {}): Promise<ResultData> {
+    return this.userService.getTenantsByCredentials(body.username || '', body.password || '');
+  }
+
   async switchTenant(body: Record<string, any>, user: any): Promise<ResultData> {
     return this.userService.switchTenant(body, user);
   }

@@ -39,6 +39,11 @@ import { getTenantId, applyTenantFilter, appendTenantWhere } from '../../../comm
 import { TenantContext } from '../../../common/tenant/tenant.context';
 import { AxiosService } from '../../common/axios/axios.service';
 
+type RefreshTokenMeta = {
+  userId: number;
+  tenantId: number | null;
+};
+
 @Injectable()
 export class UserService {
   constructor(
@@ -541,7 +546,7 @@ export class UserService {
     const uuid = generateUUID();
     const tenantIdNumber = Number(tenantId);
     const token = this.createToken({ uuid: uuid, userId: userData.id });
-    const refreshToken = await this.createRefreshToken(userData.id);
+    const refreshToken = await this.createRefreshToken(userData.id, tenantIdNumber);
 
     return await TenantContext.run({ tenantId: tenantIdNumber, userId: Number(userData.id) } as any, async () => {
       const scopedUserData = await this.getUserinfo(userData.id);
@@ -872,10 +877,14 @@ export class UserService {
    * 生成不透明 refreshToken（类似 PHP 方案）
    * 返回 128位随机 hex 字符串，SHA256 哈希后存入 Redis
    */
-  async createRefreshToken(userId: number): Promise<string> {
+  async createRefreshToken(userId: number, tenantId?: number | null): Promise<string> {
     const rawToken = crypto.randomBytes(64).toString('hex');
     const hash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    await this.redisService.set(`${REFRESH_TOKEN_KEY}${hash}`, userId, REFRESH_TOKEN_EXPIRESIN);
+    await this.redisService.set(
+      `${REFRESH_TOKEN_KEY}${hash}`,
+      { userId: Number(userId), tenantId: this.normalizeRefreshTenantId(tenantId) },
+      REFRESH_TOKEN_EXPIRESIN,
+    );
     return rawToken;
   }
 
@@ -883,10 +892,33 @@ export class UserService {
    * 校验 refreshToken，返回 userId 或 null
    */
   async validateRefreshToken(rawToken: string): Promise<number | null> {
+    return (await this.validateRefreshTokenMeta(rawToken))?.userId ?? null;
+  }
+
+  private async validateRefreshTokenMeta(rawToken: string): Promise<RefreshTokenMeta | null> {
     if (!rawToken) return null;
     const hash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    const userId = await this.redisService.get(`${REFRESH_TOKEN_KEY}${hash}`);
-    return userId ? Number(userId) : null;
+    const stored = await this.redisService.get(`${REFRESH_TOKEN_KEY}${hash}`);
+    if (!stored) return null;
+
+    if (typeof stored === 'object') {
+      const userId = Number((stored as any).userId);
+      if (!Number.isSafeInteger(userId) || userId <= 0) return null;
+      return {
+        userId,
+        tenantId: this.normalizeRefreshTenantId((stored as any).tenantId ?? (stored as any).tenant_id),
+      };
+    }
+
+    const legacyUserId = Number(stored);
+    return Number.isSafeInteger(legacyUserId) && legacyUserId > 0
+      ? { userId: legacyUserId, tenantId: null }
+      : null;
+  }
+
+  private normalizeRefreshTenantId(value: unknown): number | null {
+    const tenantId = Number(value);
+    return Number.isSafeInteger(tenantId) && tenantId > 0 ? tenantId : null;
   }
 
   /**
@@ -1289,25 +1321,26 @@ export class UserService {
     if (!body.refreshToken) {
       return ResultData.fail(500, '刷新令牌不能为空');
     }
-    const userId = await this.validateRefreshToken(body.refreshToken);
-    if (!userId) {
+    const refreshMeta = await this.validateRefreshTokenMeta(body.refreshToken);
+    if (!refreshMeta) {
       return ResultData.fail(500, '刷新令牌已过期，请重新登录');
     }
 
+    const userId = refreshMeta.userId;
     const { session: oldSession, uuid: oldUuid } = await this.loadLoginSession(body.authorization);
-    let tenantId =
-      oldSession?.tenantId != null && Number(oldSession.tenantId) > 0
-        ? Number(oldSession.tenantId)
-        : null;
+    let tenantId = refreshMeta.tenantId;
+    if (!tenantId && oldSession?.tenantId != null && Number(oldSession.tenantId) > 0) {
+      tenantId = Number(oldSession.tenantId);
+    }
     if (!tenantId) {
-      tenantId = await this.getDefaultTenantId(userId);
+      return ResultData.fail(401, 'Tenant context expired, please log in again');
     }
 
     await this.deleteRefreshToken(body.refreshToken);
 
     const uuid = generateUUID();
     const newAccessToken = this.createToken({ uuid, userId });
-    const newRefreshToken = await this.createRefreshToken(userId);
+    const newRefreshToken = await this.createRefreshToken(userId, tenantId);
 
     const buildSession = async () => {
       const userData = await this.getUserinfo(userId);
@@ -1372,14 +1405,27 @@ export class UserService {
     if (normalizedUsername.length < 2) {
       return ResultData.ok([]);
     }
-    // Find user by username
-    const user: any = await this.userRepo.findOne({ where: { username: normalizedUsername } });
-    if (!user) {
+
+    return ResultData.ok([]);
+  }
+
+  async getTenantsByCredentials(username: string, password: string) {
+    const normalizedUsername = String(username || '').trim();
+    const normalizedPassword = String(password || '');
+    if (normalizedUsername.length < 2 || !normalizedPassword) {
       return ResultData.ok([]);
     }
-    // Find tenant associations for this user
+
+    const user: any = await this.userRepo.findOne({
+      where: { username: normalizedUsername },
+      select: { id: true, username: true, password: true },
+    });
+    if (!user?.password || !bcrypt.compareSync(normalizedPassword, user.password)) {
+      return ResultData.ok([]);
+    }
+
     const userTenants = await this.sysUserTenantEntityRep.find({
-      where: { userId: user.id },
+      where: { userId: user.id, deleteTime: IsNull() },
     });
     if (!userTenants.length) {
       return ResultData.ok([]);
@@ -1387,9 +1433,8 @@ export class UserService {
     // Find tenant details
     const tenantIds = userTenants.map((ut) => ut.tenantId);
     const tenants = await this.tenantEntityRep.find({
-      where: { id: In(tenantIds), status: 1 },
+      where: { id: In(tenantIds), status: 1, deleteTime: IsNull() },
     });
-    // Map to response format
     const result = tenants.map((t) => {
       const ut = userTenants.find((u) => u.tenantId === t.id);
       return {
@@ -1437,7 +1482,7 @@ export class UserService {
 
     const uuid = user.token;
     const accessToken = this.createToken({ uuid, userId });
-    const refreshToken = await this.createRefreshToken(userId);
+    const refreshToken = await this.createRefreshToken(userId, newTenantId);
 
     return await TenantContext.run({ tenantId: newTenantId, userId: Number(userId) } as any, async () => {
       const userData = await this.getUserinfo(userId);

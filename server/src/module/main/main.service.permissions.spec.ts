@@ -150,4 +150,25 @@ describe('MainService auth safety', () => {
       }),
     );
   });
+
+  it('proxies credential-gated tenant lookup before login', async () => {
+    const userService = {
+      getTenantsByCredentials: jest.fn().mockResolvedValue({
+        code: 200,
+        data: [{ id: 9, name: 'Acme' }],
+      }),
+    };
+    const service = createService({ userService });
+
+    const result = await service.getTenantsByCredentials({
+      username: 'founder',
+      password: 'Passw0rd!',
+    });
+
+    expect(result).toEqual({
+      code: 200,
+      data: [{ id: 9, name: 'Acme' }],
+    });
+    expect(userService.getTenantsByCredentials).toHaveBeenCalledWith('founder', 'Passw0rd!');
+  });
 });

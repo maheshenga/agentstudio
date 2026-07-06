@@ -7,7 +7,7 @@ import { getTenantId } from '../../common/utils/tenant.util';
 import { SaasOrderEntity } from './entities/saas-order.entity';
 import { SaasOrderService } from './services/saas-order.service';
 import { SaasPaymentService } from './services/saas-payment.service';
-import type { SaasPaymentOrderType } from './services/saas-payment.service';
+import type { SaasAlipayExpectedOrder, SaasPaymentOrderType } from './services/saas-payment.service';
 import { SaasResourcePackOrderService } from './services/saas-resource-pack-order.service';
 
 const ALIPAY_PAID_TRADE_STATUSES = new Set(['TRADE_SUCCESS', 'TRADE_FINISHED']);
@@ -67,27 +67,60 @@ export class SaasPaymentController {
   @Post('alipay/notify')
   @ApiOperation({ summary: 'Handle Alipay notify endpoint' })
   async alipayNotify(@Body() body: Record<string, any>) {
-    if (!(await this.saasPaymentService.verifyAlipayNotify(body))) {
-      return 'fail';
-    }
-
     const tradeStatus = String(body.trade_status || '');
     if (!ALIPAY_PAID_TRADE_STATUSES.has(tradeStatus)) {
+      if (!(await this.saasPaymentService.verifyAlipayNotify(body))) {
+        return 'fail';
+      }
       return 'success';
     }
 
     try {
       const orderNo = String(body.out_trade_no || '');
+      if (!orderNo) {
+        return 'fail';
+      }
       if (orderNo.startsWith('RPO')) {
-        await this.saasResourcePackOrderService.confirmAlipayPayment(orderNo, String(body.trade_no || ''));
+        const order = await this.saasResourcePackOrderService.findPlatformOrder(orderNo);
+        const expectedOrder = this.toAlipayExpectedOrder(order);
+        if (!expectedOrder) {
+          return 'fail';
+        }
+        const validation = await this.saasPaymentService.verifyAlipayPaidNotify(body, expectedOrder);
+        if (!validation.valid) {
+          return 'fail';
+        }
+        await this.saasResourcePackOrderService.confirmAlipayPayment(orderNo, validation.tradeNo || String(body.trade_no || ''));
         return 'success';
       }
 
-      await this.saasOrderService.confirmAlipayPayment(orderNo, String(body.trade_no || ''));
+      const order = await this.saasOrderService.findPlatformOrder(orderNo);
+      const expectedOrder = this.toAlipayExpectedOrder(order);
+      if (!expectedOrder) {
+        return 'fail';
+      }
+      const validation = await this.saasPaymentService.verifyAlipayPaidNotify(body, expectedOrder);
+      if (!validation.valid) {
+        return 'fail';
+      }
+
+      await this.saasOrderService.confirmAlipayPayment(orderNo, validation.tradeNo || String(body.trade_no || ''));
       return 'success';
     } catch {
       return 'fail';
     }
+  }
+
+  private toAlipayExpectedOrder(order: Record<string, any> | null | undefined): SaasAlipayExpectedOrder | null {
+    if (!order) {
+      return null;
+    }
+    const orderNo = String(order.order_no || order.orderNo || '');
+    const amountCents = Number(order.amount_cents ?? order.amountCents);
+    if (!orderNo || !Number.isFinite(amountCents)) {
+      return null;
+    }
+    return { orderNo, amountCents };
   }
 
   private toOrderResponse(order: Partial<SaasOrderEntity>) {

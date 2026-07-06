@@ -7,6 +7,7 @@ const routerWhitelist = [
   { path: '/api/core/register', method: 'POST' },
   { path: '/api/core/registerUser', method: 'GET' },
   { path: '/api/core/tenants-by-username', method: 'GET' },
+  { path: '/api/core/tenants-by-credentials', method: 'POST' },
   { path: '/api/core/config/public/:key', method: 'GET' },
   { path: '/api/system/user/export', method: 'POST' },
   { path: '/api/system/role/export', method: 'POST' },

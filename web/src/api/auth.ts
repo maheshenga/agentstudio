@@ -83,6 +83,13 @@ export function fetchTenantsByUsername(username: string) {
   })
 }
 
+export function fetchTenantsByCredentials(username: string, password: string) {
+  return request.post<Api.Auth.TenantItem[]>({
+    url: '/api/core/tenants-by-credentials',
+    data: { username, password }
+  })
+}
+
 /**
  * 切换租户（登录后）
  * @param tenantId 目标租户ID

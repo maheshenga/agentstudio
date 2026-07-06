@@ -150,7 +150,7 @@
     fetchLoginCaptchaStatus,
     fetchLogin,
     fetchGetUserInfo,
-    fetchTenantsByUsername,
+    fetchTenantsByCredentials,
     fetchPublicConfigValue
   } from '@/api/auth'
   import { ElNotification, type FormInstance, type FormRules } from 'element-plus'
@@ -245,7 +245,7 @@
       refreshCaptcha()
     }
     // 如果有默认用户名，自动加载租户列表
-    if (formData.username) {
+    if (formData.username && formData.password) {
       loadTenantList()
     }
     if (homeDebugEnabled) {
@@ -271,11 +271,12 @@
     }
 
     const username = formData.username.trim()
+    const password = formData.password.trim()
     tenantLookupRequestId++
     tenantList.value = []
     formData.tenant_id = undefined
 
-    if (username.length < 2) {
+    if (username.length < 2 || !password) {
       loadingTenants.value = false
       return
     }
@@ -285,21 +286,22 @@
     }, TENANT_LOOKUP_DEBOUNCE_MS)
   }
 
-  watch(() => formData.username, () => {
+  watch(() => [formData.username, formData.password], () => {
     scheduleTenantLookup()
   })
 
   // 加载租户列表
   const loadTenantList = async () => {
     const username = formData.username.trim()
-    if (username.length < 2) {
+    const password = formData.password.trim()
+    if (username.length < 2 || !password) {
       return
     }
 
     const requestId = ++tenantLookupRequestId
     try {
       loadingTenants.value = true
-      const list = await fetchTenantsByUsername(username)
+      const list = await fetchTenantsByCredentials(username, password)
       if (requestId !== tenantLookupRequestId) return
       tenantList.value = list || []
       

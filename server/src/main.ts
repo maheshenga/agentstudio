@@ -108,6 +108,7 @@ async function bootstrap(): Promise<void> {
     // Tighter, independent limits for public auth surfaces.
     app.use('/api/core/login', rateLimit(AUTH_RATE_LIMITS.login));
     app.use('/api/core/tenants-by-username', rateLimit(AUTH_RATE_LIMITS.tenantLookup));
+    app.use('/api/core/tenants-by-credentials', rateLimit(AUTH_RATE_LIMITS.tenantLookup));
     app.use('/api/saas/signup', rateLimit(AUTH_RATE_LIMITS.signup));
 
     // 静态文件目录

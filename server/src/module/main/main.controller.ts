@@ -87,6 +87,14 @@ export class MainController {
   }
 
   @Public()
+  @Post('core/tenants-by-credentials')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Credential-gated tenant lookup before login' })
+  async getTenantsByCredentials(@Body() body: { username?: string; password?: string }) {
+    return this.mainService.getTenantsByCredentials(body);
+  }
+
+  @Public()
   @Post('core/refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '刷新Token' })

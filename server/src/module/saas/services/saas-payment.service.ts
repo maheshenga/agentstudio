@@ -13,6 +13,7 @@ const ALIPAY_PAGE_PAY_READY_MESSAGE = 'Alipay page payment URL is ready.';
 const ALIPAY_DEFAULT_GATEWAY = 'https://openapi-sandbox.dl.alipaydev.com/gateway.do';
 const ALIPAY_PAGE_PAY_METHOD = 'alipay.trade.page.pay';
 const ALIPAY_PAGE_PAY_PRODUCT_CODE = 'FAST_INSTANT_TRADE_PAY';
+const ALIPAY_PAID_TRADE_STATUSES = new Set(['TRADE_SUCCESS', 'TRADE_FINISHED']);
 
 export interface SaasAlipayPaymentResult {
   configured: boolean;
@@ -30,6 +31,24 @@ export interface SaasAlipayConfigStatus {
   gateway_url: string;
   notify_url_configured: boolean;
   return_url_configured: boolean;
+}
+
+export type SaasAlipayPaidNotifyValidationReason =
+  | 'invalid_signature'
+  | 'app_id_mismatch'
+  | 'trade_not_paid'
+  | 'order_mismatch'
+  | 'amount_mismatch';
+
+export interface SaasAlipayExpectedOrder {
+  orderNo: string;
+  amountCents: number;
+}
+
+export interface SaasAlipayPaidNotifyValidationResult {
+  valid: boolean;
+  reason?: SaasAlipayPaidNotifyValidationReason;
+  tradeNo?: string;
 }
 
 interface AlipayConfig {
@@ -106,6 +125,38 @@ export class SaasPaymentService {
     } catch {
       return false;
     }
+  }
+
+  async verifyAlipayPaidNotify(
+    body: Record<string, any>,
+    expected: SaasAlipayExpectedOrder,
+  ): Promise<SaasAlipayPaidNotifyValidationResult> {
+    if (!(await this.verifyAlipayNotify(body))) {
+      return { valid: false, reason: 'invalid_signature' };
+    }
+
+    const config = await this.resolveAlipayConfig();
+    if (String(body.app_id || '') !== config.appId) {
+      return { valid: false, reason: 'app_id_mismatch' };
+    }
+
+    const tradeStatus = String(body.trade_status || '');
+    if (!ALIPAY_PAID_TRADE_STATUSES.has(tradeStatus)) {
+      return { valid: false, reason: 'trade_not_paid' };
+    }
+
+    if (String(body.out_trade_no || '') !== expected.orderNo) {
+      return { valid: false, reason: 'order_mismatch' };
+    }
+
+    if (this.parseAlipayAmountCents(body.total_amount) !== expected.amountCents) {
+      return { valid: false, reason: 'amount_mismatch' };
+    }
+
+    return {
+      valid: true,
+      tradeNo: String(body.trade_no || ''),
+    };
   }
 
   async getAlipayConfigStatus(): Promise<SaasAlipayConfigStatus> {
@@ -292,6 +343,21 @@ export class SaasPaymentService {
 
   private formatAmountYuan(amountCents: number): string {
     return ((Number(amountCents) || 0) / 100).toFixed(2);
+  }
+
+  private parseAlipayAmountCents(value: unknown): number | null {
+    const normalized = String(value ?? '').trim();
+    const match = normalized.match(/^(\d+)(?:\.(\d{1,2}))?$/);
+    if (!match) {
+      return null;
+    }
+
+    const yuan = Number(match[1]);
+    const cents = Number((match[2] || '').padEnd(2, '0'));
+    if (!Number.isSafeInteger(yuan) || !Number.isSafeInteger(cents)) {
+      return null;
+    }
+    return yuan * 100 + cents;
   }
 
   private formatAlipayTimestamp(date: Date): string {

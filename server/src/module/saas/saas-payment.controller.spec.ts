@@ -12,15 +12,18 @@ describe('SaasPaymentController', () => {
   const saasOrderService = {
     confirmDevPayment: jest.fn(),
     confirmAlipayPayment: jest.fn(),
+    findPlatformOrder: jest.fn(),
   };
   const saasPaymentService = {
     createAlipayPayment: jest.fn(),
     verifyAlipayNotify: jest.fn(),
+    verifyAlipayPaidNotify: jest.fn(),
     getAlipayConfigStatus: jest.fn(),
   };
   const resourcePackOrderService = {
     confirmDevPayment: jest.fn(),
     confirmAlipayPayment: jest.fn(),
+    findPlatformOrder: jest.fn(),
     toResponse: jest.fn((order) => ({
       order_no: order.orderNo,
       resource_pack_code: order.resourcePackCode,
@@ -106,7 +109,14 @@ describe('SaasPaymentController', () => {
   });
 
   it('confirms an order when Alipay notifies trade success', async () => {
-    saasPaymentService.verifyAlipayNotify.mockReturnValue(true);
+    saasOrderService.findPlatformOrder.mockResolvedValue({
+      order_no: 'SO20260702000000001000001',
+      amount_cents: 99000,
+    });
+    saasPaymentService.verifyAlipayPaidNotify.mockResolvedValue({
+      valid: true,
+      tradeNo: '2026070222000000000001',
+    });
     saasOrderService.confirmAlipayPayment.mockResolvedValue({
       orderNo: 'SO20260702000000001000001',
       status: 'paid',
@@ -120,10 +130,14 @@ describe('SaasPaymentController', () => {
     });
 
     expect(result).toBe('success');
-    expect(saasPaymentService.verifyAlipayNotify).toHaveBeenCalledWith({
+    expect(saasOrderService.findPlatformOrder).toHaveBeenCalledWith('SO20260702000000001000001');
+    expect(saasPaymentService.verifyAlipayPaidNotify).toHaveBeenCalledWith({
       out_trade_no: 'SO20260702000000001000001',
       trade_no: '2026070222000000000001',
       trade_status: 'TRADE_SUCCESS',
+    }, {
+      orderNo: 'SO20260702000000001000001',
+      amountCents: 99000,
     });
     expect(saasOrderService.confirmAlipayPayment).toHaveBeenCalledWith(
       'SO20260702000000001000001',
@@ -132,7 +146,14 @@ describe('SaasPaymentController', () => {
   });
 
   it('routes RPO Alipay notify orders to resource pack confirmation', async () => {
-    saasPaymentService.verifyAlipayNotify.mockReturnValue(true);
+    resourcePackOrderService.findPlatformOrder.mockResolvedValue({
+      order_no: 'RPO20260703120000001000001',
+      amount_cents: 19900,
+    });
+    saasPaymentService.verifyAlipayPaidNotify.mockResolvedValue({
+      valid: true,
+      tradeNo: '2026070322000000000001',
+    });
     resourcePackOrderService.confirmAlipayPayment.mockResolvedValue({ status: 'paid' });
 
     await expect(
@@ -143,6 +164,18 @@ describe('SaasPaymentController', () => {
       }),
     ).resolves.toBe('success');
 
+    expect(resourcePackOrderService.findPlatformOrder).toHaveBeenCalledWith('RPO20260703120000001000001');
+    expect(saasPaymentService.verifyAlipayPaidNotify).toHaveBeenCalledWith(
+      {
+        out_trade_no: 'RPO20260703120000001000001',
+        trade_no: '2026070322000000000001',
+        trade_status: 'TRADE_SUCCESS',
+      },
+      {
+        orderNo: 'RPO20260703120000001000001',
+        amountCents: 19900,
+      },
+    );
     expect(resourcePackOrderService.confirmAlipayPayment).toHaveBeenCalledWith(
       'RPO20260703120000001000001',
       '2026070322000000000001',
@@ -164,7 +197,14 @@ describe('SaasPaymentController', () => {
   });
 
   it('rejects Alipay notifications that fail signature verification', async () => {
-    saasPaymentService.verifyAlipayNotify.mockReturnValue(false);
+    saasOrderService.findPlatformOrder.mockResolvedValue({
+      order_no: 'SO20260702000000001000001',
+      amount_cents: 99000,
+    });
+    saasPaymentService.verifyAlipayPaidNotify.mockResolvedValue({
+      valid: false,
+      reason: 'invalid_signature',
+    });
 
     const result = await controller.alipayNotify({
       out_trade_no: 'SO20260702000000001000001',
@@ -174,6 +214,27 @@ describe('SaasPaymentController', () => {
 
     expect(saasOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
     expect(result).toBe('fail');
+  });
+
+  it('rejects paid Alipay notifications when local order data does not validate against the signed payload', async () => {
+    saasOrderService.findPlatformOrder.mockResolvedValue({
+      order_no: 'SO20260702000000001000001',
+      amount_cents: 99000,
+    });
+    saasPaymentService.verifyAlipayPaidNotify.mockResolvedValue({
+      valid: false,
+      reason: 'amount_mismatch',
+    });
+
+    const result = await controller.alipayNotify({
+      out_trade_no: 'SO20260702000000001000001',
+      trade_no: '2026070222000000000001',
+      trade_status: 'TRADE_SUCCESS',
+      total_amount: '9.90',
+    });
+
+    expect(result).toBe('fail');
+    expect(saasOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
   });
 
   it('returns Alipay config status in tenant context', async () => {
