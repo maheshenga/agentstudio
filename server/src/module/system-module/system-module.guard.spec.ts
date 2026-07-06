@@ -6,7 +6,12 @@ import { SystemModuleAccessService } from './services/system-module-access.servi
 import { SystemModuleGuard } from './system-module.guard';
 
 describe('SystemModuleGuard', () => {
-  const createContext = (path: string, user: Record<string, any> = {}, handler: Function = jest.fn()): ExecutionContext =>
+  const createContext = (
+    path: string,
+    user: Record<string, any> = {},
+    handler: Function = jest.fn(),
+    request: { query?: Record<string, any>; body?: Record<string, any> } = {},
+  ): ExecutionContext =>
     ({
       switchToHttp: () => ({
         getRequest: () => ({
@@ -14,6 +19,8 @@ describe('SystemModuleGuard', () => {
           route: { path },
           method: 'GET',
           user,
+          query: request.query ?? {},
+          body: request.body ?? {},
         }),
       }),
       getClass: () => class TestController {},
@@ -293,6 +300,199 @@ describe('SystemModuleGuard', () => {
           userId: 9,
           tenantId: 23,
         }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(access.assertModuleAccess).toHaveBeenCalledWith({
+      moduleCode: 'taixu_workspace',
+      tenantId: 23,
+      userId: 9,
+      requiredAnySaasModuleCodes: ['ai_chat', 'rag'],
+    });
+  });
+
+  it.each([
+    ['/api/taixu/setting/detail', { query: { source: 'llm' } }, 'ai_chat'],
+    ['/api/taixu/setting/list', { query: { source: 'rag' } }, 'rag'],
+  ])('uses exact SaaS feature requirements for Taixu setting query source %s', async (path, request, expectedCode) => {
+    const access = {
+      assertModuleAccess: jest.fn().mockResolvedValue(true),
+    };
+    const guard = new SystemModuleGuard(new Reflector(), access as unknown as SystemModuleAccessService);
+
+    await expect(
+      guard.canActivate(
+        createContext(
+          path as string,
+          {
+            userId: 9,
+            tenantId: 23,
+          },
+          jest.fn(),
+          request as { query?: Record<string, any>; body?: Record<string, any> },
+        ),
+      ),
+    ).resolves.toBe(true);
+
+    expect(access.assertModuleAccess).toHaveBeenCalledWith({
+      moduleCode: 'taixu_workspace',
+      tenantId: 23,
+      userId: 9,
+      requiredSaasModuleCode: expectedCode,
+    });
+  });
+
+  it.each([
+    [{ source: 'llm' }, 'ai_chat'],
+    [{ source: 'rag' }, 'rag'],
+  ])('uses exact SaaS feature requirements for Taixu setting body source %#', async (body, expectedCode) => {
+    const access = {
+      assertModuleAccess: jest.fn().mockResolvedValue(true),
+    };
+    const guard = new SystemModuleGuard(new Reflector(), access as unknown as SystemModuleAccessService);
+
+    await expect(
+      guard.canActivate(
+        createContext(
+          '/api/taixu/setting/save',
+          {
+            userId: 9,
+            tenantId: 23,
+          },
+          jest.fn(),
+          { body },
+        ),
+      ),
+    ).resolves.toBe(true);
+
+    expect(access.assertModuleAccess).toHaveBeenCalledWith({
+      moduleCode: 'taixu_workspace',
+      tenantId: 23,
+      userId: 9,
+      requiredSaasModuleCode: expectedCode,
+    });
+  });
+
+  it('prefers Taixu setting body source over query source for save authorization', async () => {
+    const access = {
+      assertModuleAccess: jest.fn().mockResolvedValue(true),
+    };
+    const guard = new SystemModuleGuard(new Reflector(), access as unknown as SystemModuleAccessService);
+
+    await expect(
+      guard.canActivate(
+        createContext(
+          '/api/taixu/setting/save',
+          {
+            userId: 9,
+            tenantId: 23,
+          },
+          jest.fn(),
+          {
+            query: { source: 'rag' },
+            body: { source: 'llm' },
+          },
+        ),
+      ),
+    ).resolves.toBe(true);
+
+    expect(access.assertModuleAccess).toHaveBeenCalledWith({
+      moduleCode: 'taixu_workspace',
+      tenantId: 23,
+      userId: 9,
+      requiredSaasModuleCode: 'ai_chat',
+    });
+  });
+
+  it.each(['/api/taixu/setting/save/', '/nest-api/api/taixu/setting/save/'])(
+    'prefers Taixu setting body source for trailing-slash save route %s',
+    async (path) => {
+      const access = {
+        assertModuleAccess: jest.fn().mockResolvedValue(true),
+      };
+      const guard = new SystemModuleGuard(new Reflector(), access as unknown as SystemModuleAccessService);
+
+      await expect(
+        guard.canActivate(
+          createContext(
+            path,
+            {
+              userId: 9,
+              tenantId: 23,
+            },
+            jest.fn(),
+            {
+              query: { source: 'rag' },
+              body: { source: 'llm' },
+            },
+          ),
+        ),
+      ).resolves.toBe(true);
+
+      expect(access.assertModuleAccess).toHaveBeenCalledWith({
+        moduleCode: 'taixu_workspace',
+        tenantId: 23,
+        userId: 9,
+        requiredSaasModuleCode: 'ai_chat',
+      });
+    },
+  );
+
+  it.each(['/api/taixu/setting/detail', '/api/taixu/setting/list'])(
+    'prefers Taixu setting query source over body source for query route %s',
+    async (path) => {
+      const access = {
+        assertModuleAccess: jest.fn().mockResolvedValue(true),
+      };
+      const guard = new SystemModuleGuard(new Reflector(), access as unknown as SystemModuleAccessService);
+
+      await expect(
+        guard.canActivate(
+          createContext(
+            path,
+            {
+              userId: 9,
+              tenantId: 23,
+            },
+            jest.fn(),
+            {
+              query: { source: 'rag' },
+              body: { source: 'llm' },
+            },
+          ),
+        ),
+      ).resolves.toBe(true);
+
+      expect(access.assertModuleAccess).toHaveBeenCalledWith({
+        moduleCode: 'taixu_workspace',
+        tenantId: 23,
+        userId: 9,
+        requiredSaasModuleCode: 'rag',
+      });
+    },
+  );
+
+  it.each([
+    ['/api/taixu/setting/list', {}],
+    ['/api/taixu/setting/detail', { query: { source: 'other' } }],
+    ['/api/taixu/setting/save', { body: { source: 'other' } }],
+  ])('falls back to any AI/RAG feature for Taixu setting route without mapped source %s', async (path, request) => {
+    const access = {
+      assertModuleAccess: jest.fn().mockResolvedValue(true),
+    };
+    const guard = new SystemModuleGuard(new Reflector(), access as unknown as SystemModuleAccessService);
+
+    await expect(
+      guard.canActivate(
+        createContext(
+          path as string,
+          {
+            userId: 9,
+            tenantId: 23,
+          },
+          jest.fn(),
+          request as { query?: Record<string, any>; body?: Record<string, any> },
+        ),
       ),
     ).resolves.toBe(true);
 

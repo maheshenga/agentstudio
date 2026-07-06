@@ -10,9 +10,19 @@ type SystemModuleRouteBinding = {
   tenantScoped: boolean;
   requiredSaasModuleCode?: string;
   requiredAnySaasModuleCodes?: string[];
+  sourceSaasModuleCodeMap?: Record<string, string>;
+  sourceResolver?: (request: Record<string, any>, path: string) => unknown;
 };
 
 const TAIXU_SHARED_SAAS_MODULE_CODES = ['ai_chat', 'rag'];
+const TAIXU_SETTING_SOURCE_SAAS_MODULE_CODES: Record<string, string> = {
+  llm: 'ai_chat',
+  rag: 'rag',
+};
+const resolveTaixuSettingSource = (request: Record<string, any>, path: string) => {
+  const normalizedPath = (path.startsWith('/') ? path : `/${path}`).replace(/\/+$/, '');
+  return normalizedPath.endsWith('/api/taixu/setting/save') ? request.body?.source : request.query?.source;
+};
 
 const ROUTE_BINDINGS: SystemModuleRouteBinding[] = [
   {
@@ -162,6 +172,8 @@ const ROUTE_BINDINGS: SystemModuleRouteBinding[] = [
     moduleCode: 'taixu_workspace',
     tenantScoped: true,
     requiredAnySaasModuleCodes: TAIXU_SHARED_SAAS_MODULE_CODES,
+    sourceSaasModuleCodeMap: TAIXU_SETTING_SOURCE_SAAS_MODULE_CODES,
+    sourceResolver: resolveTaixuSettingSource,
   },
   { prefix: '/api/taixu', moduleCode: 'taixu_workspace', tenantScoped: true },
 ];
@@ -183,7 +195,8 @@ export class SystemModuleGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest();
-    const binding = this.matchBinding(request.path || request.route?.path || '');
+    const requestPath = request.path || request.route?.path || '';
+    const binding = this.matchBinding(requestPath);
     if (!binding) {
       return true;
     }
@@ -199,10 +212,13 @@ export class SystemModuleGuard implements CanActivate {
       tenantId,
       userId: this.resolveUserId(user),
     };
-    if (binding.requiredSaasModuleCode) {
+    const sourceSaasModuleCode = this.resolveSourceSaasModuleCode(binding, request, requestPath);
+    if (sourceSaasModuleCode) {
+      accessOptions.requiredSaasModuleCode = sourceSaasModuleCode;
+    } else if (binding.requiredSaasModuleCode) {
       accessOptions.requiredSaasModuleCode = binding.requiredSaasModuleCode;
     }
-    if (binding.requiredAnySaasModuleCodes?.length) {
+    if (!sourceSaasModuleCode && binding.requiredAnySaasModuleCodes?.length) {
       accessOptions.requiredAnySaasModuleCodes = binding.requiredAnySaasModuleCodes;
     }
 
@@ -233,6 +249,27 @@ export class SystemModuleGuard implements CanActivate {
 
   private matchesRoutePrefix(path: string, prefix: string): boolean {
     return path === prefix || path.startsWith(`${prefix}/`);
+  }
+
+  private resolveSourceSaasModuleCode(
+    binding: SystemModuleRouteBinding,
+    request: Record<string, any>,
+    path: string,
+  ): string | undefined {
+    if (!binding.sourceSaasModuleCodeMap) {
+      return undefined;
+    }
+    const sourceValue = binding.sourceResolver
+      ? binding.sourceResolver(request, path)
+      : request.query?.source ?? request.body?.source;
+    const source = this.normalizeRequestSource(sourceValue);
+    return source ? binding.sourceSaasModuleCodeMap[source] : undefined;
+  }
+
+  private normalizeRequestSource(value: unknown): string | undefined {
+    const raw = Array.isArray(value) ? value[0] : value;
+    const source = String(raw ?? '').trim().toLowerCase();
+    return source || undefined;
   }
 
   private resolveTenantId(user: Record<string, any>): number | undefined {
