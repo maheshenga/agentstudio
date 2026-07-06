@@ -133,6 +133,19 @@ describe('SystemModuleGuard', () => {
       modules: [enabledModule('ai_console')],
     });
 
+  const createRealSaasPlatformGuard = (
+    options: {
+      modules?: EntityRecord[];
+      saasModuleCodes?: string[];
+      tenantModules?: EntityRecord[];
+      bridgeRows?: EntityRecord[];
+    } = {},
+  ) =>
+    createRealAccessGuard({
+      ...options,
+      modules: options.modules || [enabledModule('saas_platform')],
+    });
+
   it('blocks a tenant SaaS route when the system module access gate rejects it', async () => {
     const access = {
       assertModuleAccess: jest.fn().mockRejectedValue(new Error('Module is disabled')),
@@ -177,6 +190,55 @@ describe('SystemModuleGuard', () => {
       tenantId: undefined,
       userId: 9,
     });
+  });
+
+  it.each(['/api/saas/platform/usage/overview', '/nest-api/api/saas/platform/usage/overview'])(
+    'allows SaaS platform route %s through the real access service without tenant context',
+    async (path) => {
+      const { guard, saasModuleService } = createRealSaasPlatformGuard();
+
+      await expect(
+        guard.canActivate(
+          createContext(path, {
+            userId: 9,
+          }),
+        ),
+      ).resolves.toBe(true);
+
+      expect(saasModuleService.listTenantModules).not.toHaveBeenCalled();
+    },
+  );
+
+  it('denies SaaS platform routes through the real access service when the platform module is disabled', async () => {
+    const { guard, saasModuleService } = createRealSaasPlatformGuard({
+      modules: [{ ...enabledModule('saas_platform'), status: 'disabled' }],
+    });
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/saas/platform/usage/overview', {
+          userId: 9,
+        }),
+      ),
+    ).rejects.toThrow('Module is disabled');
+
+    expect(saasModuleService.listTenantModules).not.toHaveBeenCalled();
+  });
+
+  it('denies SaaS platform routes through the real access service when the platform module is missing', async () => {
+    const { guard, saasModuleService } = createRealSaasPlatformGuard({
+      modules: [],
+    });
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/saas/platform/usage/overview', {
+          userId: 9,
+        }),
+      ),
+    ).rejects.toThrow('Module saas_platform not found');
+
+    expect(saasModuleService.listTenantModules).not.toHaveBeenCalled();
   });
 
   it('passes member management SaaS feature requirements for tenant member routes', async () => {
