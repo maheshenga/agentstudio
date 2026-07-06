@@ -117,7 +117,7 @@
     <ElDialog
       v-if="homeDebugEnabled"
       v-model="welcomeDialogVisible"
-      title="FssAdmin"
+      title="AgentStudio"
       width="520px"
       align-center
       :close-on-click-modal="false"

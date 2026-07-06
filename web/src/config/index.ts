@@ -38,7 +38,7 @@ import { headerBarConfig } from './modules/headerBar'
 const appConfig: SystemConfig = {
   // 系统信息
   systemInfo: {
-    name: 'FssAdmin' // 系统名称
+    name: 'AgentStudio' // 系统名称
   },
   // 系统主题
   systemThemeStyles: {
