@@ -43,6 +43,7 @@
     "init:auth:dev": "pnpm run build && pnpm run init:auth",
     "verify:api": "node -r tsconfig-paths/register dist/api-verifier/cli/verify-apis.cli.js",
     "verify:api:dev": "pnpm run build && pnpm run verify:api",
+    "db:verify-init": "node scripts/verify-db-init.cjs",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
