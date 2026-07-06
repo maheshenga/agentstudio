@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, IsNull, MoreThan } from 'typeorm';
 
 import { SaasModuleEntity } from '../entities/saas-module.entity';
 import { SaasPlanFeatureEntity } from '../entities/saas-plan-feature.entity';
@@ -64,6 +64,10 @@ describe('SaasModuleService', () => {
     }).compile();
 
     service = module.get(SaasModuleService);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('creates a platform module with a unique code and defaults status to 1', async () => {
@@ -145,6 +149,44 @@ describe('SaasModuleService', () => {
       expect.objectContaining({ code: 'crm' }),
       expect.objectContaining({ code: 'analytics' }),
     ]);
+  });
+
+  it('does not list tenant modules from an active subscription past its end time', async () => {
+    const now = new Date('2026-07-06T12:00:00.000Z');
+    jest.useFakeTimers().setSystemTime(now);
+    subscriptionRepo.findOne.mockResolvedValue(null);
+
+    await expect(service.listTenantModules(12)).resolves.toEqual([]);
+
+    expect(subscriptionRepo.findOne).toHaveBeenCalledWith({
+      where: [
+        { tenantId: 12, status: 'active', endTime: IsNull(), deleteTime: IsNull() },
+        { tenantId: 12, status: 'active', endTime: MoreThan(now), deleteTime: IsNull() },
+      ],
+      order: { id: 'DESC' },
+    });
+    expect(planFeatureRepo.find).not.toHaveBeenCalled();
+    expect(moduleRepo.find).not.toHaveBeenCalled();
+  });
+
+  it('does not allow an expired active subscription to satisfy tenant module assertions', async () => {
+    const now = new Date('2026-07-06T12:00:00.000Z');
+    jest.useFakeTimers().setSystemTime(now);
+    subscriptionRepo.findOne.mockResolvedValue(null);
+
+    await expect(service.assertTenantModuleEnabled(12, 'crm')).rejects.toThrow(
+      'Current plan has not enabled this module',
+    );
+
+    expect(subscriptionRepo.findOne).toHaveBeenCalledWith({
+      where: [
+        { tenantId: 12, status: 'active', endTime: IsNull(), deleteTime: IsNull() },
+        { tenantId: 12, status: 'active', endTime: MoreThan(now), deleteTime: IsNull() },
+      ],
+      order: { id: 'DESC' },
+    });
+    expect(planFeatureRepo.find).not.toHaveBeenCalled();
+    expect(moduleRepo.find).not.toHaveBeenCalled();
   });
 
   it('rejects when a tenant plan has not enabled the requested module', async () => {

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, IsNull, Like, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Like, MoreThan, Repository } from 'typeorm';
 
 import { SaveSaasModuleDto } from '../dto/save-saas-module.dto';
 import { SaasModuleEntity } from '../entities/saas-module.entity';
@@ -129,8 +129,12 @@ export class SaasModuleService {
   }
 
   async listTenantModules(tenantId: number) {
+    const now = new Date();
     const subscription = await this.subscriptionRepo.findOne({
-      where: { tenantId, status: 'active', deleteTime: IsNull() },
+      where: [
+        { tenantId, status: 'active', endTime: IsNull(), deleteTime: IsNull() },
+        { tenantId, status: 'active', endTime: MoreThan(now), deleteTime: IsNull() },
+      ],
       order: { id: 'DESC' },
     });
     if (!subscription) return [];
