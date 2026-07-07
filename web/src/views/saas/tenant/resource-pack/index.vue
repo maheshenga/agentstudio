@@ -67,6 +67,13 @@
         </p>
       </div>
       <div class="tenant-resource-pack-page__order-actions">
+        <div v-if="alipayConfigStatus" class="tenant-resource-pack-page__payment-status">
+          <ElTag :type="alipayConfigStatus.configured ? 'success' : 'warning'" effect="light">
+            {{ alipayConfigStatus.configured ? '支付宝已配置' : '支付宝未配置' }}
+          </ElTag>
+          <span v-if="pollingPayment">正在同步支付结果...</span>
+          <span v-if="!alipayConfigStatus.configured">{{ alipayMissingKeysText }}</span>
+        </div>
         <ElButton
           type="primary"
           :disabled="!isCurrentOrderPayable"
@@ -209,10 +216,12 @@
     createAlipayPayment,
     createTenantResourcePackOrder,
     devConfirmTenantPayment,
+    fetchAlipayConfigStatus,
     fetchTenantResourcePackOrder,
     fetchTenantResourcePackOrders,
     fetchTenantModules,
     fetchTenantResourcePacks,
+    type AlipayConfigStatus,
     type SaasResourcePackOrderRecord,
     type SaasResourcePackRecord
   } from '@/api/saas'
@@ -224,6 +233,7 @@
 
   const records = ref<SaasResourcePackRecord[]>([])
   const currentOrder = ref<SaasResourcePackOrderRecord | null>(null)
+  const alipayConfigStatus = ref<AlipayConfigStatus | null>(null)
   const moduleChecked = ref(false)
   const moduleEnabled = ref(false)
   const loading = ref(false)
@@ -260,6 +270,10 @@
   const isCurrentOrderPaymentRequested = computed(() => isPaymentRequestedPendingOrder(currentOrder.value))
   const currentOrderStatusText = computed(() => formatOrderStatus(currentOrder.value?.status || ''))
   const currentOrderStatusTagType = computed(() => getOrderStatusTagType(currentOrder.value?.status || ''))
+  const alipayMissingKeysText = computed(() => {
+    const missingKeys = alipayConfigStatus.value?.missing_keys || []
+    return missingKeys.length ? `缺少：${missingKeys.join('、')}` : ''
+  })
 
   async function loadResourcePacks() {
     if (!moduleEnabled.value) return
@@ -285,11 +299,15 @@
       moduleEnabled.value = modules.some((module) => module.code === 'resource_pack' && module.status === 1)
       moduleChecked.value = true
       if (moduleEnabled.value) {
+        alipayConfigStatus.value = await fetchAlipayConfigStatus()
         await loadResourcePacks()
         await loadOrderHistory()
+      } else {
+        alipayConfigStatus.value = null
       }
     } catch (error) {
       console.error('[SaasTenantResourcePackPage] load module access failed:', error)
+      alipayConfigStatus.value = null
       moduleEnabled.value = false
       moduleChecked.value = true
       errorMessage.value = '加载模块权限失败'
@@ -642,6 +660,18 @@
     gap: 8px;
   }
 
+  .tenant-resource-pack-page__payment-status {
+    display: flex;
+    max-width: 360px;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+    text-align: right;
+  }
+
   .tenant-resource-pack-page__orders {
     display: grid;
     gap: 16px;
@@ -679,8 +709,10 @@
       display: grid;
     }
 
-    .tenant-resource-pack-page__order-actions {
+    .tenant-resource-pack-page__order-actions,
+    .tenant-resource-pack-page__payment-status {
       justify-content: flex-start;
+      text-align: left;
     }
   }
 </style>
