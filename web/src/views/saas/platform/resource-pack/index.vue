@@ -37,6 +37,11 @@
         <ElButton type="primary" :loading="loading" @click="refreshResourcePacks">查询</ElButton>
       </div>
 
+      <div v-if="loadError" class="saas-resource-pack-page__load-error">
+        <ElAlert type="error" :title="loadError" show-icon :closable="false" />
+        <ElButton size="small" type="primary" link :loading="loading" @click="loadResourcePacks">重试</ElButton>
+      </div>
+
       <ElTable v-loading="loading" :data="records" border>
         <ElTableColumn prop="code" label="编码" width="170" show-overflow-tooltip />
         <ElTableColumn prop="name" label="名称" min-width="180" show-overflow-tooltip />
@@ -58,6 +63,9 @@
         </ElTableColumn>
         <ElTableColumn prop="sort" label="排序" width="90" />
         <ElTableColumn prop="remark" label="说明" min-width="220" show-overflow-tooltip />
+        <template #empty>
+          <ElEmpty description="暂无资源包数据" />
+        </template>
       </ElTable>
 
       <ElPagination
@@ -75,6 +83,7 @@
 </template>
 
 <script setup lang="ts">
+  import { ElMessage } from 'element-plus'
   import {
     fetchPlatformResourcePacks,
     type SaasResourcePackRecord
@@ -84,6 +93,7 @@
 
   const records = ref<SaasResourcePackRecord[]>([])
   const loading = ref(false)
+  const loadError = ref('')
   const filters = reactive({
     resource_type: '',
     status: '' as number | ''
@@ -103,6 +113,7 @@
 
   async function loadResourcePacks() {
     loading.value = true
+    loadError.value = ''
 
     try {
       const result = await fetchPlatformResourcePacks({
@@ -113,6 +124,10 @@
       })
       records.value = result.list || []
       pager.total = Number(result.total) || 0
+    } catch (error) {
+      console.error('[SaasPlatformResourcePackPage] load resource packs failed:', error)
+      loadError.value = '资源包列表加载失败'
+      ElMessage.error(loadError.value)
     } finally {
       loading.value = false
     }
@@ -195,6 +210,13 @@
 
   .saas-resource-pack-page__status-select {
     width: 140px;
+  }
+
+  .saas-resource-pack-page__load-error {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
   }
 
   .saas-resource-pack-page__pagination {

@@ -30,6 +30,11 @@
         <ElButton @click="resetFilters">Reset</ElButton>
       </div>
 
+      <div v-if="loadError" class="saas-module-page__load-error">
+        <ElAlert type="error" :title="loadError" show-icon :closable="false" />
+        <ElButton size="small" type="primary" link :loading="loading" @click="loadModules">重试</ElButton>
+      </div>
+
       <ElTable v-loading="loading" :data="records" border>
         <ElTableColumn prop="code" label="Code" min-width="150" show-overflow-tooltip />
         <ElTableColumn prop="name" label="Name" min-width="160" show-overflow-tooltip />
@@ -55,6 +60,9 @@
             </ElButton>
           </template>
         </ElTableColumn>
+        <template #empty>
+          <ElEmpty description="暂无模块数据" />
+        </template>
       </ElTable>
     </ElCard>
 
@@ -112,6 +120,7 @@
 
   const records = ref<SaasModuleRecord[]>([])
   const loading = ref(false)
+  const loadError = ref('')
   const saving = ref(false)
   const dialogVisible = ref(false)
   const editingCode = ref('')
@@ -168,11 +177,16 @@
 
   async function loadModules() {
     loading.value = true
+    loadError.value = ''
     try {
       records.value = await fetchPlatformModules({
         keyword: cleanText(filters.keyword),
         status: filters.status === '' ? undefined : filters.status
       })
+    } catch (error) {
+      console.error('[SaasPlatformModulePage] load modules failed:', error)
+      loadError.value = '模块列表加载失败'
+      ElMessage.error(loadError.value)
     } finally {
       loading.value = false
     }
@@ -309,6 +323,13 @@
 
   .saas-module-page__status-select {
     width: 140px;
+  }
+
+  .saas-module-page__load-error {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
   }
 
   @media (max-width: 640px) {

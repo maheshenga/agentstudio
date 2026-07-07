@@ -69,6 +69,11 @@
         <ElButton type="primary" :loading="loading" @click="refreshOrders">查询</ElButton>
       </div>
 
+      <div v-if="loadError" class="saas-resource-pack-order-page__load-error">
+        <ElAlert type="error" :title="loadError" show-icon :closable="false" />
+        <ElButton size="small" type="primary" link :loading="loading" @click="loadOrders">重试</ElButton>
+      </div>
+
       <ElTable v-loading="loading" :data="orders" border>
         <ElTableColumn prop="order_no" label="订单号" min-width="230" show-overflow-tooltip />
         <ElTableColumn prop="tenant_id" label="租户 ID" width="110" />
@@ -112,6 +117,9 @@
             <ElButton type="primary" link @click="openOrderDetail(row)">详情</ElButton>
           </template>
         </ElTableColumn>
+        <template #empty>
+          <ElEmpty description="暂无资源包订单" />
+        </template>
       </ElTable>
 
       <ElPagination
@@ -158,6 +166,7 @@
 </template>
 
 <script setup lang="ts">
+  import { ElMessage } from 'element-plus'
   import {
     fetchPlatformResourcePackOrder,
     fetchPlatformResourcePackOrders,
@@ -168,6 +177,7 @@
   defineOptions({ name: 'SaasPlatformResourcePackOrderPage' })
 
   const loading = ref(false)
+  const loadError = ref('')
   const detailVisible = ref(false)
   const detailLoading = ref(false)
   const currentDetail = ref<SaasResourcePackOrderRecord | null>(null)
@@ -211,6 +221,7 @@
 
   async function loadOrders() {
     loading.value = true
+    loadError.value = ''
 
     try {
       const result = await fetchPlatformResourcePackOrders({
@@ -225,6 +236,10 @@
       })
       orders.value = result.list || []
       pager.total = Number(result.total) || 0
+    } catch (error) {
+      console.error('[SaasPlatformResourcePackOrderPage] load orders failed:', error)
+      loadError.value = '资源包订单加载失败'
+      ElMessage.error(loadError.value)
     } finally {
       loading.value = false
     }
@@ -245,6 +260,10 @@
     detailLoading.value = true
     try {
       currentDetail.value = await fetchPlatformResourcePackOrder(row.order_no)
+    } catch (error) {
+      console.error('[SaasPlatformResourcePackOrderPage] load order detail failed:', error)
+      currentDetail.value = null
+      ElMessage.error('订单详情加载失败')
     } finally {
       detailLoading.value = false
     }
@@ -337,6 +356,13 @@
   .saas-resource-pack-order-page__input,
   .saas-resource-pack-order-page__select {
     width: 180px;
+  }
+
+  .saas-resource-pack-order-page__load-error {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
   }
 
   .saas-resource-pack-order-page__pagination {

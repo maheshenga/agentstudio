@@ -21,6 +21,11 @@
         <ElButton @click="resetFilters">重置</ElButton>
       </div>
 
+      <div v-if="loadError" class="saas-plan-page__load-error">
+        <ElAlert type="error" :title="loadError" show-icon :closable="false" />
+        <ElButton size="small" type="primary" link :loading="loading" @click="loadPlans">重试</ElButton>
+      </div>
+
       <ElTable v-loading="loading" :data="records" border>
         <ElTableColumn prop="code" label="编码" width="150" />
         <ElTableColumn prop="name" label="名称" min-width="160" />
@@ -53,6 +58,9 @@
             </ElButton>
           </template>
         </ElTableColumn>
+        <template #empty>
+          <ElEmpty description="暂无套餐数据" />
+        </template>
       </ElTable>
 
       <ElPagination
@@ -163,6 +171,7 @@
 
   const records = ref<SaasPlatformPlanRecord[]>([])
   const loading = ref(false)
+  const loadError = ref('')
   const filters = reactive<{ keyword: string; status: number | string }>({ keyword: '', status: '' })
   const pager = reactive({ page: 1, limit: 20, total: 0 })
   const planDialogVisible = ref(false)
@@ -210,10 +219,15 @@
 
   async function loadPlans() {
     loading.value = true
+    loadError.value = ''
     try {
       const result = await fetchPlatformPlans({ page: pager.page, limit: pager.limit, keyword: filters.keyword || undefined, status: filters.status === '' ? undefined : filters.status })
       records.value = result.list || []
       pager.total = Number(result.total) || 0
+    } catch (error) {
+      console.error('[SaasPlatformPlanPage] load plans failed:', error)
+      loadError.value = '套餐列表加载失败'
+      ElMessage.error(loadError.value)
     } finally {
       loading.value = false
     }
@@ -349,6 +363,13 @@
 
   .saas-plan-page__filter-item {
     width: 200px;
+  }
+
+  .saas-plan-page__load-error {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
   }
 
   .saas-plan-page__pagination {
