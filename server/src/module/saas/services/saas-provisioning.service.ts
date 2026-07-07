@@ -44,6 +44,9 @@ const TENANT_OWNER_ADMIN_PERMISSION_SLUGS = [
   'tenant:resource-pack-order:pay',
   'tenant:member:index',
   'tenant:member:create',
+  'tenant:member:update',
+  'tenant:member:remove',
+  'tenant:member:reset-password',
   'tenant:module:list',
 ] as const;
 const TENANT_MEMBER_PERMISSION_SLUGS = [

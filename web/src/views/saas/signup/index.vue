@@ -122,6 +122,13 @@
   import { signupTenant, type SaasSignupParams } from '@/api/saas'
   import { useI18n } from 'vue-i18n'
   import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+  import {
+    SIGNUP_PASSWORD_MAX_LENGTH,
+    SIGNUP_PASSWORD_MESSAGE,
+    SIGNUP_PASSWORD_MESSAGE_EN,
+    SIGNUP_PASSWORD_MIN_LENGTH,
+    SIGNUP_PASSWORD_PATTERN
+  } from '@/utils/saas/signup-password-policy'
 
   defineOptions({ name: 'SaasSignupPage' })
 
@@ -132,8 +139,8 @@
 
   const USERNAME_MIN_LENGTH = 2
   const USERNAME_MAX_LENGTH = 64
-  const PASSWORD_MIN_LENGTH = 6
-  const PASSWORD_MAX_LENGTH = 100
+  const PASSWORD_MIN_LENGTH = SIGNUP_PASSWORD_MIN_LENGTH
+  const PASSWORD_MAX_LENGTH = SIGNUP_PASSWORD_MAX_LENGTH
   const PHONE_MAX_LENGTH = 20
   const TENANT_NAME_MAX_LENGTH = 100
   const REALNAME_MAX_LENGTH = 64
@@ -187,7 +194,7 @@
           phoneLength: '手机号长度不能超过 20 个字符',
           emailLength: '邮箱长度不能超过 128 个字符',
           emailInvalid: '请输入正确的邮箱地址',
-          passwordLength: '密码长度需在 6 到 100 个字符之间',
+          passwordLength: SIGNUP_PASSWORD_MESSAGE,
           passwordMismatch: '两次输入的密码不一致',
           agreementRequired: '请先勾选协议'
         }
@@ -228,7 +235,7 @@
         phoneLength: 'Phone number must be 20 characters or fewer',
         emailLength: 'Email must be 128 characters or fewer',
         emailInvalid: 'Please enter a valid email address',
-        passwordLength: 'Password must be 6 to 100 characters',
+        passwordLength: SIGNUP_PASSWORD_MESSAGE_EN,
         passwordMismatch: 'Passwords do not match',
         agreementRequired: 'Please accept the agreement first'
       }
@@ -318,6 +325,7 @@
       {
         min: PASSWORD_MIN_LENGTH,
         max: PASSWORD_MAX_LENGTH,
+        pattern: SIGNUP_PASSWORD_PATTERN,
         message: copy.value.rule.passwordLength,
         trigger: 'blur'
       }

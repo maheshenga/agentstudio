@@ -31,6 +31,12 @@ export const staticRoutes: AppRouteRecordRaw[] = [
     meta: { title: 'menus.register.title', isHideTab: true }
   },
   {
+    path: '/saas/signup',
+    name: 'SaasSignup',
+    component: () => import('@views/auth/register/index.vue'),
+    meta: { title: 'menus.register.title', isHideTab: true }
+  },
+  {
     path: '/auth/forget-password',
     name: 'ForgetPassword',
     component: () => import('@views/auth/forget-password/index.vue'),
