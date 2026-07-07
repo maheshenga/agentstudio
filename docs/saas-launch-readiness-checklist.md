@@ -16,6 +16,9 @@ Run these before demo or release review:
 
 ```powershell
 cd web
+pnpm.cmd run verify:saas-readiness
+
+# Expanded frontend gates
 pnpm.cmd exec tsx scripts/verify-saas-launch-flow-readiness.ts
 pnpm.cmd exec tsx scripts/verify-saas-ui-state-readiness.ts
 pnpm.cmd exec tsx scripts/verify-saas-tenant-ui-state-readiness.ts
