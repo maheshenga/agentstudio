@@ -54,6 +54,7 @@
   import type { FormInstance, FormRules } from 'element-plus'
   import { ElMessage } from 'element-plus'
   import api from '@/api/ai-admin'
+  import { getExternalHttpUrlError, normalizeExternalHttpUrlInput } from '@/utils/safe-url'
 
   const visible = defineModel<boolean>({ default: false })
   const props = defineProps<{ dialogType: 'add' | 'edit'; data?: Record<string, any> }>()
@@ -73,10 +74,22 @@
     remark: ''
   })
 
+  const validateBaseUrl = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+    const error = getExternalHttpUrlError(value, {
+      label: 'Base URL',
+      stripTrailingSlash: true,
+      allowQuery: false
+    })
+    error ? callback(new Error(error)) : callback()
+  }
+
   const rules: FormRules = {
     code: [{ required: true, message: '请输入 code', trigger: 'blur' }],
     name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
-    base_url: [{ required: true, message: '请输入 Base URL', trigger: 'blur' }],
+    base_url: [
+      { required: true, message: '请输入 Base URL', trigger: 'blur' },
+      { validator: validateBaseUrl, trigger: 'blur' }
+    ],
     api_key: [
       {
         validator: (_r, v, cb) => {
@@ -124,6 +137,11 @@
     submitting.value = true
     try {
       const payload = { ...formData }
+      payload.base_url = normalizeExternalHttpUrlInput(payload.base_url, {
+        label: 'Base URL',
+        stripTrailingSlash: true,
+        allowQuery: false
+      })
       if (props.dialogType === 'edit') {
         if (!payload.api_key) delete (payload as any).api_key
         await api.provider.update(payload)

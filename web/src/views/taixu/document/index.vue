@@ -89,9 +89,9 @@
     </ElDialog>
 
     <ElDialog v-model="showWebsiteDialog" title="站点入库" width="560px" align-center>
-      <ElForm label-width="100px">
-        <ElFormItem label="URL">
-          <ElInput v-model="websiteUrl" placeholder="https://example.com" />
+      <ElForm ref="websiteFormRef" :model="websiteForm" :rules="websiteRules" label-width="100px">
+        <ElFormItem label="URL" prop="website">
+          <ElInput v-model="websiteForm.website" placeholder="https://example.com" />
         </ElFormItem>
       </ElForm>
       <template #footer>
@@ -103,8 +103,8 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-  import { ElMessage, ElMessageBox } from 'element-plus'
+  import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+  import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
   import { MdPreview } from 'md-editor-v3'
   import 'md-editor-v3/lib/style.css'
   import { useSettingStore } from '@/store/modules/setting'
@@ -125,6 +125,7 @@
     type TaixuDocumentItem,
     type TaixuDocumentQueueHealth
   } from '@/api/taixu'
+  import { getExternalHttpUrlError, normalizeExternalHttpUrlInput } from '@/utils/safe-url'
 
   defineOptions({ name: 'TaixuDocumentPage' })
 
@@ -179,7 +180,8 @@
   const previewVisible = ref(false)
   const previewText = ref('')
   const showWebsiteDialog = ref(false)
-  const websiteUrl = ref('')
+  const websiteFormRef = ref<FormInstance>()
+  const websiteForm = reactive({ website: '' })
   const uploading = ref(false)
   const uploadingWebsite = ref(false)
   const pendingIds = ref<string[]>([])
@@ -196,6 +198,18 @@
   const queueSwitching = ref(false)
   let pollTimer: ReturnType<typeof setInterval> | null = null
   let queueStatusTimer: ReturnType<typeof setInterval> | null = null
+
+  const validateWebsiteUrl = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+    const error = getExternalHttpUrlError(value, { label: '站点 URL' })
+    error ? callback(new Error(error)) : callback()
+  }
+
+  const websiteRules: FormRules = {
+    website: [
+      { required: true, message: '请输入站点 URL', trigger: 'blur' },
+      { validator: validateWebsiteUrl, trigger: 'blur' }
+    ]
+  }
 
   const formatQueueTime = (ts?: number | null) => {
     if (!ts) return '-'
@@ -318,15 +332,16 @@
   }
 
   const handleWebsite = async () => {
-    const url = websiteUrl.value.trim()
-    if (!url) return
+    await websiteFormRef.value?.validate()
+    const url = normalizeExternalHttpUrlInput(websiteForm.website, { label: '站点 URL' })
     uploadingWebsite.value = true
     try {
       const res = await uploadTaixuWebsite(url)
       trackUploaded(res)
       ElMessage.success('上传成功，正在后台索引')
       showWebsiteDialog.value = false
-      websiteUrl.value = ''
+      websiteForm.website = ''
+      websiteFormRef.value?.clearValidate()
       await refreshData()
       await pollIndexStatus()
     } finally {
