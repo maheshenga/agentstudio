@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -125,58 +125,58 @@ export class SaasTenantController {
   }
 
   @Patch('members/:user_id/role')
-  @RequirePermission('tenant:member:create')
+  @RequirePermission('tenant:member:update')
   @ApiOperation({ summary: 'Change current tenant SaaS member role' })
-  async changeMemberRole(@Param('user_id') userId: string, @Body() body: { role: 'admin' | 'member' }) {
+  async changeMemberRole(@Param('user_id', ParseIntPipe) userId: number, @Body() body: { role: 'admin' | 'member' }) {
     const tenantId = getTenantId();
     if (!tenantId) {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
     await this.assertTenantFeatureAccess(tenantId, 'member_management');
-    await this.tenantMemberService.changeMemberRole(tenantId, Number(userId), body.role);
+    await this.tenantMemberService.changeMemberRole(tenantId, userId, body.role);
     return ResultData.ok();
   }
 
   @Patch('members/:user_id/status')
-  @RequirePermission('tenant:member:create')
+  @RequirePermission('tenant:member:update')
   @ApiOperation({ summary: 'Update current tenant SaaS member status' })
-  async updateMemberStatus(@Param('user_id') userId: string, @Body() body: { status: 0 | 1 }) {
+  async updateMemberStatus(@Param('user_id', ParseIntPipe) userId: number, @Body() body: { status: 0 | 1 }) {
     const tenantId = getTenantId();
     if (!tenantId) {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
     await this.assertTenantFeatureAccess(tenantId, 'member_management');
-    await this.tenantMemberService.updateMemberStatus(tenantId, Number(userId), Number(body.status) as 0 | 1);
+    await this.tenantMemberService.updateMemberStatus(tenantId, userId, Number(body.status) as 0 | 1);
     return ResultData.ok();
   }
 
   @Delete('members/:user_id')
-  @RequirePermission('tenant:member:create')
+  @RequirePermission('tenant:member:remove')
   @ApiOperation({ summary: 'Remove current tenant SaaS member' })
-  async removeMember(@Param('user_id') userId: string) {
+  async removeMember(@Param('user_id', ParseIntPipe) userId: number) {
     const tenantId = getTenantId();
     if (!tenantId) {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
     await this.assertTenantFeatureAccess(tenantId, 'member_management');
-    await this.tenantMemberService.removeMember(tenantId, Number(userId));
+    await this.tenantMemberService.removeMember(tenantId, userId);
     return ResultData.ok();
   }
 
   @Post('members/:user_id/reset-password')
-  @RequirePermission('tenant:member:create')
+  @RequirePermission('tenant:member:reset-password')
   @ApiOperation({ summary: 'Reset current tenant SaaS member password' })
-  async resetMemberPassword(@Param('user_id') userId: string, @Body() body: { password: string }) {
+  async resetMemberPassword(@Param('user_id', ParseIntPipe) userId: number, @Body() body: { password: string }) {
     const tenantId = getTenantId();
     if (!tenantId) {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
     await this.assertTenantFeatureAccess(tenantId, 'member_management');
-    await this.tenantMemberService.resetMemberPassword(tenantId, Number(userId), body.password);
+    await this.tenantMemberService.resetMemberPassword(tenantId, userId, body.password);
     return ResultData.ok();
   }
 

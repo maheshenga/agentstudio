@@ -8,6 +8,7 @@ import * as path from 'path';
 import { In, Repository } from 'typeorm';
 
 import { generateUUID } from '../../../common/utils';
+import { assertPublicResolvedUrl } from '../../../common/utils/safe-url.util';
 import { getTenantId } from '../../../common/utils/tenant.util';
 import { TaixuGraphService } from '../graph/taixu-graph.service';
 import { TaixuVectorService } from '../vector/taixu-vector.service';
@@ -197,15 +198,16 @@ export class TaixuDocumentService {
    */
   async uploadWebsite(website: string) {
     const tenantId = this.requireTenantId();
-    const libraryNumber = this.calcLibraryNumber(website);
+    const safeWebsite = await assertPublicResolvedUrl(website, { label: 'website' });
+    const libraryNumber = this.calcLibraryNumber(safeWebsite);
 
-    const res = await axios.get(website, { timeout: 15000, responseType: 'arraybuffer' });
+    const res = await axios.get(safeWebsite, { timeout: 15000, responseType: 'arraybuffer', maxRedirects: 0 });
     const buffer = Buffer.from(res.data);
 
     const entity = this.documentRepo.create({
       id: generateUUID(),
       tenantId,
-      documentName: website,
+      documentName: safeWebsite,
       documentType: 'html',
       documentSize: 0,
       libraryNumber,

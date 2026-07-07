@@ -4,6 +4,7 @@ import { Repository, IsNull, In } from 'typeorm';
 
 import { encryptAiSecret, maskAiSecret, decryptAiSecret } from '../../../common/utils/ai-crypto.util';
 import { formatDateTime } from '../../../common/utils/index';
+import { assertPublicResolvedUrl, normalizeExternalHttpUrl } from '../../../common/utils/safe-url.util';
 import { SaveAiModelDto } from '../dto/save-ai-model.dto';
 import { SaveAiProviderDto } from '../dto/save-ai-provider.dto';
 import { TestAiProviderDto } from '../dto/test-ai-provider.dto';
@@ -314,6 +315,12 @@ export class AiAdminService {
       };
     }
 
+    await assertPublicResolvedUrl(provider.baseUrl, {
+      label: 'base_url',
+      stripTrailingSlash: true,
+      allowQuery: false,
+    });
+
     const startedAt = Date.now();
     try {
       const result = await this.llmProviderService.completeChat(
@@ -427,7 +434,11 @@ export class AiAdminService {
   }
 
   private normalizeBaseUrl(baseUrl: string) {
-    return `${baseUrl || ''}`.trim().replace(/\/+$/, '');
+    return normalizeExternalHttpUrl(baseUrl, {
+      label: 'base_url',
+      stripTrailingSlash: true,
+      allowQuery: false,
+    });
   }
 
   private assertAdapterSupported(adapterType?: string | null) {

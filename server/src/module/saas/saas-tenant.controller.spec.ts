@@ -185,10 +185,10 @@ describe('SaasTenantController', () => {
       ['modules', 'tenant:module:list'],
       ['members', 'tenant:member:index'],
       ['createMember', 'tenant:member:create'],
-      ['changeMemberRole', 'tenant:member:create'],
-      ['updateMemberStatus', 'tenant:member:create'],
-      ['removeMember', 'tenant:member:create'],
-      ['resetMemberPassword', 'tenant:member:create'],
+      ['changeMemberRole', 'tenant:member:update'],
+      ['updateMemberStatus', 'tenant:member:update'],
+      ['removeMember', 'tenant:member:remove'],
+      ['resetMemberPassword', 'tenant:member:reset-password'],
       ['resourcePacks', 'tenant:resource-pack:view'],
       ['createResourcePackOrder', 'tenant:resource-pack-order:create'],
       ['resourcePackOrders', 'tenant:resource-pack-order:view'],
@@ -389,7 +389,7 @@ describe('SaasTenantController', () => {
     jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
     tenantMemberService.changeMemberRole.mockResolvedValue(undefined);
 
-    const result = await controller.changeMemberRole('8', { role: 'admin' });
+    const result = await controller.changeMemberRole(8, { role: 'admin' });
 
     expectTenantFeatureGate(88, 'member_management');
     expect(tenantMemberService.changeMemberRole).toHaveBeenCalledWith(88, 8, 'admin');
@@ -400,7 +400,7 @@ describe('SaasTenantController', () => {
     jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
     tenantMemberService.updateMemberStatus.mockResolvedValue(undefined);
 
-    const result = await controller.updateMemberStatus('8', { status: 0 });
+    const result = await controller.updateMemberStatus(8, { status: 0 });
 
     expectTenantFeatureGate(88, 'member_management');
     expect(tenantMemberService.updateMemberStatus).toHaveBeenCalledWith(88, 8, 0);
@@ -411,7 +411,7 @@ describe('SaasTenantController', () => {
     jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
     tenantMemberService.removeMember.mockResolvedValue(undefined);
 
-    const result = await controller.removeMember('8');
+    const result = await controller.removeMember(8);
 
     expectTenantFeatureGate(88, 'member_management');
     expect(tenantMemberService.removeMember).toHaveBeenCalledWith(88, 8);
@@ -422,7 +422,7 @@ describe('SaasTenantController', () => {
     jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(88);
     tenantMemberService.resetMemberPassword.mockResolvedValue(undefined);
 
-    const result = await controller.resetMemberPassword('8', { password: 'NewPass123!' });
+    const result = await controller.resetMemberPassword(8, { password: 'NewPass123!' });
 
     expectTenantFeatureGate(88, 'member_management');
     expect(tenantMemberService.resetMemberPassword).toHaveBeenCalledWith(88, 8, 'NewPass123!');

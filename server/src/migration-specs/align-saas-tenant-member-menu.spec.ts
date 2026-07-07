@@ -17,5 +17,8 @@ describe('AlignSaasTenantMemberMenu1760000000015', () => {
     expect(params).toContain('/saas/tenant/member');
     expect(params).toContain('tenant:member:index');
     expect(params).toContain('tenant:member:create');
+    expect(params).toContain('tenant:member:update');
+    expect(params).toContain('tenant:member:remove');
+    expect(params).toContain('tenant:member:reset-password');
   });
 });

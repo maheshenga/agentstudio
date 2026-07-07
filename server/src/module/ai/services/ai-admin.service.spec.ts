@@ -84,6 +84,21 @@ describe('AiAdminService', () => {
     expect(result.base_url).toBe('https://api.deepseek.com/v1');
   });
 
+  it('rejects private provider base URLs on create', async () => {
+    providerRepo.findOne.mockResolvedValue(null);
+
+    await expect(
+      service.createProvider(user, {
+        code: 'local',
+        name: 'Local',
+        base_url: 'http://127.0.0.1:11434/v1',
+        api_key: 'secret',
+      } as any),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(providerRepo.save).not.toHaveBeenCalled();
+  });
+
   it('rejects unsupported adapter types in the admin service layer', async () => {
     providerRepo.findOne.mockResolvedValue(null);
 
@@ -137,7 +152,7 @@ describe('AiAdminService', () => {
       status: '1',
       apiKeyCipher: 'enc:secret',
       adapterType: 'openai_compatible',
-      baseUrl: 'https://api.example.test/v1',
+      baseUrl: 'https://93.184.216.34/v1',
       extraHeaders: null,
     });
     llmProviderService.completeChat.mockResolvedValue({
@@ -168,7 +183,7 @@ describe('AiAdminService', () => {
       status: '1',
       apiKeyCipher: 'enc:secret',
       adapterType: 'openai_compatible',
-      baseUrl: 'https://api.example.test/v1',
+      baseUrl: 'https://93.184.216.34/v1',
       extraHeaders: null,
     });
     llmProviderService.completeChat.mockRejectedValue(new Error('401 unauthorized'));
@@ -181,6 +196,24 @@ describe('AiAdminService', () => {
       ok: false,
       message: '401 unauthorized',
     });
+  });
+
+  it('rejects provider tests for private base URLs before remote calls', async () => {
+    providerRepo.findOne.mockResolvedValue({
+      id: '1',
+      tenantId: 42,
+      status: '1',
+      apiKeyCipher: 'enc:secret',
+      adapterType: 'openai_compatible',
+      baseUrl: 'http://127.0.0.1:11434/v1',
+      extraHeaders: null,
+    });
+
+    await expect(service.testProvider(user, '1', { model_code: 'gpt-test' } as any)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+
+    expect(llmProviderService.completeChat).not.toHaveBeenCalled();
   });
 
   it('prevents tenant admins from updating platform global providers', async () => {

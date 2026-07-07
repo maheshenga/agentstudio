@@ -48,6 +48,30 @@ const TENANT_MEMBER_PERMISSIONS: PermissionSeed[] = [
     sort: 20,
     remark: 'Seeded tenant member create permission',
   },
+  {
+    parentCode: 'TenantMember',
+    name: 'Update',
+    slug: 'tenant:member:update',
+    method: 'PATCH',
+    sort: 30,
+    remark: 'Seeded tenant member update permission',
+  },
+  {
+    parentCode: 'TenantMember',
+    name: 'Remove',
+    slug: 'tenant:member:remove',
+    method: 'DELETE',
+    sort: 40,
+    remark: 'Seeded tenant member remove permission',
+  },
+  {
+    parentCode: 'TenantMember',
+    name: 'Reset Password',
+    slug: 'tenant:member:reset-password',
+    method: 'POST',
+    sort: 50,
+    remark: 'Seeded tenant member reset password permission',
+  },
 ];
 
 export class AlignSaasTenantMemberMenu1760000000015 implements MigrationInterface {
@@ -68,11 +92,23 @@ export class AlignSaasTenantMemberMenu1760000000015 implements MigrationInterfac
       INNER JOIN \`sa_system_menu\` \`menu\`
         ON \`menu\`.\`id\` = \`role_menu\`.\`menu_id\`
       WHERE \`menu\`.\`code\` = 'TenantMember'
-         OR \`menu\`.\`slug\` IN ('tenant:member:index', 'tenant:member:create')
+         OR \`menu\`.\`slug\` IN (
+           'tenant:member:index',
+           'tenant:member:create',
+           'tenant:member:update',
+           'tenant:member:remove',
+           'tenant:member:reset-password'
+         )
     `);
     await queryRunner.query(`
       DELETE FROM \`sa_system_menu\`
-      WHERE \`slug\` IN ('tenant:member:index', 'tenant:member:create')
+      WHERE \`slug\` IN (
+        'tenant:member:index',
+        'tenant:member:create',
+        'tenant:member:update',
+        'tenant:member:remove',
+        'tenant:member:reset-password'
+      )
         AND \`delete_time\` IS NULL
     `);
     await queryRunner.query(`
@@ -156,7 +192,13 @@ export class AlignSaasTenantMemberMenu1760000000015 implements MigrationInterfac
       INNER JOIN \`sa_system_menu\` \`menu\`
         ON (
           \`menu\`.\`code\` = 'TenantMember'
-          OR \`menu\`.\`slug\` IN ('tenant:member:index', 'tenant:member:create')
+          OR \`menu\`.\`slug\` IN (
+            'tenant:member:index',
+            'tenant:member:create',
+            'tenant:member:update',
+            'tenant:member:remove',
+            'tenant:member:reset-password'
+          )
         )
         AND \`menu\`.\`delete_time\` IS NULL
       WHERE \`role\`.\`code\` REGEXP '^tenant:[0-9]+:(owner|admin)$'

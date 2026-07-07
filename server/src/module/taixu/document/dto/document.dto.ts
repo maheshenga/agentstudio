@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class TaixuDocumentPageDto {
@@ -32,6 +32,8 @@ export class TaixuDocumentDeleteDto extends TaixuDocumentPageDto {
 
 export class TaixuDocumentWebsiteDto {
   @IsString()
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  @MaxLength(2048)
   website: string;
 }
 

@@ -177,13 +177,15 @@
   })
   const roleForm = reactive<{ role: 'admin' | 'member' }>({ role: 'member' })
   const passwordForm = reactive({ password: '' })
+  const PASSWORD_PATTERN = /^(?=.*[A-Za-z])(?=.*\d).{8,100}$/
+  const PASSWORD_MESSAGE = '请输入至少 8 位且包含字母和数字的密码'
   const rules: FormRules = {
     username: [{ required: true, message: '请输入账号', trigger: 'blur' }],
-    password: [{ required: true, min: 6, message: '请输入至少 6 位密码', trigger: 'blur' }],
+    password: [{ required: true, pattern: PASSWORD_PATTERN, message: PASSWORD_MESSAGE, trigger: 'blur' }],
     role: [{ required: true, message: '请选择角色', trigger: 'change' }]
   }
   const passwordRules: FormRules = {
-    password: [{ required: true, min: 6, message: '请输入至少 6 位密码', trigger: 'blur' }]
+    password: [{ required: true, pattern: PASSWORD_PATTERN, message: PASSWORD_MESSAGE, trigger: 'blur' }]
   }
 
   function roleLabel(role: string) {
