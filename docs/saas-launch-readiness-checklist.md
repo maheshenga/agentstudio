@@ -15,6 +15,11 @@ This checklist verifies the AgentStudio SaaS system is ready for local demo, QA 
 Run these before demo or release review:
 
 ```powershell
+# Full repository gate
+node scripts/run-saas-readiness.cjs
+```
+
+```powershell
 cd web
 pnpm.cmd run verify:saas-readiness
 
