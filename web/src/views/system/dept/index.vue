@@ -67,7 +67,7 @@
 
 <script setup lang="ts">
   import { useTable } from '@/hooks/core/useTable'
-  import { useSaiAdmin } from '@/composables/useSaiAdmin'
+  import { useTableCrud } from '@/composables/useTableCrud'
   import api from '@/api/system/dept'
   import TableSearch from './modules/table-search.vue'
   import EditDialog from './modules/edit-dialog.vue'
@@ -119,7 +119,7 @@
   })
 
   // 编辑配置
-  const { dialogType, dialogVisible, dialogData, showDialog, deleteRow } = useSaiAdmin()
+  const { dialogType, dialogVisible, dialogData, showDialog, deleteRow } = useTableCrud()
 
   /**
    * 切换展开/收起所有菜单

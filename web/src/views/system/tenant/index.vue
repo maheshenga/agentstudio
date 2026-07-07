@@ -58,7 +58,7 @@
 
 <script setup lang="ts">
   import { useTable } from '@/hooks/core/useTable'
-  import { useSaiAdmin } from '@/composables/useSaiAdmin'
+  import { useTableCrud } from '@/composables/useTableCrud'
   import api from '@/api/system/tenant'
   import TableSearch from './modules/table-search.vue'
   import EditDialog from './modules/edit-dialog.vue'
@@ -107,7 +107,7 @@
     }
   })
 
-  const { dialogType, dialogVisible, dialogData, showDialog, deleteRow } = useSaiAdmin()
+  const { dialogType, dialogVisible, dialogData, showDialog, deleteRow } = useTableCrud()
 
   const tenantUsersDialogVisible = ref(false)
   const currentTenant = reactive({ id: 0, tenant_name: '' })

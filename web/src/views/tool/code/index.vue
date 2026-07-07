@@ -137,7 +137,7 @@
 
 <script setup lang="ts">
   import { useTable } from '@/hooks/core/useTable'
-  import { useSaiAdmin } from '@/composables/useSaiAdmin'
+  import { useTableCrud } from '@/composables/useTableCrud'
   import { ElMessage, ElMessageBox } from 'element-plus'
   import api from '@/api/tool/generate'
   import { downloadFile } from '@/utils/tool'
@@ -157,15 +157,15 @@
     deleteRow,
     deleteSelectedRows,
     selectedRows
-  } = useSaiAdmin()
+  } = useTableCrud()
 
-  const { dialogVisible: tableVisible, showDialog: showTableDialog } = useSaiAdmin()
+  const { dialogVisible: tableVisible, showDialog: showTableDialog } = useTableCrud()
 
   const {
     dialogVisible: editVisible,
     dialogData: editDialogData,
     showDialog: showEditDialog
-  } = useSaiAdmin()
+  } = useTableCrud()
 
   // 搜索表单
   const searchForm = ref({

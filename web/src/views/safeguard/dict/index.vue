@@ -185,7 +185,7 @@
 
 <script setup lang="ts">
   import { useTable } from '@/hooks/core/useTable'
-  import { useSaiAdmin } from '@/composables/useSaiAdmin'
+  import { useTableCrud } from '@/composables/useTableCrud'
   import { Search } from '@element-plus/icons-vue'
   import { ElMessage } from 'element-plus'
   import api from '@/api/safeguard/dict'
@@ -200,7 +200,7 @@
     dialogData: currentTypeData,
     showDialog: typeShowDialog,
     deleteRow: typeDeleteRow
-  } = useSaiAdmin()
+  } = useTableCrud()
 
   // 字典类型
   const selectedId = ref(0)
@@ -286,7 +286,7 @@
     handleSelectionChange,
     selectedRows,
     deleteSelectedRows
-  } = useSaiAdmin()
+  } = useTableCrud()
 
   /** 字典项搜索 */
   const searchForm = ref({

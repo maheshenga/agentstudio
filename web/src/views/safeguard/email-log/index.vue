@@ -61,7 +61,7 @@
 
 <script setup lang="ts">
   import { useTable } from '@/hooks/core/useTable'
-  import { useSaiAdmin } from '@/composables/useSaiAdmin'
+  import { useTableCrud } from '@/composables/useTableCrud'
   import api from '@/api/safeguard/emailLog'
   import TableSearch from './modules/table-search.vue'
 
@@ -117,5 +117,5 @@
   })
 
   // 编辑配置
-  const { deleteRow, deleteSelectedRows, selectedRows, handleSelectionChange } = useSaiAdmin()
+  const { deleteRow, deleteSelectedRows, selectedRows, handleSelectionChange } = useTableCrud()
 </script>

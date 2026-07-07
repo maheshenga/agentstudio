@@ -116,7 +116,7 @@
 
 <script setup lang="ts">
   import { useTable } from '@/hooks/core/useTable'
-  import { useSaiAdmin } from '@/composables/useSaiAdmin'
+  import { useTableCrud } from '@/composables/useTableCrud'
   import api from '@/api/article'
   import TableSearch from './modules/table-search.vue'
   import EditDialog from './modules/form.vue'
@@ -198,7 +198,7 @@
     deleteSelectedRows,
     handleSelectionChange,
     selectedRows
-  } = useSaiAdmin()
+  } = useTableCrud()
 </script>
 
 <style scoped>

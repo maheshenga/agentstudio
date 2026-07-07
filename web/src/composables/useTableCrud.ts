@@ -2,10 +2,10 @@ import { ref, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 /**
- * SaiAdmin Composable
- * SaiAdmin状态管理
+ * Table CRUD composable
+ * 管理表格选择、弹窗状态和删除确认
  */
-export function useSaiAdmin() {
+export function useTableCrud() {
   // 弹窗相关
   const dialogType = ref<'add' | 'edit'>('add')
   const dialogVisible = ref(false)

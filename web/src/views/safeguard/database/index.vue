@@ -90,7 +90,7 @@
 
 <script setup lang="ts">
   import { useTable } from '@/hooks/core/useTable'
-  import { useSaiAdmin } from '@/composables/useSaiAdmin'
+  import { useTableCrud } from '@/composables/useTableCrud'
   import { ElMessageBox } from 'element-plus'
   import api from '@/api/safeguard/database'
   import TableSearch from './modules/table-search.vue'
@@ -145,7 +145,7 @@
   })
 
   // 编辑配置
-  const { dialogVisible, dialogData, selectedRows, handleSelectionChange } = useSaiAdmin()
+  const { dialogVisible, dialogData, selectedRows, handleSelectionChange } = useTableCrud()
   const recycleVisible = ref(false)
   const recycleData = ref({})
   const ddlVisible = ref(false)

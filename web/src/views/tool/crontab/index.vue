@@ -78,7 +78,7 @@
 
 <script setup lang="ts">
   import { useTable } from '@/hooks/core/useTable'
-  import { useSaiAdmin } from '@/composables/useSaiAdmin'
+  import { useTableCrud } from '@/composables/useTableCrud'
   import { ElMessage, ElMessageBox } from 'element-plus'
   import api from '@/api/tool/crontab'
   import TableSearch from './modules/table-search.vue'
@@ -127,13 +127,13 @@
   })
 
   const { dialogType, dialogVisible, dialogData, showDialog, deleteRow, handleSelectionChange } =
-    useSaiAdmin()
+    useTableCrud()
 
   const {
     dialogVisible: tableVisible,
     dialogData: tableData,
     showDialog: showTableDialog
-  } = useSaiAdmin()
+  } = useTableCrud()
 
   const handleRun = (row: any) => {
     ElMessageBox.confirm(`确定要立即执行任务【${row.job_name}】吗？`, '运行任务', {

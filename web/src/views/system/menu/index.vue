@@ -88,7 +88,7 @@
 
 <script setup lang="ts">
   import { useTable } from '@/hooks/core/useTable'
-  import { useSaiAdmin } from '@/composables/useSaiAdmin'
+  import { useTableCrud } from '@/composables/useTableCrud'
   import api from '@/api/system/menu'
   import TableSearch from './modules/table-search.vue'
   import EditDialog from './modules/edit-dialog.vue'
@@ -187,7 +187,7 @@
     deleteRow,
     deleteSelectedRows,
     handleSelectionChange
-  } = useSaiAdmin()
+  } = useTableCrud()
 
   /**
    * 切换展开/收起所有菜单

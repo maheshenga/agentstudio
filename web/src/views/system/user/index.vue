@@ -144,7 +144,7 @@
 
 <script setup lang="ts">
   import { useTable } from '@/hooks/core/useTable'
-  import { useSaiAdmin } from '@/composables/useSaiAdmin'
+  import { useTableCrud } from '@/composables/useTableCrud'
   import { useUserStore } from '@/store/modules/user'
   import { ElMessageBox } from 'element-plus'
   import { checkAuth } from '@/utils/tool'
@@ -161,21 +161,21 @@
 
   // 编辑框
   const { dialogType, dialogVisible, dialogData, showDialog, handleSelectionChange, deleteRow } =
-    useSaiAdmin()
+    useTableCrud()
 
   const {
     dialogType: workDialogType,
     dialogVisible: workDialogVisible,
     dialogData: workDialogData,
     showDialog: showWorkDialog
-  } = useSaiAdmin()
+  } = useTableCrud()
 
   const {
     dialogType: assignMenuDialogType,
     dialogVisible: assignMenuDialogVisible,
     dialogData: assignMenuDialogData,
     showDialog: showAssignMenuDialog
-  } = useSaiAdmin()
+  } = useTableCrud()
 
   // 搜索表单
   const searchForm = ref({

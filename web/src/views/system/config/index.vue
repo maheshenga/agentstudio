@@ -184,7 +184,7 @@
 
 <script setup lang="ts">
   import { useTable } from '@/hooks/core/useTable'
-  import { useSaiAdmin } from '@/composables/useSaiAdmin'
+  import { useTableCrud } from '@/composables/useTableCrud'
   import { Search } from '@element-plus/icons-vue'
   import { ElMessage } from 'element-plus'
   import api from '@/api/system/config'
@@ -308,7 +308,7 @@
   })
 
   // 编辑配置
-  const { dialogType, dialogVisible, dialogData, showDialog, deleteRow } = useSaiAdmin()
+  const { dialogType, dialogVisible, dialogData, showDialog, deleteRow } = useTableCrud()
 
   const handleConfigManage = () => {
     if (selectedId.value === 0) {

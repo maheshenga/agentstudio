@@ -159,7 +159,7 @@
   import api from '@/api/safeguard/attachment'
   import categoryApi from '@/api/safeguard/category'
   import { useTable } from '@/hooks/core/useTable'
-  import { useSaiAdmin } from '@/composables/useSaiAdmin'
+  import { useTableCrud } from '@/composables/useTableCrud'
   import { Search, UploadFilled } from '@element-plus/icons-vue'
   import type { UploadRequestOptions, UploadProps } from 'element-plus'
   import EditDialog from './modules/edit-dialog.vue'
@@ -196,7 +196,7 @@
     dialogData: categoryDialogData,
     showDialog: categoryShowDialog,
     deleteRow: categoryDeleteRow
-  } = useSaiAdmin()
+  } = useTableCrud()
 
   /** 移动弹窗相关 */
   const moveDialogVisible = ref(false)
@@ -211,7 +211,7 @@
     handleSelectionChange,
     deleteRow,
     deleteSelectedRows
-  } = useSaiAdmin()
+  } = useTableCrud()
 
   /** 附件搜索表单 */
   const searchForm = ref({

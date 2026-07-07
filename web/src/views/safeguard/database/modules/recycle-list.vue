@@ -61,7 +61,7 @@
   import api from '@/api/safeguard/database'
   import { ElMessage, ElMessageBox } from 'element-plus'
   import { useTable } from '@/hooks/core/useTable'
-  import { useSaiAdmin } from '@/composables/useSaiAdmin'
+  import { useTableCrud } from '@/composables/useTableCrud'
 
   interface Props {
     modelValue: boolean
@@ -153,7 +153,7 @@
   })
 
   // 编辑配置
-  const { handleSelectionChange, selectedRows } = useSaiAdmin()
+  const { handleSelectionChange, selectedRows } = useTableCrud()
 
   /**
    * 关闭弹窗并重置表单

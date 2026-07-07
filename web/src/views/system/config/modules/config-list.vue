@@ -73,7 +73,7 @@
 <script setup lang="ts">
   import api from '@/api/system/config'
   import { useTable } from '@/hooks/core/useTable'
-  import { useSaiAdmin } from '@/composables/useSaiAdmin'
+  import { useTableCrud } from '@/composables/useTableCrud'
   import ConfigEditDialog from './config-edit-dialog.vue'
 
   interface Props {
@@ -180,7 +180,7 @@
     deleteSelectedRows,
     handleSelectionChange,
     selectedRows
-  } = useSaiAdmin()
+  } = useTableCrud()
 
   /**
    * 关闭弹窗并重置表单
