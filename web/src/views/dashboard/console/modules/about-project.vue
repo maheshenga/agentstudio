@@ -2,8 +2,8 @@
   <div class="art-card p-5 flex-b mb-5 max-sm:mb-4">
     <div>
       <h2 class="text-2xl font-medium">关于项目</h2>
-      <p class="text-g-700 mt-1">{{ systemName }} 是一款兼具设计美学与高效开发的后台系统</p>
-      <p class="text-g-700 mt-1">使用了 nestJs + Vue3 + Element Plus 高性能、高颜值技术栈</p>
+      <p class="text-g-700 mt-1">{{ systemName }} 是面向多租户运营的 SaaS 管理平台</p>
+      <p class="text-g-700 mt-1">覆盖租户、套餐、模块、订阅、用量、支付和 AI 服务商运营能力</p>
 
       <div class="flex flex-wrap gap-3.5 max-w-150 mt-9">
         <div
@@ -27,10 +27,10 @@
   const systemName = AppConfig.systemInfo.name
 
   const linkList = [
-    { label: '项目官网', url: 'https://phpframe.org/' },
-    { label: '文档', url: 'https://zread.ai/xuey490/project' },
-    { label: 'Github', url: 'https://github.com/xuey490/project' },
-    { label: 'Gitee', url: 'https://gitee.com/fsscms/NovaFrame' }
+    { label: 'AgentStudio 仓库', url: 'https://github.com/maheshenga/agentstudio' },
+    { label: '租户运营', url: '/#/saas-platform/tenants' },
+    { label: '套餐管理', url: '/#/saas-platform/plans' },
+    { label: '用量总览', url: '/#/saas-platform/usage' }
   ]
 
   /**

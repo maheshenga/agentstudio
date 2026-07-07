@@ -136,26 +136,26 @@
 
   const projectList = ref<ProjectItem[]>([
     {
-      name: 'FSSPHP',
-      url: 'https://gitee.com/fsscms/NovaFrame',
-      desc: '企业级php框架，使用workerman，symfony框架，作为基座，可扩展性高。',
+      name: 'AgentStudio SaaS',
+      url: 'https://github.com/maheshenga/agentstudio',
+      desc: '多租户 SaaS 平台，覆盖租户、套餐、模块、订阅、用量和支付运营。',
       mine: true
     },
     {
-      name: 'FSSADMIN',
-      url: 'https://gitee.com/fsscms/FssAdmin',
-      desc: '企业级Saas后台管理系统，使用 Vue3、TypeScript、ElementPlus 技术栈，支持多租户。',
+      name: '租户运营中心',
+      url: '/#/saas-platform/tenants',
+      desc: '集中管理租户创建、启用状态、负责人和基础运营信息。',
       mine: true
     },
     {
-      name: 'SpeedThinkphp',
-      url: 'https://gitee.com/fsscms/speed-thinkphp',
-      desc: '使用 Workerman 作为传统 ThinkPHP 8 框架（原本基于 FPM）的进程启动器，提高性能和稳定性，支持高并发场景。'
+      name: '套餐与模块体系',
+      url: '/#/saas-platform/plans',
+      desc: '维护套餐、模块权限、资源额度和订阅能力边界。'
     },
     {
-      name: 'FSSDB',
-      url: 'https://gitee.com/fsscms/database',
-      desc: '利用工厂接口类整合Eloquent 和 ThinkORM 的Model和DB的操作，实现两者的无缝切换'
+      name: '资源包与用量',
+      url: '/#/saas-platform/usage',
+      desc: '跟踪资源消耗、额度账本和资源包购买后的交付状态。'
     }
   ])
 

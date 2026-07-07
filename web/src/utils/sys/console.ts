@@ -2,7 +2,7 @@
 const asciiArt = `
 \x1b[32m欢迎使用 AgentStudio SaaS 平台
 \x1b[0m
-\x1b[36m Fssphp官网: https://phpframe.org/
+\x1b[36m AgentStudio 控制台已加载
 \x1b[0m
 `
 console.log(asciiArt)
