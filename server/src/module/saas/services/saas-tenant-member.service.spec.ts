@@ -75,7 +75,7 @@ describe('SaasTenantMemberService', () => {
 
     const result = await service.createMember(12, {
       username: 'bob',
-      password: '123456',
+      password: 'Secret123',
       realname: 'Bob',
       role: 'member',
     });
@@ -109,7 +109,7 @@ describe('SaasTenantMemberService', () => {
 
     await service.createMember(12, {
       username: 'bob',
-      password: '123456',
+      password: 'Secret123',
       realname: 'Bob',
       role: 'member',
     });
@@ -126,10 +126,22 @@ describe('SaasTenantMemberService', () => {
     await expect(
       service.createMember(12, {
         username: 'bob',
-        password: '123456',
+        password: 'Secret123',
         role: 'member',
       }),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects weak tenant member passwords before opening a transaction', async () => {
+    await expect(
+      service.createMember(12, {
+        username: 'bob',
+        password: '123456',
+        role: 'member',
+      }),
+    ).rejects.toThrow('成员密码至少 8 位且需要包含字母和数字');
+
+    expect(dataSource.transaction).not.toHaveBeenCalled();
   });
 
   it('changes a tenant member role within the same tenant', async () => {
@@ -190,5 +202,13 @@ describe('SaasTenantMemberService', () => {
       { id: 8 },
       expect.objectContaining({ password: expect.not.stringMatching(/^NewPass123!$/) }),
     );
+  });
+
+  it('rejects weak tenant member reset passwords before opening a transaction', async () => {
+    await expect(service.resetMemberPassword(12, 8, '123456')).rejects.toThrow(
+      '新密码至少 8 位且需要包含字母和数字',
+    );
+
+    expect(dataSource.transaction).not.toHaveBeenCalled();
   });
 });

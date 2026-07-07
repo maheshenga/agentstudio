@@ -9,7 +9,7 @@
           </div>
           <div class="tenant-member-page__actions">
             <ElButton :loading="loading" @click="loadMembers">刷新</ElButton>
-            <ElButton type="primary" @click="openCreateDialog">添加成员</ElButton>
+            <ElButton v-permission="'tenant:member:create'" type="primary" @click="openCreateDialog">添加成员</ElButton>
           </div>
         </div>
       </template>
@@ -37,12 +37,28 @@
         <ElTableColumn label="操作" width="300" fixed="right">
           <template #default="{ row }">
             <ElSpace v-if="row.role !== 'owner'" wrap>
-              <ElButton link type="primary" @click="openRoleDialog(row)">角色</ElButton>
-              <ElButton link :type="row.status === 1 ? 'warning' : 'success'" @click="toggleStatus(row)">
+              <ElButton v-permission="'tenant:member:update'" link type="primary" @click="openRoleDialog(row)">
+                角色
+              </ElButton>
+              <ElButton
+                v-permission="'tenant:member:update'"
+                link
+                :type="row.status === 1 ? 'warning' : 'success'"
+                @click="toggleStatus(row)"
+              >
                 {{ row.status === 1 ? '停用' : '启用' }}
               </ElButton>
-              <ElButton link type="primary" @click="openResetPasswordDialog(row)">重置密码</ElButton>
-              <ElButton link type="danger" @click="removeMember(row)">移除</ElButton>
+              <ElButton
+                v-permission="'tenant:member:reset-password'"
+                link
+                type="primary"
+                @click="openResetPasswordDialog(row)"
+              >
+                重置密码
+              </ElButton>
+              <ElButton v-permission="'tenant:member:remove'" link type="danger" @click="removeMember(row)">
+                移除
+              </ElButton>
             </ElSpace>
             <ElTag v-else type="danger" effect="plain">负责人</ElTag>
           </template>

@@ -8,7 +8,7 @@ import { UserEntity } from '../../system/user/entities/sys-user.entity';
 import { SysUserRoleEntity } from '../../system/user/entities/user-width-role.entity';
 import { SysUserTenantEntity } from '../../system/user/entities/user-tenant.entity';
 import { SAAS_QUOTA_USERS } from '../constants';
-import { CreateTenantMemberDto } from '../dto/create-tenant-member.dto';
+import { CreateTenantMemberDto, TENANT_MEMBER_PASSWORD_PATTERN } from '../dto/create-tenant-member.dto';
 import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
 
 export interface SaasTenantMemberListQuery {
@@ -97,6 +97,10 @@ export class SaasTenantMemberService {
   }
 
   async createMember(tenantId: number, dto: CreateTenantMemberDto): Promise<SaasTenantMemberRecord> {
+    if (!TENANT_MEMBER_PASSWORD_PATTERN.test(String(dto.password || ''))) {
+      throw new BadRequestException('成员密码至少 8 位且需要包含字母和数字');
+    }
+
     return this.dataSource.transaction(async (manager) => {
       const existing = await manager.findOne(UserEntity, { where: { username: dto.username } });
       if (existing) {
@@ -212,8 +216,8 @@ export class SaasTenantMemberService {
   }
 
   async resetMemberPassword(tenantId: number, userId: number, password: string) {
-    if (!password || password.length < 6) {
-      throw new BadRequestException('新密码长度不能少于 6 位');
+    if (!TENANT_MEMBER_PASSWORD_PATTERN.test(String(password || ''))) {
+      throw new BadRequestException('新密码至少 8 位且需要包含字母和数字');
     }
 
     return this.dataSource.transaction(async (manager) => {

@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsEmail, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateIf } from 'class-validator';
 
 const USERNAME_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_.-]{1,63}$/;
-const PASSWORD_PATTERN = /^(?=.*[A-Za-z])(?=.*\d).{8,100}$/;
+export const TENANT_MEMBER_PASSWORD_PATTERN = /^(?=.*[A-Za-z])(?=.*\d).{8,100}$/;
 const PHONE_PATTERN = /^\+?[0-9][0-9\s-]{5,19}$/;
 
 export class CreateTenantMemberDto {
@@ -17,7 +17,7 @@ export class CreateTenantMemberDto {
   @IsString()
   @MinLength(8)
   @MaxLength(100)
-  @Matches(PASSWORD_PATTERN)
+  @Matches(TENANT_MEMBER_PASSWORD_PATTERN)
   password: string;
 
   @ApiProperty({ required: false })
@@ -44,4 +44,25 @@ export class CreateTenantMemberDto {
   @ApiProperty({ required: true, enum: ['admin', 'member'] })
   @IsIn(['admin', 'member'])
   role: 'admin' | 'member';
+}
+
+export class ChangeTenantMemberRoleDto {
+  @ApiProperty({ required: true, enum: ['admin', 'member'] })
+  @IsIn(['admin', 'member'])
+  role: 'admin' | 'member';
+}
+
+export class UpdateTenantMemberStatusDto {
+  @ApiProperty({ required: true, enum: [0, 1] })
+  @IsIn([0, 1])
+  status: 0 | 1;
+}
+
+export class ResetTenantMemberPasswordDto {
+  @ApiProperty({ required: true })
+  @IsString()
+  @MinLength(8)
+  @MaxLength(100)
+  @Matches(TENANT_MEMBER_PASSWORD_PATTERN)
+  password: string;
 }

@@ -6,7 +6,12 @@ import { Repository } from 'typeorm';
 import { ResultData } from '../../common/utils/result';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { getTenantId } from '../../common/utils/tenant.util';
-import { CreateTenantMemberDto } from './dto/create-tenant-member.dto';
+import {
+  ChangeTenantMemberRoleDto,
+  CreateTenantMemberDto,
+  ResetTenantMemberPasswordDto,
+  UpdateTenantMemberStatusDto,
+} from './dto/create-tenant-member.dto';
 import { CreateResourcePackOrderDto } from './dto/create-resource-pack-order.dto';
 import { CreateUpgradeOrderDto } from './dto/create-upgrade-order.dto';
 import { SaasPlanEntity } from './entities/saas-plan.entity';
@@ -127,7 +132,7 @@ export class SaasTenantController {
   @Patch('members/:user_id/role')
   @RequirePermission('tenant:member:update')
   @ApiOperation({ summary: 'Change current tenant SaaS member role' })
-  async changeMemberRole(@Param('user_id', ParseIntPipe) userId: number, @Body() body: { role: 'admin' | 'member' }) {
+  async changeMemberRole(@Param('user_id', ParseIntPipe) userId: number, @Body() body: ChangeTenantMemberRoleDto) {
     const tenantId = getTenantId();
     if (!tenantId) {
       return ResultData.fail(401, 'Tenant context is required');
@@ -141,7 +146,7 @@ export class SaasTenantController {
   @Patch('members/:user_id/status')
   @RequirePermission('tenant:member:update')
   @ApiOperation({ summary: 'Update current tenant SaaS member status' })
-  async updateMemberStatus(@Param('user_id', ParseIntPipe) userId: number, @Body() body: { status: 0 | 1 }) {
+  async updateMemberStatus(@Param('user_id', ParseIntPipe) userId: number, @Body() body: UpdateTenantMemberStatusDto) {
     const tenantId = getTenantId();
     if (!tenantId) {
       return ResultData.fail(401, 'Tenant context is required');
@@ -169,7 +174,10 @@ export class SaasTenantController {
   @Post('members/:user_id/reset-password')
   @RequirePermission('tenant:member:reset-password')
   @ApiOperation({ summary: 'Reset current tenant SaaS member password' })
-  async resetMemberPassword(@Param('user_id', ParseIntPipe) userId: number, @Body() body: { password: string }) {
+  async resetMemberPassword(
+    @Param('user_id', ParseIntPipe) userId: number,
+    @Body() body: ResetTenantMemberPasswordDto,
+  ) {
     const tenantId = getTenantId();
     if (!tenantId) {
       return ResultData.fail(401, 'Tenant context is required');
