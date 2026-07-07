@@ -18,6 +18,7 @@ Run these before demo or release review:
 cd web
 pnpm.cmd exec tsx scripts/verify-saas-launch-flow-readiness.ts
 pnpm.cmd exec tsx scripts/verify-saas-ui-state-readiness.ts
+pnpm.cmd exec tsx scripts/verify-saas-tenant-ui-state-readiness.ts
 pnpm.cmd exec tsx scripts/verify-saas-signup-activation.ts
 pnpm.cmd exec tsx scripts/verify-saas-platform-tenant-page.ts
 pnpm.cmd exec tsx scripts/verify-saas-payment-path-copy.ts

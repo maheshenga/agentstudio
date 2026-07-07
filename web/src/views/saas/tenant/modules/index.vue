@@ -13,6 +13,11 @@
         </div>
       </template>
 
+      <div v-if="loadError" class="tenant-modules-page__load-error">
+        <ElAlert type="error" :title="loadError" show-icon :closable="false" />
+        <ElButton size="small" type="primary" link :loading="loading" @click="loadModules">Retry</ElButton>
+      </div>
+
       <ElTable v-loading="loading" :data="records" border>
         <ElTableColumn label="模块" min-width="180" show-overflow-tooltip>
           <template #default="{ row }">
@@ -77,6 +82,7 @@
   const router = useRouter()
   const records = ref<SystemModuleRecord[]>([])
   const loading = ref(false)
+  const loadError = ref('')
 
   function isTenantEnabled(value?: boolean | number) {
     return value === true || value === 1
@@ -122,11 +128,14 @@
 
   async function loadModules() {
     loading.value = true
+    loadError.value = ''
     try {
       records.value = await fetchTenantSystemModules()
     } catch (error) {
-      ElMessage.error('加载租户模块失败')
-      throw error
+      console.error('[TenantModulesPage] load modules failed:', error)
+      records.value = []
+      loadError.value = 'Failed to load tenant modules'
+      ElMessage.error(loadError.value)
     } finally {
       loading.value = false
     }
