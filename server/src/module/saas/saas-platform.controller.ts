@@ -39,6 +39,13 @@ export class SaasPlatformController {
     private readonly revenueReportService: SaasRevenueReportService,
   ) {}
 
+  @Get('tenants')
+  @ApiOperation({ summary: 'List SaaS platform tenants' })
+  @RequirePermission('saas:tenant:index')
+  listTenants(@Query() query: SaasPlatformListQuery, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () => this.platformService.listTenants(query).then((data) => ResultData.ok(data)));
+  }
+
   @Post('tenants')
   @ApiOperation({ summary: 'Create SaaS tenant from platform' })
   @RequirePermission('saas:tenant:save')

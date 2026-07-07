@@ -6,6 +6,8 @@ import { SaasPlanEntity } from '../entities/saas-plan.entity';
 import { SaasResourcePackOrderEntity } from '../entities/saas-resource-pack-order.entity';
 import { SaasSubscriptionEntity } from '../entities/saas-subscription.entity';
 import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
+import { TenantEntity } from '../../system/tenant/entities/tenant.entity';
+import { SysUserTenantEntity } from '../../system/user/entities/user-tenant.entity';
 import { SaasPlatformService } from './saas-platform.service';
 import { SaasOrderRiskService } from './saas-order-risk.service';
 import { SaasOrderService } from './saas-order.service';
@@ -23,6 +25,7 @@ describe('SaasPlatformService', () => {
     findOne: jest.fn(),
   };
   const subscriptionRepo = {
+    find: jest.fn(),
     findAndCount: jest.fn(),
     findOne: jest.fn(),
   };
@@ -34,6 +37,12 @@ describe('SaasPlatformService', () => {
     find: jest.fn(),
   };
   const resourcePackOrderRepo = {
+    find: jest.fn(),
+  };
+  const tenantRepo = {
+    findAndCount: jest.fn(),
+  };
+  const userTenantRepo = {
     find: jest.fn(),
   };
   const resourcePackService = {
@@ -92,6 +101,8 @@ describe('SaasPlatformService', () => {
         { provide: getRepositoryToken(SaasPlanEntity), useValue: planRepo },
         { provide: getRepositoryToken(SaasTenantResourceEntity), useValue: tenantResourceRepo },
         { provide: getRepositoryToken(SaasResourcePackOrderEntity), useValue: resourcePackOrderRepo },
+        { provide: getRepositoryToken(TenantEntity), useValue: tenantRepo },
+        { provide: getRepositoryToken(SysUserTenantEntity), useValue: userTenantRepo },
         { provide: SaasResourcePackService, useValue: resourcePackService },
         { provide: SaasOrderService, useValue: saasOrderService },
         { provide: SaasResourcePackOrderService, useValue: resourcePackOrderService },
@@ -346,6 +357,98 @@ describe('SaasPlatformService', () => {
     await service.listOrders({ order_no: 'SO1', plan_code: 'pro' });
 
     expect(saasOrderService.listPlatformOrders).toHaveBeenCalledWith({ order_no: 'SO1', plan_code: 'pro' });
+  });
+
+  it('lists platform tenants with member counts and latest subscription plan summary', async () => {
+    const createTime = new Date('2026-07-07T09:30:00.000Z');
+    const subscriptionEndTime = new Date('2026-08-07T09:30:00.000Z');
+
+    tenantRepo.findAndCount.mockResolvedValue([
+      [
+        {
+          id: 101,
+          tenantName: 'Acme Studio',
+          tenantCode: 'acme',
+          contactName: 'Alice',
+          contactPhone: '13800000000',
+          contactEmail: 'alice@example.com',
+          status: 1,
+          createTime,
+        },
+        {
+          id: 102,
+          tenantName: 'Beta Studio',
+          tenantCode: 'beta',
+          contactName: 'Bob',
+          contactPhone: '13900000000',
+          contactEmail: 'bob@example.com',
+          status: 0,
+          createTime,
+        },
+      ],
+      2,
+    ]);
+    userTenantRepo.find.mockResolvedValue([
+      { tenantId: 101, userId: 1 },
+      { tenantId: 101, userId: 2 },
+      { tenantId: 102, userId: 3 },
+    ]);
+    subscriptionRepo.find.mockResolvedValue([
+      { id: 20, tenantId: 101, planId: 2, status: 'active', endTime: subscriptionEndTime, createTime },
+      { id: 19, tenantId: 101, planId: 1, status: 'expired', endTime: createTime, createTime },
+      { id: 21, tenantId: 102, planId: 3, status: 'trialing', endTime: null, createTime },
+    ]);
+    planRepo.find.mockResolvedValue([
+      { id: 2, code: 'pro', name: 'Pro' },
+      { id: 3, code: 'team', name: 'Team' },
+    ]);
+
+    const result = await service.listTenants({ page: '1', limit: '10', status: '1' } as any);
+
+    expect(tenantRepo.findAndCount).toHaveBeenCalledWith(expect.objectContaining({
+      order: { createTime: 'DESC', id: 'DESC' },
+      skip: 0,
+      take: 10,
+    }));
+    expect(result).toEqual({
+      list: [
+        {
+          id: 101,
+          tenant_name: 'Acme Studio',
+          tenant_code: 'acme',
+          contact_name: 'Alice',
+          contact_phone: '13800000000',
+          contact_email: 'alice@example.com',
+          status: 1,
+          user_count: 2,
+          plan_id: 2,
+          plan_code: 'pro',
+          plan_name: 'Pro',
+          subscription_status: 'active',
+          subscription_end_time: subscriptionEndTime,
+          create_time: createTime,
+        },
+        {
+          id: 102,
+          tenant_name: 'Beta Studio',
+          tenant_code: 'beta',
+          contact_name: 'Bob',
+          contact_phone: '13900000000',
+          contact_email: 'bob@example.com',
+          status: 0,
+          user_count: 1,
+          plan_id: 3,
+          plan_code: 'team',
+          plan_name: 'Team',
+          subscription_status: 'trialing',
+          subscription_end_time: null,
+          create_time: createTime,
+        },
+      ],
+      total: 2,
+      page: 1,
+      limit: 10,
+    });
   });
 
   it('finds a platform SaaS order by order number', async () => {

@@ -19,6 +19,14 @@
         <div class="form">
           <h3 class="title">{{ $t('login.title') }}</h3>
           <p class="sub-title">{{ $t('login.subTitle') }}</p>
+          <ElAlert
+            v-if="signupActivationVisible"
+            class="signup-activation-alert"
+            type="success"
+            show-icon
+            :closable="false"
+            :title="signupActivationMessage"
+          />
           <ElForm
             ref="formRef"
             :model="formData"
@@ -170,6 +178,7 @@
 
   const userStore = useUserStore()
   const router = useRouter()
+  const route = useRoute()
 
   const captcha = ref(
     'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
@@ -212,6 +221,19 @@
   let tenantLookupTimer: ReturnType<typeof setTimeout> | undefined
   let tenantLookupRequestId = 0
 
+  const signupActivationVisible = computed(() => route.query.signup_success === '1')
+  const signupActivationMessage = computed(() => {
+    const username = typeof route.query.username === 'string' ? route.query.username.trim() : ''
+    return username ? `注册成功，请使用账号 ${username} 和刚设置的密码登录。` : '注册成功，请使用刚设置的账号和密码登录。'
+  })
+
+  const applySignupActivation = () => {
+    const signupUsername = typeof route.query.username === 'string' ? route.query.username.trim() : ''
+    if (signupUsername) {
+      formData.username = signupUsername
+    }
+  }
+
   const loadSystemName = async () => {
     try {
       const res = await fetchPublicConfigValue('site_name')
@@ -239,6 +261,7 @@
   }
 
   onMounted(async () => {
+    applySignupActivation()
     loadSystemName()
     await loadLoginCaptchaStatus()
     if (captchaEnabled.value) {
@@ -422,6 +445,10 @@
     :deep(.el-form-item) {
       margin-bottom: 16px;
     }
+  }
+
+  .signup-activation-alert {
+    margin-top: 16px;
   }
 
   .login-submit-wrap {

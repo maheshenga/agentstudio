@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { FindOptionsWhere, In, Like, Repository } from 'typeorm';
 
+import { TenantEntity } from '../../system/tenant/entities/tenant.entity';
+import { SysUserTenantEntity } from '../../system/user/entities/user-tenant.entity';
 import { SaasOrderEntity } from '../entities/saas-order.entity';
 import { SaasPlanEntity } from '../entities/saas-plan.entity';
 import { SaasResourcePackOrderEntity } from '../entities/saas-resource-pack-order.entity';
@@ -26,6 +28,7 @@ export interface SaasPlatformListQuery {
   order_no?: string;
   plan_code?: string;
   plan_id?: string | number;
+  keyword?: string;
   close_reason?: string;
   lifecycle_status?: string;
   expires_within_days?: string | number;
@@ -110,6 +113,10 @@ export class SaasPlatformService {
     private readonly tenantResourceRepo: Repository<SaasTenantResourceEntity>,
     @InjectRepository(SaasResourcePackOrderEntity)
     private readonly resourcePackOrderRepo: Repository<SaasResourcePackOrderEntity>,
+    @InjectRepository(TenantEntity)
+    private readonly tenantRepo: Repository<TenantEntity>,
+    @InjectRepository(SysUserTenantEntity)
+    private readonly userTenantRepo: Repository<SysUserTenantEntity>,
     private readonly resourcePackService: SaasResourcePackService,
     private readonly saasOrderService: SaasOrderService,
     private readonly resourcePackOrderService: SaasResourcePackOrderService,
@@ -124,6 +131,39 @@ export class SaasPlatformService {
 
   async findOrder(orderNo: string) {
     return this.saasOrderService.findPlatformOrder(orderNo);
+  }
+
+  async listTenants(query: SaasPlatformListQuery = {}) {
+    const { page, limit, skip } = this.resolvePagination(query);
+    const [tenants, total] = await this.tenantRepo.findAndCount({
+      where: this.buildTenantWhere(query),
+      order: { createTime: 'DESC', id: 'DESC' },
+      skip,
+      take: limit,
+    });
+
+    const tenantIds = tenants.map((tenant) => Number(tenant.id)).filter((tenantId) => Number.isFinite(tenantId) && tenantId > 0);
+    if (tenantIds.length === 0) return { list: [], total, page, limit };
+
+    const [members, subscriptions] = await Promise.all([
+      this.userTenantRepo.find({ where: { tenantId: In(tenantIds) } }),
+      this.subscriptionRepo.find({ where: { tenantId: In(tenantIds) }, order: { createTime: 'DESC', id: 'DESC' } }),
+    ]);
+
+    const userCountMap = this.buildTenantUserCountMap(members);
+    const subscriptionMap = this.buildLatestSubscriptionMap(subscriptions);
+    const planIds = Array.from(
+      new Set(subscriptions.map((subscription) => Number(subscription.planId)).filter((planId) => Number.isFinite(planId) && planId > 0)),
+    );
+    const plans = planIds.length > 0 ? await this.planRepo.find({ where: { id: In(planIds) } }) : [];
+    const planMap = new Map(plans.map((plan) => [Number(plan.id), plan]));
+
+    return {
+      list: tenants.map((tenant) => this.toTenantResponse(tenant, userCountMap, subscriptionMap, planMap)),
+      total,
+      page,
+      limit,
+    };
   }
 
   async listSubscriptions(query: SaasPlatformListQuery = {}) {
@@ -309,6 +349,72 @@ export class SaasPlatformService {
     };
   }
 
+  private buildTenantWhere(query: SaasPlatformListQuery) {
+    const baseWhere: FindOptionsWhere<TenantEntity> = {};
+    const status = this.resolveStatus(query.status);
+    if (status !== undefined) baseWhere.status = status;
+
+    const keyword = query.keyword?.trim();
+    if (!keyword) return baseWhere;
+
+    const likeKeyword = Like(`%${keyword}%`);
+    return [
+      { ...baseWhere, tenantName: likeKeyword },
+      { ...baseWhere, tenantCode: likeKeyword },
+      { ...baseWhere, contactName: likeKeyword },
+      { ...baseWhere, contactEmail: likeKeyword },
+    ];
+  }
+
+  private buildTenantUserCountMap(members: Partial<SysUserTenantEntity>[]) {
+    const userCountMap = new Map<number, number>();
+    for (const member of members) {
+      const tenantId = Number(member.tenantId);
+      if (!Number.isFinite(tenantId) || tenantId <= 0) continue;
+      userCountMap.set(tenantId, (userCountMap.get(tenantId) || 0) + 1);
+    }
+    return userCountMap;
+  }
+
+  private buildLatestSubscriptionMap(subscriptions: Partial<SaasSubscriptionEntity>[]) {
+    const subscriptionMap = new Map<number, Partial<SaasSubscriptionEntity>>();
+    for (const subscription of subscriptions) {
+      const tenantId = Number(subscription.tenantId);
+      if (!Number.isFinite(tenantId) || tenantId <= 0 || subscriptionMap.has(tenantId)) continue;
+      subscriptionMap.set(tenantId, subscription);
+    }
+    return subscriptionMap;
+  }
+
+  private toTenantResponse(
+    tenant: Partial<TenantEntity>,
+    userCountMap: Map<number, number>,
+    subscriptionMap: Map<number, Partial<SaasSubscriptionEntity>>,
+    planMap: Map<number, Partial<SaasPlanEntity>>,
+  ) {
+    const tenantId = Number(tenant.id);
+    const subscription = subscriptionMap.get(tenantId);
+    const planId = Number(subscription?.planId);
+    const plan = Number.isFinite(planId) ? planMap.get(planId) : undefined;
+
+    return {
+      id: tenant.id,
+      tenant_name: tenant.tenantName,
+      tenant_code: tenant.tenantCode,
+      contact_name: tenant.contactName,
+      contact_phone: tenant.contactPhone,
+      contact_email: tenant.contactEmail,
+      status: tenant.status,
+      user_count: userCountMap.get(tenantId) || 0,
+      plan_id: subscription?.planId ?? null,
+      plan_code: plan?.code || '',
+      plan_name: plan?.name || '',
+      subscription_status: subscription?.status || '',
+      subscription_end_time: subscription?.endTime ?? null,
+      create_time: tenant.createTime ?? null,
+    };
+  }
+
   private resolvePagination(query: SaasPlatformListQuery) {
     const page = Math.max(1, Number(query.page || 1));
     const limit = Math.min(100, Math.max(1, Number(query.limit || 20)));
@@ -320,6 +426,12 @@ export class SaasPlatformService {
     if (value === undefined || value === null || value === '') return undefined;
     const tenantId = Number(value);
     return Number.isFinite(tenantId) && tenantId > 0 ? tenantId : undefined;
+  }
+
+  private resolveStatus(value: string | number | undefined): number | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    const status = Number(value);
+    return Number.isFinite(status) ? status : undefined;
   }
 
   private resolveStaleMinutes(value: string | number | undefined): number {

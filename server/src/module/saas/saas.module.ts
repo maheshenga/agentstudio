@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { TenantEntity } from '../system/tenant/entities/tenant.entity';
+import { SysUserTenantEntity } from '../system/user/entities/user-tenant.entity';
 import { SaasPlanFeatureEntity } from './entities/saas-plan-feature.entity';
 import { SaasModuleEntity } from './entities/saas-module.entity';
 import { SaasPlanQuotaEntity } from './entities/saas-plan-quota.entity';
@@ -47,6 +49,8 @@ import { SaasTenantMemberService } from './services/saas-tenant-member.service';
       SaasSubscriptionEntity,
       SaasTenantResourceEntity,
       SaasTrialEntity,
+      TenantEntity,
+      SysUserTenantEntity,
     ]),
   ],
   controllers: [SaasPublicController, SaasPlatformController, SaasTenantController, SaasPaymentController],

@@ -38,6 +38,27 @@ export interface SaasPlatformPageResult<T> {
   limit: number
 }
 
+export interface SaasPlatformTenantRecord {
+  id: number
+  tenant_name: string
+  tenant_code: string
+  contact_name?: string
+  contact_phone?: string
+  contact_email?: string
+  status: number
+  user_count: number
+  plan_id: number | null
+  plan_code: string
+  plan_name: string
+  subscription_status: string
+  subscription_end_time?: string | Date | null
+  create_time?: string | Date | null
+}
+
+export interface SaasPlatformTenantListParams extends SaasPlatformListParams {
+  keyword?: string
+}
+
 export interface SaasPlatformOrderListParams extends SaasPlatformListParams {
   order_no?: string
   plan_code?: string
@@ -620,6 +641,13 @@ export function fetchAlipayConfigStatus() {
 
 export function createSaasTenantFromPlatform(params: SaasTenantProvisionParams) {
   return request.post<SaasSignupResult>({ url: '/api/saas/platform/tenants', data: params })
+}
+
+export function fetchPlatformTenants(params: SaasPlatformTenantListParams) {
+  return request.get<SaasPlatformPageResult<SaasPlatformTenantRecord>>({
+    url: '/api/saas/platform/tenants',
+    params
+  })
 }
 
 export function fetchPlatformUsageOverview() {

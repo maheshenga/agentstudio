@@ -351,7 +351,13 @@
       })
 
       ElMessage.success(copy.value.success)
-      router.push({ name: 'Login' })
+      router.push({
+        name: 'Login',
+        query: {
+          signup_success: '1',
+          username: formData.username.trim()
+        }
+      })
     } catch (error) {
       console.error('[SaasSignup] submit failed:', error)
     } finally {
