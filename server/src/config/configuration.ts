@@ -60,6 +60,10 @@ export default () => ({
     credentials: process.env.CORS_CREDENTIALS === 'true',
   },
   payment: {
+    devConfirmEnabled:
+      process.env.SAAS_DEV_PAYMENT_CONFIRM_ENABLED === undefined
+        ? process.env.NODE_ENV !== 'production'
+        : process.env.SAAS_DEV_PAYMENT_CONFIRM_ENABLED === 'true',
     alipay: {
       enabled: process.env.ALIPAY_ENABLED === 'true',
       appId: process.env.ALIPAY_APP_ID ?? '',

@@ -76,6 +76,7 @@
           去支付宝支付
         </ElButton>
         <ElButton
+          v-if="showDevPaymentConfirm"
           type="success"
           :disabled="!isCurrentOrderPayable"
           :loading="confirmingPayment"
@@ -157,7 +158,7 @@
             <ElButton v-if="row.status === 'pending'" type="primary" link @click="resumeOrderPayment(row)">
               继续支付
             </ElButton>
-            <ElButton v-if="row.status === 'pending'" type="success" link @click="confirmHistoryOrder(row)">
+            <ElButton v-if="showDevPaymentConfirm && row.status === 'pending'" type="success" link @click="confirmHistoryOrder(row)">
               模拟确认
             </ElButton>
             <ElButton
@@ -218,6 +219,8 @@
   import { hasPaymentRequestedAt, isPaymentRequestedPendingOrder } from '@/utils/saas/payment-request-state'
 
   defineOptions({ name: 'SaasTenantResourcePackPage' })
+
+  const showDevPaymentConfirm = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEV_PAYMENT_CONFIRM === 'true'
 
   const records = ref<SaasResourcePackRecord[]>([])
   const currentOrder = ref<SaasResourcePackOrderRecord | null>(null)
@@ -329,6 +332,7 @@
   }
 
   async function confirmDevPayment() {
+    if (!showDevPaymentConfirm) return
     const order = currentOrder.value
     if (!order || order.status !== 'pending') return
     confirmingPayment.value = true

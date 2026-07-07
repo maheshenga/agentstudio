@@ -36,6 +36,8 @@ export const envValidationSchema = Joi.object({
   }),
   CORS_CREDENTIALS: Joi.boolean().truthy('true').falsy('false').default(false),
 
+  SAAS_DEV_PAYMENT_CONFIRM_ENABLED: Joi.boolean().truthy('true').falsy('false').optional(),
+
   ALIPAY_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
   ALIPAY_APP_ID: Joi.string().allow('').optional(),
   ALIPAY_PRIVATE_KEY: Joi.string().allow('').optional(),

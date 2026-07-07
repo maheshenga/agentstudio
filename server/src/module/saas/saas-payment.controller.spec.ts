@@ -1,4 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 import * as tenantUtils from '../../common/utils/tenant.util';
 import { SaasPaymentController } from './saas-payment.controller';
@@ -30,9 +32,19 @@ describe('SaasPaymentController', () => {
       status: order.status,
     })),
   };
+  const configService = {
+    get: jest.fn((key: string) => {
+      if (key === 'app.env') return 'development';
+      return undefined;
+    }),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    configService.get.mockImplementation((key: string) => {
+      if (key === 'app.env') return 'development';
+      return undefined;
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [SaasPaymentController],
@@ -48,6 +60,10 @@ describe('SaasPaymentController', () => {
         {
           provide: SaasResourcePackOrderService,
           useValue: resourcePackOrderService,
+        },
+        {
+          provide: ConfigService,
+          useValue: configService,
         },
       ],
     }).compile();
@@ -106,6 +122,23 @@ describe('SaasPaymentController', () => {
       resource_pack_code: 'tokens_1m',
       status: 'paid',
     });
+  });
+
+  it('rejects development payment confirmation in production', async () => {
+    configService.get.mockImplementation((key: string) => {
+      if (key === 'app.env') return 'production';
+      return undefined;
+    });
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(12);
+
+    await expect(
+      controller.devConfirm({
+        order_no: 'SO20260702000000001000001',
+      }),
+    ).rejects.toThrow(NotFoundException);
+
+    expect(saasOrderService.confirmDevPayment).not.toHaveBeenCalled();
+    expect(resourcePackOrderService.confirmDevPayment).not.toHaveBeenCalled();
   });
 
   it('confirms an order when Alipay notifies trade success', async () => {
@@ -262,6 +295,12 @@ describe('SaasPaymentController', () => {
     });
   });
 
+  it('requires tenant billing view permission for Alipay config status', () => {
+    expect(Reflect.getMetadata('requirePermission', SaasPaymentController.prototype.getAlipayConfigStatus)).toEqual([
+      'tenant:billing:view',
+    ]);
+  });
+
   it('creates an Alipay payment in tenant context', async () => {
     jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(12);
     saasPaymentService.createAlipayPayment.mockResolvedValue({
@@ -284,5 +323,12 @@ describe('SaasPaymentController', () => {
       pay_url: null,
       message: 'Alipay sandbox config is missing.',
     });
+  });
+
+  it('requires explicit tenant payment permissions for Alipay payment creation', () => {
+    expect(Reflect.getMetadata('requirePermission', SaasPaymentController.prototype.createAlipayPayment)).toEqual([
+      'tenant:billing:upgrade',
+      'tenant:resource-pack-order:pay',
+    ]);
   });
 });

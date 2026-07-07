@@ -100,7 +100,13 @@
           <ElButton type="primary" :disabled="!isCurrentOrderPayable" :loading="creatingAlipayPayment" @click="startAlipayPayment">
             去支付宝支付
           </ElButton>
-          <ElButton type="success" :disabled="!isCurrentOrderPayable" :loading="confirmingPayment" @click="confirmDevPayment">
+          <ElButton
+            v-if="showDevPaymentConfirm"
+            type="success"
+            :disabled="!isCurrentOrderPayable"
+            :loading="confirmingPayment"
+            @click="confirmDevPayment"
+          >
             本地模拟支付成功
           </ElButton>
         </div>
@@ -203,6 +209,7 @@
   const LAST_UPGRADE_ORDER_KEY = 'saas:last-upgrade-order-no'
   const PAYMENT_POLL_INTERVAL_MS = 5000
   const PAYMENT_POLL_TIMEOUT_MS = 120000
+  const showDevPaymentConfirm = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEV_PAYMENT_CONFIRM === 'true'
 
   const subscriptionInfo = ref<TenantSubscriptionSummary | null>(null)
   const alipayConfigStatus = ref<AlipayConfigStatus | null>(null)
@@ -388,6 +395,7 @@
   }
 
   async function confirmDevPayment() {
+    if (!showDevPaymentConfirm) return
     const order = currentOrder.value
     if (!order || order.status !== 'pending') return
     confirmingPayment.value = true
