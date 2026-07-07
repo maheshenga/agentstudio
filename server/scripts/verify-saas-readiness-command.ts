@@ -7,7 +7,8 @@ const expectedSuites = [
   'saas-route-consistency.spec.ts',
   'saas-tenant.controller.spec.ts',
   'saas-platform.controller.spec.ts',
-  'saas-payment.controller.spec.ts'
+  'saas-payment.controller.spec.ts',
+  'saas-visible-text-encoding.spec.ts'
 ]
 
 function readFile(path: string) {

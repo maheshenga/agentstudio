@@ -40,7 +40,7 @@ cd server
 pnpm.cmd run verify:saas-readiness
 
 # Expanded backend gate
-pnpm.cmd test -- saas-main-flow.integration.spec.ts saas-route-consistency.spec.ts saas-tenant.controller.spec.ts saas-platform.controller.spec.ts saas-payment.controller.spec.ts --runInBand --forceExit
+pnpm.cmd test -- saas-main-flow.integration.spec.ts saas-route-consistency.spec.ts saas-tenant.controller.spec.ts saas-platform.controller.spec.ts saas-payment.controller.spec.ts saas-visible-text-encoding.spec.ts --runInBand --forceExit
 ```
 
 ## Manual Visitor Flow
