@@ -43,6 +43,18 @@ const REQUIRED_BACKEND_SAAS_READINESS_SPECS = [
   'safe-url.util.spec.ts',
   'ai-admin.service.spec.ts',
   'taixu-document.service.spec.ts',
+  'auth-rate-limit.config.spec.ts',
+  'auth.strategy.spec.ts',
+  'user.service.spec.ts',
+  'main.service.permissions.spec.ts',
+  'menu.service.spec.ts',
+  'built-in-modules.spec.ts',
+  'system-module-access.service.spec.ts',
+  'system-module-registry.service.spec.ts',
+  'system-module.guard.spec.ts',
+  'system-module-platform.controller.spec.ts',
+  'system-module-tenant.controller.spec.ts',
+  'system-module-route-consistency.spec.ts',
 ] as const;
 
 describe('SaaS backend readiness command', () => {
