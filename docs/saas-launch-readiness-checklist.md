@@ -28,6 +28,7 @@ pnpm.cmd exec tsx scripts/verify-saas-launch-flow-readiness.ts
 pnpm.cmd exec tsx scripts/verify-saas-route-contract.ts
 pnpm.cmd exec tsx scripts/verify-saas-ui-state-readiness.ts
 pnpm.cmd exec tsx scripts/verify-saas-tenant-ui-state-readiness.ts
+pnpm.cmd exec tsx scripts/verify-saas-visible-copy-encoding.ts
 pnpm.cmd exec tsx scripts/verify-saas-signup-activation.ts
 pnpm.cmd exec tsx scripts/verify-saas-platform-tenant-page.ts
 pnpm.cmd exec tsx scripts/verify-saas-payment-path-copy.ts
@@ -96,6 +97,7 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 - Tenant modules flow uses the system-module registry endpoint `GET /api/tenant/modules`.
 - Resource-pack and plan payment paths show whether Alipay is configured before a user attempts payment.
 - Empty, loading, and error states are visible for tenant and platform pages.
+- If PowerShell `Get-Content` displays Chinese as mojibake, verify with Node UTF-8 reads or run `verify-saas-visible-copy-encoding.ts` before editing source files. The browser/Vite path reads these source files as UTF-8.
 
 ## Known Out-of-Scope Items
 

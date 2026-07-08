@@ -5,6 +5,7 @@ const checks = [
   'verify-saas-route-contract.ts',
   'verify-saas-ui-state-readiness.ts',
   'verify-saas-tenant-ui-state-readiness.ts',
+  'verify-saas-visible-copy-encoding.ts',
   'verify-saas-signup-activation.ts',
   'verify-saas-platform-tenant-page.ts',
   'verify-saas-payment-path-copy.ts',
