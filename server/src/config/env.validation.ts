@@ -78,6 +78,7 @@ export const envValidationSchema = Joi.object({
   TAIXU_QDRANT_URL: Joi.string().uri().optional(),
   TAIXU_QDRANT_COLLECTION_PREFIX: Joi.string().optional(),
   TAIXU_QDRANT_VECTOR_SIZE: Joi.number().integer().min(1).max(100000).optional(),
+  TAIXU_QDRANT_TIMEOUT: Joi.number().integer().min(1).max(600).optional(),
   TAIXU_QDRANT_EMBED_BATCH: Joi.number().integer().min(1).max(512).optional(),
 
   TAIXU_GRAPH_ENABLED: Joi.boolean().truthy('true').falsy('false').optional(),
@@ -94,6 +95,7 @@ export const envValidationSchema = Joi.object({
   TAIXU_DOC_INDEX_REQUIRE_LOGIN: Joi.boolean().truthy('true').falsy('false').optional(),
 
   TAIXU_MCP_AMAP_KEY: Joi.string().allow('').optional(),
+  TAIXU_TAVILY_API_KEY: Joi.string().allow('').optional(),
 
   TAIXU_LLM_PROVIDER: Joi.string().valid('openai', 'ollama').optional(),
   TAIXU_OPENAI_API_KEY: Joi.string().allow('').optional(),

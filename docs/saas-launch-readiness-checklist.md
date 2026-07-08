@@ -43,8 +43,20 @@ cd server
 pnpm.cmd run verify:saas-readiness
 
 # Expanded backend gate
-pnpm.cmd test -- saas-main-flow.integration.spec.ts saas-route-consistency.spec.ts saas-tenant.controller.spec.ts saas-platform.controller.spec.ts saas-payment.controller.spec.ts saas-visible-text-encoding.spec.ts saas-resource-pack.service.spec.ts save-saas-resource-pack.dto.spec.ts align-saas-resource-pack-crud-permissions.spec.ts --runInBand --forceExit
+pnpm.cmd test -- saas-main-flow.integration.spec.ts saas-route-consistency.spec.ts saas-tenant.controller.spec.ts saas-platform.controller.spec.ts saas-payment.controller.spec.ts saas-visible-text-encoding.spec.ts saas-resource-pack.service.spec.ts save-saas-resource-pack.dto.spec.ts align-saas-resource-pack-crud-permissions.spec.ts saas-env-contract.spec.ts --runInBand --forceExit
 ```
+
+## Environment Contract
+
+Required local/demo backend keys:
+
+- `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME`
+- `JWT_SECRET`, `JWT_EXPIRES_IN`, `LOGIN_CAPTCHA_ENABLED`
+- `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DB`
+- `SAAS_DEV_PAYMENT_CONFIRM_ENABLED`
+- `ALIPAY_ENABLED`, `ALIPAY_APP_ID`, `ALIPAY_PRIVATE_KEY`, `ALIPAY_PUBLIC_KEY`, `ALIPAY_NOTIFY_URL`, `ALIPAY_RETURN_URL`, `ALIPAY_GATEWAY_URL`
+
+Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` values before running shared, staging, or production environments.
 
 ## Manual Visitor Flow
 

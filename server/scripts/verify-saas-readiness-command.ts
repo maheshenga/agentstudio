@@ -11,7 +11,8 @@ const expectedSuites = [
   'saas-visible-text-encoding.spec.ts',
   'saas-resource-pack.service.spec.ts',
   'save-saas-resource-pack.dto.spec.ts',
-  'align-saas-resource-pack-crud-permissions.spec.ts'
+  'align-saas-resource-pack-crud-permissions.spec.ts',
+  'saas-env-contract.spec.ts'
 ]
 
 function readFile(path: string) {
