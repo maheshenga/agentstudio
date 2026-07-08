@@ -6,12 +6,15 @@ const checks = [
   'verify-saas-ui-state-readiness.ts',
   'verify-saas-tenant-ui-state-readiness.ts',
   'verify-saas-visible-copy-encoding.ts',
+  'verify-saas-signup-route.ts',
+  'verify-saas-signup-password-policy.ts',
   'verify-saas-signup-activation.ts',
   'verify-saas-platform-tenant-page.ts',
   'verify-saas-payment-path-copy.ts',
   'verify-saas-resource-pack-crud.ts',
   'verify-no-legacy-saiadmin-composable.ts',
-  'verify-saas-public-brand-surfaces.ts'
+  'verify-saas-public-brand-surfaces.ts',
+  'verify-saas-readiness-command.ts'
 ]
 
 for (const script of checks) {

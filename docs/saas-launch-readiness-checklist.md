@@ -29,12 +29,15 @@ pnpm.cmd exec tsx scripts/verify-saas-route-contract.ts
 pnpm.cmd exec tsx scripts/verify-saas-ui-state-readiness.ts
 pnpm.cmd exec tsx scripts/verify-saas-tenant-ui-state-readiness.ts
 pnpm.cmd exec tsx scripts/verify-saas-visible-copy-encoding.ts
+pnpm.cmd exec tsx scripts/verify-saas-signup-route.ts
+pnpm.cmd exec tsx scripts/verify-saas-signup-password-policy.ts
 pnpm.cmd exec tsx scripts/verify-saas-signup-activation.ts
 pnpm.cmd exec tsx scripts/verify-saas-platform-tenant-page.ts
 pnpm.cmd exec tsx scripts/verify-saas-payment-path-copy.ts
 pnpm.cmd exec tsx scripts/verify-saas-resource-pack-crud.ts
 pnpm.cmd exec tsx scripts/verify-no-legacy-saiadmin-composable.ts
 pnpm.cmd exec tsx scripts/verify-saas-public-brand-surfaces.ts
+pnpm.cmd exec tsx scripts/verify-saas-readiness-command.ts
 pnpm.cmd build
 pnpm.cmd run verify:saas-preview-smoke
 ```

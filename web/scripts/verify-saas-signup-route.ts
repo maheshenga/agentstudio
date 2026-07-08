@@ -15,5 +15,5 @@ assert(routeBlockMatch, 'staticRoutes must define /saas/signup')
 const routeBlock = routeBlockMatch![0]
 
 assert(routeBlock.includes("name: 'SaasSignup'"), 'route alias must have stable name SaasSignup')
-assert(routeBlock.includes('@views/auth/register/index.vue'), 'route alias must reuse register page')
+assert(routeBlock.includes('@views/saas/signup/index.vue'), 'route alias must use SaaS signup page')
 assert(routeBlock.includes('isHideTab: true'), 'route alias must hide worktab')
