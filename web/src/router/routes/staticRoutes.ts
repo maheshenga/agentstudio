@@ -33,7 +33,7 @@ export const staticRoutes: AppRouteRecordRaw[] = [
   {
     path: '/saas/signup',
     name: 'SaasSignup',
-    component: () => import('@views/auth/register/index.vue'),
+    component: () => import('@views/saas/signup/index.vue'),
     meta: { title: 'menus.register.title', isHideTab: true }
   },
   {

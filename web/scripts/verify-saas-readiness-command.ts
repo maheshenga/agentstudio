@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 const failures: string[] = []
 const expectedScripts = [
   'verify-saas-launch-flow-readiness.ts',
+  'verify-saas-route-contract.ts',
   'verify-saas-ui-state-readiness.ts',
   'verify-saas-tenant-ui-state-readiness.ts',
   'verify-saas-signup-activation.ts',
