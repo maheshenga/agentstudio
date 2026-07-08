@@ -113,7 +113,7 @@
 
             <div class="mt-5 text-sm text-gray-600">
               <span>{{ $t('login.noAccount') }}</span>
-              <RouterLink class="text-theme" :to="{ name: 'Register' }">{{
+              <RouterLink class="text-theme" :to="{ name: 'SaasSignup' }">{{
                 $t('login.register')
               }}</RouterLink>
             </div>

@@ -16,3 +16,7 @@ assert(loginSource.includes('const route = useRoute()'), 'login page must read c
 assert(loginSource.includes('route.query.signup_success'), 'login page must check signup_success query flag')
 assert(loginSource.includes('<ElAlert'), 'login page must render signup success alert')
 assert(loginSource.includes('formData.username = signupUsername'), 'login page must prefill username from signup query')
+assert(
+  loginSource.includes(":to=\"{ name: 'SaasSignup' }\""),
+  'login page register link must route directly to SaaS signup'
+)
