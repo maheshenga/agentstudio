@@ -74,6 +74,17 @@ const REQUIRED_BACKEND_SAAS_READINESS_SPECS = [
   'align-tenant-resource-pack-role-grants-and-labels.spec.ts',
   'align-tenant-system-module-role-grants.spec.ts',
   'widen-log-username-columns.spec.ts',
+  'configuration.spec.ts',
+  'ai-admin.controller.spec.ts',
+  'openai-stream.util.spec.ts',
+  'chat.service.spec.ts',
+  'llm-provider.service.spec.ts',
+  'taixu-llm-runtime.service.spec.ts',
+  'taixu-model.service.spec.ts',
+  'upload.service.spec.ts',
+  'task.service.spec.ts',
+  'log-username-length.spec.ts',
+  'saas-provisioning.service.spec.ts',
 ] as const;
 
 describe('SaaS backend readiness command', () => {
