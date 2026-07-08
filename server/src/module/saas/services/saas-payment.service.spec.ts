@@ -461,6 +461,38 @@ describe('SaasPaymentService', () => {
     expect(paymentNotifyLogRepo.save).toHaveBeenCalledWith(expect.objectContaining({ result: 'confirmed' }));
   });
 
+  it('redacts sensitive Alipay notify payload fields before recording audit', async () => {
+    saasOrderService.findPlatformOrder.mockResolvedValue({
+      order_no: 'SO20260702000000001000001',
+      amount_cents: 99000,
+      status: SAAS_ORDER_PENDING,
+    });
+    jest.spyOn(service, 'verifyAlipayPaidNotify').mockResolvedValue({ valid: true, tradeNo: 'TRADE-1' });
+    saasOrderService.confirmAlipayPayment.mockResolvedValue({ status: SAAS_ORDER_PAID });
+
+    await service.handleAlipayNotify({
+      out_trade_no: 'SO20260702000000001000001',
+      trade_no: 'TRADE-1',
+      trade_status: 'TRADE_SUCCESS',
+      sign: 'raw-signature',
+      buyer_id: '2088123456789012',
+      buyer_logon_id: 'buyer@example.com',
+    });
+
+    expect(paymentNotifyLogRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rawPayload: expect.objectContaining({
+          out_trade_no: 'SO20260702000000001000001',
+          trade_no: 'TRADE-1',
+          trade_status: 'TRADE_SUCCESS',
+          sign: '[redacted]',
+          buyer_id: '[redacted]',
+          buyer_logon_id: '[redacted]',
+        }),
+      }),
+    );
+  });
+
   it('handles a paid resource pack notify by confirming the resource pack order', async () => {
     resourcePackOrderService.findPlatformOrder.mockResolvedValue({
       order_no: 'RPO20260703120000001000001',

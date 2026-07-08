@@ -17,6 +17,13 @@ const ALIPAY_DEFAULT_GATEWAY = 'https://openapi-sandbox.dl.alipaydev.com/gateway
 const ALIPAY_PAGE_PAY_METHOD = 'alipay.trade.page.pay';
 const ALIPAY_PAGE_PAY_PRODUCT_CODE = 'FAST_INSTANT_TRADE_PAY';
 const ALIPAY_PAID_TRADE_STATUSES = new Set(['TRADE_SUCCESS', 'TRADE_FINISHED']);
+const ALIPAY_NOTIFY_REDACTED_KEYS = new Set([
+  'sign',
+  'buyer_id',
+  'buyer_logon_id',
+  'buyer_user_id',
+  'buyer_open_id',
+]);
 
 export interface SaasAlipayPaymentResult {
   configured: boolean;
@@ -552,7 +559,12 @@ export class SaasPaymentService {
   }
 
   private toSafeNotifyPayload(body: Record<string, any>): Record<string, unknown> {
-    return Object.fromEntries(Object.entries(body).map(([key, value]) => [key, value]));
+    return Object.fromEntries(
+      Object.entries(body).map(([key, value]) => [
+        key,
+        ALIPAY_NOTIFY_REDACTED_KEYS.has(key.toLowerCase()) ? '[redacted]' : value,
+      ]),
+    );
   }
 
   private toNotifyFailureReason(error: unknown): string {
