@@ -19,6 +19,8 @@ Run these before demo or release review:
 node scripts/run-saas-readiness.cjs
 ```
 
+This aggregate gate runs frontend readiness, frontend build, frontend preview smoke, backend build, and backend readiness.
+
 ```powershell
 cd web
 pnpm.cmd run verify:saas-readiness

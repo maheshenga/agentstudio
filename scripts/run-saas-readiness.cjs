@@ -6,6 +6,7 @@ const checks = [
   { label: 'frontend readiness', cwd: path.join(rootDir, 'web'), script: 'verify:saas-readiness' },
   { label: 'frontend build', cwd: path.join(rootDir, 'web'), script: 'build' },
   { label: 'frontend preview smoke', cwd: path.join(rootDir, 'web'), script: 'verify:saas-preview-smoke' },
+  { label: 'backend build', cwd: path.join(rootDir, 'server'), script: 'build' },
   { label: 'backend readiness', cwd: path.join(rootDir, 'server'), script: 'verify:saas-readiness' }
 ]
 

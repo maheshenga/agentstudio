@@ -31,6 +31,8 @@ for (const token of [
   'cmd.exe',
   "pnpm.cmd",
   "spawnSync('pnpm'",
+  "label: 'backend build'",
+  "path.join(rootDir, 'server'), script: 'build'",
   'verify:saas-readiness',
   'SaaS repository readiness verified.'
 ]) {
@@ -41,6 +43,7 @@ const webPackage = readPackage('web/package.json')
 const serverPackage = readPackage('server/package.json')
 assert(webPackage.scripts?.['verify:saas-readiness'], 'web/package.json must define verify:saas-readiness')
 assert(serverPackage.scripts?.['verify:saas-readiness'], 'server/package.json must define verify:saas-readiness')
+assert(serverPackage.scripts?.build, 'server/package.json must define build')
 
 const checklist = readFile('docs/saas-launch-readiness-checklist.md')
 assertIncludes(checklist, 'node scripts/run-saas-readiness.cjs', 'launch readiness checklist')
