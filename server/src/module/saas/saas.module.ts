@@ -31,6 +31,7 @@ import { SaasRevenueReportService } from './services/saas-revenue-report.service
 import { SaasQuotaService } from './services/saas-quota.service';
 import { SaasResourcePackOrderService } from './services/saas-resource-pack-order.service';
 import { SaasResourcePackService } from './services/saas-resource-pack.service';
+import { SaasRuntimeHealthService } from './services/saas-runtime-health.service';
 import { SaasSubscriptionLifecycleService } from './services/saas-subscription-lifecycle.service';
 import { SaasTenantMemberService } from './services/saas-tenant-member.service';
 
@@ -67,6 +68,7 @@ import { SaasTenantMemberService } from './services/saas-tenant-member.service';
     SaasResourcePackOrderService,
     SaasProvisioningService,
     SaasRevenueReportService,
+    SaasRuntimeHealthService,
     SaasSubscriptionLifecycleService,
     SaasTenantMemberService,
   ],
@@ -83,6 +85,7 @@ import { SaasTenantMemberService } from './services/saas-tenant-member.service';
     SaasResourcePackOrderService,
     SaasProvisioningService,
     SaasRevenueReportService,
+    SaasRuntimeHealthService,
     SaasSubscriptionLifecycleService,
     SaasTenantMemberService,
   ],

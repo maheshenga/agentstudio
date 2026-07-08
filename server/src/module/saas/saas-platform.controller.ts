@@ -31,6 +31,7 @@ import { SaasRevenueReportService } from './services/saas-revenue-report.service
 import type { SaasResourcePackOrderListQuery } from './services/saas-resource-pack-order.service';
 import { SaasResourcePackService } from './services/saas-resource-pack.service';
 import type { SaasResourcePackListQuery } from './services/saas-resource-pack.service';
+import { SaasRuntimeHealthService } from './services/saas-runtime-health.service';
 
 @ApiTags('SaaS Platform')
 @ApiBearerAuth('Authorization')
@@ -44,6 +45,7 @@ export class SaasPlatformController {
     private readonly moduleService: SaasModuleService,
     private readonly resourcePackService: SaasResourcePackService,
     private readonly revenueReportService: SaasRevenueReportService,
+    private readonly runtimeHealthService: SaasRuntimeHealthService,
   ) {}
 
   @Get('tenants')
@@ -142,6 +144,13 @@ export class SaasPlatformController {
   @RequirePermission('saas:usage:index')
   usageOverview(@User() user: UserDto) {
     return this.runOutsideTenant(user, () => this.platformService.getUsageOverview().then((data) => ResultData.ok(data)));
+  }
+
+  @Get('runtime-health')
+  @ApiOperation({ summary: 'Get SaaS platform runtime health' })
+  @RequirePermission('saas:usage:index')
+  runtimeHealth(@User() user: UserDto) {
+    return this.runOutsideTenant(user, () => this.runtimeHealthService.getPlatformRuntimeHealth().then((data) => ResultData.ok(data)));
   }
 
   @Get('quota-ledgers')

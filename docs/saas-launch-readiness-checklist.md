@@ -43,7 +43,7 @@ cd server
 pnpm.cmd run verify:saas-readiness
 
 # Expanded backend gate
-pnpm.cmd test -- saas-main-flow.integration.spec.ts saas-route-consistency.spec.ts saas-tenant.controller.spec.ts saas-platform.controller.spec.ts saas-payment.controller.spec.ts saas-visible-text-encoding.spec.ts saas-resource-pack.service.spec.ts save-saas-resource-pack.dto.spec.ts align-saas-resource-pack-crud-permissions.spec.ts saas-env-contract.spec.ts --runInBand --forceExit
+pnpm.cmd test -- saas-main-flow.integration.spec.ts saas-route-consistency.spec.ts saas-tenant.controller.spec.ts saas-platform.controller.spec.ts saas-payment.controller.spec.ts saas-visible-text-encoding.spec.ts saas-resource-pack.service.spec.ts save-saas-resource-pack.dto.spec.ts align-saas-resource-pack-crud-permissions.spec.ts saas-env-contract.spec.ts saas-runtime-health.service.spec.ts --runInBand --forceExit
 ```
 
 ## Environment Contract
@@ -85,6 +85,7 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 7. Open `/#/saas-platform/resource-packs` and confirm resource-pack catalog management renders.
 8. Open `/#/saas-platform/resource-pack-orders` and confirm resource-pack order operations render.
 9. Open `/#/saas-platform/payment-config` and confirm Alipay config status and edit form render.
+10. Open or call `GET /api/saas/platform/runtime-health` and confirm dependencies, required env keys, payment config, and operational switches render without exposing secret values.
 
 ## Acceptance Criteria
 

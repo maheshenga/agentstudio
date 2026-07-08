@@ -85,6 +85,7 @@ describe('SaaS route consistency', () => {
     );
 
     expect(findRoutePermissions(routePermissions, 'GET', '/api/saas/tenant/modules')).toEqual(['tenant:module:list']);
+    expect(findRoutePermissions(routePermissions, 'GET', '/api/saas/platform/runtime-health')).toEqual(['saas:usage:index']);
     expect(missingPermissions).toEqual([]);
   });
 

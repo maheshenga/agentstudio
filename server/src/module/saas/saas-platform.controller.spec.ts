@@ -9,6 +9,7 @@ import { SaasPlatformService } from './services/saas-platform.service';
 import { SaasProvisioningService } from './services/saas-provisioning.service';
 import { SaasResourcePackService } from './services/saas-resource-pack.service';
 import { SaasRevenueReportService } from './services/saas-revenue-report.service';
+import { SaasRuntimeHealthService } from './services/saas-runtime-health.service';
 
 describe('SaasPlatformController', () => {
   let controller: SaasPlatformController;
@@ -58,6 +59,9 @@ describe('SaasPlatformController', () => {
   const revenueReportService = {
     getOverview: jest.fn(),
   };
+  const runtimeHealthService = {
+    getPlatformRuntimeHealth: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -72,6 +76,7 @@ describe('SaasPlatformController', () => {
         { provide: SaasModuleService, useValue: moduleService },
         { provide: SaasResourcePackService, useValue: resourcePackService },
         { provide: SaasRevenueReportService, useValue: revenueReportService },
+        { provide: SaasRuntimeHealthService, useValue: runtimeHealthService },
       ],
     }).compile();
 
@@ -117,6 +122,21 @@ describe('SaasPlatformController', () => {
       daily_trend: [],
       top_tenants: [],
       recent_paid_orders: [],
+    });
+  });
+
+  it('returns SaaS runtime health outside tenant scope', async () => {
+    runtimeHealthService.getPlatformRuntimeHealth.mockResolvedValue({
+      status: 'degraded',
+      required_env: { total_required: 10, configured_keys: ['DB_HOST'], missing_keys: [] },
+    });
+
+    const result = await controller.runtimeHealth({ userId: 1 } as any);
+
+    expect(runtimeHealthService.getPlatformRuntimeHealth).toHaveBeenCalled();
+    expect(result.data).toEqual({
+      status: 'degraded',
+      required_env: { total_required: 10, configured_keys: ['DB_HOST'], missing_keys: [] },
     });
   });
 
