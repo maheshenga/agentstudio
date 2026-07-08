@@ -45,9 +45,26 @@ assert(
   packageJson.scripts?.['verify:saas-readiness'] === 'tsx scripts/run-saas-readiness.ts',
   'package.json must define verify:saas-readiness'
 )
+const previewSmokePath = resolve(process.cwd(), 'scripts/verify-saas-preview-smoke.ts')
+assert(existsSync(previewSmokePath), 'scripts/verify-saas-preview-smoke.ts must exist')
+assert(
+  packageJson.scripts?.['verify:saas-preview-smoke'] ===
+    'tsx scripts/verify-saas-preview-smoke.ts',
+  'package.json must define verify:saas-preview-smoke'
+)
 
 const checklist = readFile('../docs/saas-launch-readiness-checklist.md')
 assertIncludes(checklist, 'pnpm.cmd run verify:saas-readiness', 'launch readiness checklist')
+assertIncludes(
+  checklist,
+  'pnpm.cmd run verify:saas-preview-smoke',
+  'launch readiness checklist'
+)
+
+const rootRunner = readFile('../scripts/run-saas-readiness.cjs')
+for (const token of ['verify:saas-readiness', 'build', 'verify:saas-preview-smoke']) {
+  assertIncludes(rootRunner, token, 'root readiness runner')
+}
 
 if (failures.length) {
   console.error(failures.join('\n'))

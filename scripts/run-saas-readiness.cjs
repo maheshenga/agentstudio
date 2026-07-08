@@ -3,20 +3,22 @@ const path = require('node:path')
 
 const rootDir = path.resolve(__dirname, '..')
 const checks = [
-  { label: 'frontend', cwd: path.join(rootDir, 'web') },
-  { label: 'backend', cwd: path.join(rootDir, 'server') }
+  { label: 'frontend readiness', cwd: path.join(rootDir, 'web'), script: 'verify:saas-readiness' },
+  { label: 'frontend build', cwd: path.join(rootDir, 'web'), script: 'build' },
+  { label: 'frontend preview smoke', cwd: path.join(rootDir, 'web'), script: 'verify:saas-preview-smoke' },
+  { label: 'backend readiness', cwd: path.join(rootDir, 'server'), script: 'verify:saas-readiness' }
 ]
 
-function runReadinessCommand(cwd) {
+function runPnpmScript(cwd, script) {
   if (process.platform === 'win32') {
-    return spawnSync('cmd.exe', ['/d', '/s', '/c', 'pnpm.cmd run verify:saas-readiness'], {
+    return spawnSync('cmd.exe', ['/d', '/s', '/c', `pnpm.cmd run ${script}`], {
       cwd,
       stdio: 'inherit',
       shell: false
     })
   }
 
-  return spawnSync('pnpm', ['run', 'verify:saas-readiness'], {
+  return spawnSync('pnpm', ['run', script], {
     cwd,
     stdio: 'inherit',
     shell: false
@@ -25,7 +27,7 @@ function runReadinessCommand(cwd) {
 
 for (const check of checks) {
   console.log(`\n[saas-readiness] ${check.label}`)
-  const result = runReadinessCommand(check.cwd)
+  const result = runPnpmScript(check.cwd, check.script)
 
   if (result.status !== 0) {
     if (result.error) console.error(result.error.message)

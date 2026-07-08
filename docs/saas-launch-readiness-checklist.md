@@ -35,6 +35,7 @@ pnpm.cmd exec tsx scripts/verify-saas-resource-pack-crud.ts
 pnpm.cmd exec tsx scripts/verify-no-legacy-saiadmin-composable.ts
 pnpm.cmd exec tsx scripts/verify-saas-public-brand-surfaces.ts
 pnpm.cmd build
+pnpm.cmd run verify:saas-preview-smoke
 ```
 
 ```powershell
