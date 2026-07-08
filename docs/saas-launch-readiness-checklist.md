@@ -43,8 +43,8 @@ pnpm.cmd run verify:saas-preview-smoke
 cd server
 pnpm.cmd run verify:saas-readiness
 
-# Expanded backend gate
-pnpm.cmd test -- saas-main-flow.integration.spec.ts saas-route-consistency.spec.ts saas-tenant.controller.spec.ts saas-platform.controller.spec.ts saas-payment.controller.spec.ts saas-visible-text-encoding.spec.ts saas-resource-pack.service.spec.ts save-saas-resource-pack.dto.spec.ts align-saas-resource-pack-crud-permissions.spec.ts saas-env-contract.spec.ts saas-runtime-health.service.spec.ts --runInBand --forceExit
+# Expanded backend gate is defined in server/package.json and guarded by:
+pnpm.cmd test -- saas-readiness-command.spec.ts --runInBand --forceExit
 ```
 
 ## Environment Contract
