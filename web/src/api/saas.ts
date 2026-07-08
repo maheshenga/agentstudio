@@ -157,6 +157,29 @@ export interface SaasPaymentReconciliationParams {
   stale_minutes?: number | string
 }
 
+export interface SaasPaymentNotifyLogRecord {
+  id: number
+  provider: string
+  order_type?: string
+  order_no?: string
+  trade_no?: string
+  trade_status?: string
+  notify_id?: string
+  result: string
+  reason?: string
+  processed_at?: string | Date
+  create_time?: string | Date
+}
+
+export interface SaasPaymentNotifyLogListParams {
+  page?: number
+  limit?: number
+  order_no?: string
+  trade_no?: string
+  order_type?: string
+  notify_result?: string
+}
+
 export interface SaasPlanQuotaRecord {
   quota_type: string
   total_quota: number
@@ -685,6 +708,13 @@ export function scanPlatformPaymentReconciliation(params?: SaasPaymentReconcilia
   return request.post<SaasPaymentReconciliationOverview>({
     url: '/api/saas/platform/payment/reconciliation/scan',
     data: params
+  })
+}
+
+export function fetchPlatformPaymentNotifyLogs(params: SaasPaymentNotifyLogListParams) {
+  return request.get<SaasPlatformPageResult<SaasPaymentNotifyLogRecord>>({
+    url: '/api/saas/platform/payment/notify-logs',
+    params
   })
 }
 

@@ -5,6 +5,7 @@ import { FindOptionsWhere, In, Like, Repository } from 'typeorm';
 import { TenantEntity } from '../../system/tenant/entities/tenant.entity';
 import { SysUserTenantEntity } from '../../system/user/entities/user-tenant.entity';
 import { SaasOrderEntity } from '../entities/saas-order.entity';
+import { SaasPaymentNotifyLogEntity } from '../entities/saas-payment-notify-log.entity';
 import { SaasPlanEntity } from '../entities/saas-plan.entity';
 import { SaasResourcePackOrderEntity } from '../entities/saas-resource-pack-order.entity';
 import { SaasSubscriptionEntity } from '../entities/saas-subscription.entity';
@@ -34,6 +35,12 @@ export interface SaasPlatformListQuery {
   expires_within_days?: string | number;
   expired_since_days?: string | number;
   stale_minutes?: string | number;
+}
+
+export interface SaasPaymentNotifyLogListQuery extends SaasPlatformListQuery {
+  order_type?: string;
+  trade_no?: string;
+  notify_result?: string;
 }
 
 export interface SaasPlatformPlanOrderOverviewRecord {
@@ -113,6 +120,8 @@ export class SaasPlatformService {
     private readonly tenantResourceRepo: Repository<SaasTenantResourceEntity>,
     @InjectRepository(SaasResourcePackOrderEntity)
     private readonly resourcePackOrderRepo: Repository<SaasResourcePackOrderEntity>,
+    @InjectRepository(SaasPaymentNotifyLogEntity)
+    private readonly paymentNotifyLogRepo: Repository<SaasPaymentNotifyLogEntity>,
     @InjectRepository(TenantEntity)
     private readonly tenantRepo: Repository<TenantEntity>,
     @InjectRepository(SysUserTenantEntity)
@@ -264,6 +273,30 @@ export class SaasPlatformService {
 
   getPaymentReconciliationOverview(query: Pick<SaasPlatformListQuery, 'stale_minutes'> = {}) {
     return this.orderRiskService.getPaymentReconciliationOverview(new Date(), this.resolveStaleMinutes(query.stale_minutes));
+  }
+
+  async listPaymentNotifyLogs(query: SaasPaymentNotifyLogListQuery = {}) {
+    const { page, limit, skip } = this.resolvePaymentNotifyLogPagination(query);
+    const where: FindOptionsWhere<SaasPaymentNotifyLogEntity> = {};
+
+    if (query.order_no) where.orderNo = Like(`%${query.order_no}%`);
+    if (query.trade_no) where.tradeNo = Like(`%${query.trade_no}%`);
+    if (query.order_type) where.orderType = query.order_type;
+    if (query.notify_result) where.result = query.notify_result;
+
+    const [list, total] = await this.paymentNotifyLogRepo.findAndCount({
+      where,
+      order: { processedAt: 'DESC', createTime: 'DESC', id: 'DESC' },
+      skip,
+      take: limit,
+    });
+
+    return {
+      list: list.map((row) => this.toPaymentNotifyLogResponse(row)),
+      total,
+      page,
+      limit,
+    };
   }
 
   private buildQuotaSummary(resources: Partial<SaasTenantResourceEntity>[]) {
@@ -420,6 +453,29 @@ export class SaasPlatformService {
     const limit = Math.min(100, Math.max(1, Number(query.limit || 20)));
 
     return { page, limit, skip: (page - 1) * limit };
+  }
+
+  private resolvePaymentNotifyLogPagination(query: SaasPaymentNotifyLogListQuery) {
+    const page = Math.max(1, Number(query.page || 1));
+    const limit = Math.min(50, Math.max(1, Number(query.limit || 10)));
+
+    return { page, limit, skip: (page - 1) * limit };
+  }
+
+  private toPaymentNotifyLogResponse(row: Partial<SaasPaymentNotifyLogEntity>) {
+    return {
+      id: Number(row.id),
+      provider: row.provider,
+      order_type: row.orderType,
+      order_no: row.orderNo,
+      trade_no: row.tradeNo,
+      trade_status: row.tradeStatus,
+      notify_id: row.notifyId,
+      result: row.result,
+      reason: row.reason,
+      processed_at: row.processedAt,
+      create_time: row.createTime,
+    };
   }
 
   private resolveTenantId(value: string | number | undefined): number | undefined {

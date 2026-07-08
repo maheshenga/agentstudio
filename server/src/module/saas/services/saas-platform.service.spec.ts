@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { SaasOrderEntity } from '../entities/saas-order.entity';
+import { SaasPaymentNotifyLogEntity } from '../entities/saas-payment-notify-log.entity';
 import { SaasPlanEntity } from '../entities/saas-plan.entity';
 import { SaasResourcePackOrderEntity } from '../entities/saas-resource-pack-order.entity';
 import { SaasSubscriptionEntity } from '../entities/saas-subscription.entity';
@@ -44,6 +45,9 @@ describe('SaasPlatformService', () => {
   };
   const userTenantRepo = {
     find: jest.fn(),
+  };
+  const paymentNotifyLogRepo = {
+    findAndCount: jest.fn(),
   };
   const resourcePackService = {
     listPlatformResourcePacks: jest.fn(),
@@ -101,6 +105,7 @@ describe('SaasPlatformService', () => {
         { provide: getRepositoryToken(SaasPlanEntity), useValue: planRepo },
         { provide: getRepositoryToken(SaasTenantResourceEntity), useValue: tenantResourceRepo },
         { provide: getRepositoryToken(SaasResourcePackOrderEntity), useValue: resourcePackOrderRepo },
+        { provide: getRepositoryToken(SaasPaymentNotifyLogEntity), useValue: paymentNotifyLogRepo },
         { provide: getRepositoryToken(TenantEntity), useValue: tenantRepo },
         { provide: getRepositoryToken(SysUserTenantEntity), useValue: userTenantRepo },
         { provide: SaasResourcePackService, useValue: resourcePackService },
@@ -222,6 +227,70 @@ describe('SaasPlatformService', () => {
       total: 1,
       page: 2,
       limit: 5,
+    });
+  });
+
+  it('lists payment notify audit logs with paging and filters', async () => {
+    const processedAt = new Date('2026-07-09T02:00:00.000Z');
+    paymentNotifyLogRepo.findAndCount.mockResolvedValue([
+      [
+        {
+          id: 9,
+          provider: 'alipay',
+          orderType: 'plan',
+          orderNo: 'SO20260709000000001000001',
+          tradeNo: 'TRADE-1',
+          tradeStatus: 'TRADE_SUCCESS',
+          notifyId: 'NOTIFY-1',
+          result: 'confirmed',
+          reason: '',
+          processedAt,
+          createTime: processedAt,
+        },
+      ],
+      1,
+    ]);
+
+    await expect(
+      service.listPaymentNotifyLogs({
+        page: '2',
+        limit: '5',
+        order_no: 'SO20260709',
+        trade_no: 'TRADE',
+        order_type: 'plan',
+        notify_result: 'confirmed',
+      }),
+    ).resolves.toEqual({
+      list: [
+        {
+          id: 9,
+          provider: 'alipay',
+          order_type: 'plan',
+          order_no: 'SO20260709000000001000001',
+          trade_no: 'TRADE-1',
+          trade_status: 'TRADE_SUCCESS',
+          notify_id: 'NOTIFY-1',
+          result: 'confirmed',
+          reason: '',
+          processed_at: processedAt,
+          create_time: processedAt,
+        },
+      ],
+      total: 1,
+      page: 2,
+      limit: 5,
+    });
+
+    expect(paymentNotifyLogRepo.findAndCount).toHaveBeenCalledWith({
+      where: {
+        orderNo: expect.any(Object),
+        tradeNo: expect.any(Object),
+        orderType: 'plan',
+        result: 'confirmed',
+      },
+      order: { processedAt: 'DESC', createTime: 'DESC', id: 'DESC' },
+      skip: 5,
+      take: 5,
     });
   });
 

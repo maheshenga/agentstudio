@@ -24,7 +24,7 @@ import type { SaasModuleListQuery } from './services/saas-module.service';
 import { SaasPlanService } from './services/saas-plan.service';
 import type { SaasPlanListQuery } from './services/saas-plan.service';
 import { SaasPlatformService } from './services/saas-platform.service';
-import type { SaasPlatformListQuery } from './services/saas-platform.service';
+import type { SaasPaymentNotifyLogListQuery, SaasPlatformListQuery } from './services/saas-platform.service';
 import { SaasProvisioningService } from './services/saas-provisioning.service';
 import type { SaasQuotaLedgerPlatformListQuery } from './services/saas-quota.service';
 import { SaasRevenueReportService } from './services/saas-revenue-report.service';
@@ -193,6 +193,13 @@ export class SaasPlatformController {
   @RequirePermission('saas:order:list')
   scanPaymentReconciliation(@Body() body: Pick<SaasPlatformListQuery, 'stale_minutes'>, @User() user: UserDto) {
     return this.runOutsideTenant(user, () => this.platformService.getPaymentReconciliationOverview(body).then((data) => ResultData.ok(data)));
+  }
+
+  @Get('payment/notify-logs')
+  @ApiOperation({ summary: 'List SaaS payment notify callback audit logs' })
+  @RequirePermission('saas:order:list')
+  paymentNotifyLogs(@Query() query: SaasPaymentNotifyLogListQuery, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () => this.platformService.listPaymentNotifyLogs(query).then((data) => ResultData.ok(data)));
   }
 
   @Get('orders/:order_no')

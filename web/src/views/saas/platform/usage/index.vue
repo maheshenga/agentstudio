@@ -107,6 +107,26 @@
             </ElTable>
           </div>
         </div>
+
+        <div class="saas-platform-usage-page__notify-logs">
+          <div class="saas-platform-usage-page__section-header">
+            <h2>Recent payment callbacks</h2>
+            <ElButton :icon="Refresh" :loading="notifyLogLoading" @click="loadNotifyLogs">Refresh</ElButton>
+          </div>
+          <ElTable :data="notifyLogs" border v-loading="notifyLogLoading">
+            <ElTableColumn prop="order_no" label="Order no" min-width="210" show-overflow-tooltip />
+            <ElTableColumn prop="order_type" label="Type" width="120" />
+            <ElTableColumn prop="result" label="Result" width="130" />
+            <ElTableColumn prop="trade_status" label="Trade status" min-width="150" show-overflow-tooltip />
+            <ElTableColumn prop="reason" label="Reason" min-width="180" show-overflow-tooltip />
+            <ElTableColumn label="Processed" min-width="180">
+              <template #default="{ row }">{{ formatDate(row.processed_at) }}</template>
+            </ElTableColumn>
+            <template #empty>
+              <ElEmpty description="No payment callbacks yet" />
+            </template>
+          </ElTable>
+        </div>
       </section>
 
       <section class="saas-platform-usage-page__section">
@@ -308,10 +328,12 @@
   import { Refresh, Search } from '@element-plus/icons-vue'
   import { ElMessage } from 'element-plus'
   import {
+    fetchPlatformPaymentNotifyLogs,
     fetchPlatformPaymentReconciliationOverview,
     fetchPlatformQuotaLedgers,
     fetchPlatformUsageOverview,
     scanPlatformPaymentReconciliation,
+    type SaasPaymentNotifyLogRecord,
     type SaasPaymentReconciliationOverview,
     type SaasPlatformUsageOverview,
     type TenantQuotaLedgerRecord
@@ -321,8 +343,10 @@
 
   const loading = ref(false)
   const reconciliationLoading = ref(false)
+  const notifyLogLoading = ref(false)
   const quotaLedgerLoading = ref(false)
   const staleMinutes = ref(120)
+  const notifyLogs = ref<SaasPaymentNotifyLogRecord[]>([])
   const quotaLedgers = ref<TenantQuotaLedgerRecord[]>([])
   const quotaLedgerFilters = reactive({
     tenant_id: '',
@@ -447,6 +471,20 @@
     }
   }
 
+  async function loadNotifyLogs() {
+    notifyLogLoading.value = true
+    try {
+      const result = await fetchPlatformPaymentNotifyLogs({ page: 1, limit: 10 })
+      notifyLogs.value = Array.isArray(result?.list) ? result.list : []
+    } catch (error) {
+      console.error('[SaasPlatformUsagePage] load payment notify logs failed:', error)
+      notifyLogs.value = []
+      ElMessage.error('Load payment callbacks failed')
+    } finally {
+      notifyLogLoading.value = false
+    }
+  }
+
   async function loadQuotaLedgers() {
     quotaLedgerLoading.value = true
     try {
@@ -495,7 +533,7 @@
   }
 
   async function loadPage() {
-    await Promise.all([loadOverview(), loadReconciliation(), loadQuotaLedgers()])
+    await Promise.all([loadOverview(), loadReconciliation(), loadNotifyLogs(), loadQuotaLedgers()])
   }
 
   onMounted(loadPage)
@@ -623,6 +661,10 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
+  }
+
+  .saas-platform-usage-page__notify-logs {
+    margin-top: 14px;
   }
 
   .saas-platform-usage-page__table-title {

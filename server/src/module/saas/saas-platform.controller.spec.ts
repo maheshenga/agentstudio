@@ -21,6 +21,7 @@ describe('SaasPlatformController', () => {
     getUsageOverview: jest.fn(),
     getOrderRiskOverview: jest.fn(),
     getPaymentReconciliationOverview: jest.fn(),
+    listPaymentNotifyLogs: jest.fn(),
     getSubscriptionLifecycleOverview: jest.fn(),
     listTenants: jest.fn(),
     listOrders: jest.fn(),
@@ -137,6 +138,25 @@ describe('SaasPlatformController', () => {
     expect(result.data).toEqual({
       status: 'degraded',
       required_env: { total_required: 10, configured_keys: ['DB_HOST'], missing_keys: [] },
+    });
+  });
+
+  it('returns payment notify logs outside tenant scope', async () => {
+    platformService.listPaymentNotifyLogs.mockResolvedValue({
+      list: [{ order_no: 'SO20260709000000001000001', result: 'confirmed' }],
+      total: 1,
+      page: 1,
+      limit: 10,
+    });
+
+    const result = await controller.paymentNotifyLogs({ page: '1' } as any, { userId: 1 } as any);
+
+    expect(platformService.listPaymentNotifyLogs).toHaveBeenCalledWith({ page: '1' });
+    expect(result.data).toEqual({
+      list: [{ order_no: 'SO20260709000000001000001', result: 'confirmed' }],
+      total: 1,
+      page: 1,
+      limit: 10,
     });
   });
 

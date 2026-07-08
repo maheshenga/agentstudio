@@ -51,7 +51,7 @@ const criticalFiles: ReadableCopyExpectation[] = [
   {
     file: 'src/views/saas/platform/usage/index.vue',
     label: 'platform usage page',
-    expectedReadable: ['SaaS Usage', 'Payment reconciliation', 'Scan']
+    expectedReadable: ['SaaS Usage', 'Payment reconciliation', 'Recent payment callbacks', 'Scan']
   },
   {
     file: 'src/views/saas/platform/payment-config/index.vue',

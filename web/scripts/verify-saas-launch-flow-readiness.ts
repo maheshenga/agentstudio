@@ -72,6 +72,7 @@ for (const token of [
   "url: '/api/saas/platform/usage/overview'",
   "url: '/api/saas/platform/revenue/overview'",
   "url: '/api/saas/platform/orders'",
+  "url: '/api/saas/platform/payment/notify-logs'",
   "url: '/api/saas/platform/subscriptions'",
   "url: '/api/saas/platform/plans'",
   "url: '/api/saas/platform/modules'",
@@ -182,7 +183,14 @@ for (const token of ['fetchPlatformSubscriptions', 'fetchPlatformOrders', 'fetch
 }
 
 const platformUsagePage = readProjectFile(webRoot, 'src/views/saas/platform/usage/index.vue')
-for (const token of ['fetchPlatformUsageOverview', 'fetchPlatformPaymentReconciliationOverview', 'scanPlatformPaymentReconciliation', 'fetchPlatformQuotaLedgers']) {
+for (const token of [
+  'fetchPlatformUsageOverview',
+  'fetchPlatformPaymentReconciliationOverview',
+  'scanPlatformPaymentReconciliation',
+  'fetchPlatformPaymentNotifyLogs',
+  'saas-platform-usage-page__notify-logs',
+  'fetchPlatformQuotaLedgers'
+]) {
   assertIncludes(platformUsagePage, token, 'platform usage page')
 }
 
@@ -224,6 +232,7 @@ for (const token of [
   "@Get('resource-packs')",
   "@Get('resource-pack-orders')",
   "@Get('payment/alipay/config')",
+  "@Get('payment/notify-logs')",
   "@Put('payment/alipay/config')"
 ]) {
   assertIncludes(platformController, token, 'saas platform controller')
