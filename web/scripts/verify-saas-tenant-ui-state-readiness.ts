@@ -20,6 +20,14 @@ function assertNotIncludes(source: string, token: string, label: string) {
 }
 
 const tenantModulesPage = readWebFile('src/views/saas/tenant/modules/index.vue')
+const systemModuleApi = readWebFile('src/api/system-module.ts')
+for (const token of [
+  'export interface SystemModuleAccessDiagnosis',
+  'fetchTenantSystemModuleAccessDiagnosis',
+  "/api/tenant/modules/${code}/access-diagnosis"
+]) {
+  assertIncludes(systemModuleApi, token, 'tenant module diagnosis api')
+}
 for (const token of [
   'const loadError = ref',
   "loadError.value = ''",
@@ -30,7 +38,11 @@ for (const token of [
   'ElEmpty',
   'catch (error)',
   "console.error('[TenantModulesPage] load modules failed:'",
-  'ElMessage.error(loadError.value)'
+  'ElMessage.error(loadError.value)',
+  'diagnosisByCode',
+  '查看原因',
+  '当前租户未启用该系统模块',
+  "loadError.value = '租户模块加载失败，请稍后重试'"
 ]) {
   assertIncludes(tenantModulesPage, token, 'tenant modules page')
 }

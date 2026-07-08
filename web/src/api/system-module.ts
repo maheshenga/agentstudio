@@ -74,6 +74,23 @@ export interface SystemModuleSaasBridgeRecord {
   update_time?: string | Date
 }
 
+export interface SystemModuleAccessDiagnosis {
+  module_code: string
+  module_name?: string
+  allowed: boolean
+  status: string
+  reason: string
+  required_saas_module_codes: string[]
+  missing_saas_module_codes: string[]
+  tenant_saas_module_codes: string[]
+  tenant_enabled: boolean
+  tenant_entitlement_source?: string | null
+  suggestions: string[]
+  dependency_code?: string
+  permission?: string
+  system_module_status?: string
+}
+
 export interface SystemModuleSaasBridgeListParams {
   saas_module_code?: string
   system_module_code?: string
@@ -127,4 +144,8 @@ export function updateSystemModuleSaasBridgeStatus(id: number | string, enabled:
 
 export function fetchTenantSystemModules() {
   return request.get<SystemModuleRecord[]>({ url: '/api/tenant/modules' })
+}
+
+export function fetchTenantSystemModuleAccessDiagnosis(code: string) {
+  return request.get<SystemModuleAccessDiagnosis>({ url: `/api/tenant/modules/${code}/access-diagnosis` })
 }

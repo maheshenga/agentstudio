@@ -15,7 +15,7 @@
 
       <div v-if="loadError" class="tenant-modules-page__load-error">
         <ElAlert type="error" :title="loadError" show-icon :closable="false" />
-        <ElButton size="small" type="primary" link :loading="loading" @click="loadModules">Retry</ElButton>
+        <ElButton size="small" type="primary" link :loading="loading" @click="loadModules">重试</ElButton>
       </div>
 
       <ElTable v-loading="loading" :data="records" border>
@@ -43,6 +43,18 @@
             </ElTag>
           </template>
         </ElTableColumn>
+        <ElTableColumn label="可用性说明" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span
+              :class="[
+                'tenant-modules-page__reason',
+                isTenantEnabled(row.tenant_enabled) ? 'is-available' : 'is-unavailable'
+              ]"
+            >
+              {{ moduleAccessText(row) }}
+            </span>
+          </template>
+        </ElTableColumn>
         <ElTableColumn label="平台状态" width="120">
           <template #default="{ row }">
             <ElTag :type="platformStatusTagType(row.status)" effect="light">
@@ -50,10 +62,10 @@
             </ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="入口" fixed="right" width="120">
+        <ElTableColumn label="操作" fixed="right" width="180">
           <template #default="{ row }">
             <ElButton
-              v-if="row.entry_route"
+              v-if="row.entry_route && isTenantEnabled(row.tenant_enabled)"
               link
               type="primary"
               :icon="Link"
@@ -61,7 +73,17 @@
             >
               进入
             </ElButton>
-            <span v-else>-</span>
+            <ElButton
+              v-if="!isTenantEnabled(row.tenant_enabled)"
+              link
+              type="warning"
+              :icon="InfoFilled"
+              :loading="diagnosingCode === row.code"
+              @click="loadDiagnosis(row)"
+            >
+              查看原因
+            </ElButton>
+            <span v-if="!row.entry_route && isTenantEnabled(row.tenant_enabled)">-</span>
           </template>
         </ElTableColumn>
         <template #empty>
@@ -73,9 +95,14 @@
 </template>
 
 <script setup lang="ts">
-  import { ElMessage } from 'element-plus'
-  import { Link, Refresh } from '@element-plus/icons-vue'
-  import { fetchTenantSystemModules, type SystemModuleRecord } from '@/api/system-module'
+  import { ElMessage, ElMessageBox } from 'element-plus'
+  import { InfoFilled, Link, Refresh } from '@element-plus/icons-vue'
+  import {
+    fetchTenantSystemModuleAccessDiagnosis,
+    fetchTenantSystemModules,
+    type SystemModuleAccessDiagnosis,
+    type SystemModuleRecord
+  } from '@/api/system-module'
 
   defineOptions({ name: 'TenantModulesPage' })
 
@@ -83,6 +110,8 @@
   const records = ref<SystemModuleRecord[]>([])
   const loading = ref(false)
   const loadError = ref('')
+  const diagnosingCode = ref('')
+  const diagnosisByCode = reactive<Record<string, SystemModuleAccessDiagnosis>>({})
 
   function isTenantEnabled(value?: boolean | number) {
     return value === true || value === 1
@@ -126,6 +155,13 @@
     return status ? map[status] || 'info' : 'info'
   }
 
+  function moduleAccessText(row: SystemModuleRecord) {
+    if (isTenantEnabled(row.tenant_enabled)) {
+      return row.entitlement_source === 'plan' ? '当前套餐已包含，可直接使用' : '当前租户已开通，可直接使用'
+    }
+    return diagnosisByCode[row.code]?.reason || '当前租户未启用该系统模块'
+  }
+
   async function loadModules() {
     loading.value = true
     loadError.value = ''
@@ -134,11 +170,46 @@
     } catch (error) {
       console.error('[TenantModulesPage] load modules failed:', error)
       records.value = []
-      loadError.value = 'Failed to load tenant modules'
+      loadError.value = '租户模块加载失败，请稍后重试'
       ElMessage.error(loadError.value)
     } finally {
       loading.value = false
     }
+  }
+
+  async function loadDiagnosis(row: SystemModuleRecord) {
+    if (!row.code) return
+    diagnosingCode.value = row.code
+    try {
+      const diagnosis = diagnosisByCode[row.code] || (await fetchTenantSystemModuleAccessDiagnosis(row.code))
+      diagnosisByCode[row.code] = diagnosis
+      showDiagnosis(row, diagnosis)
+    } catch (error) {
+      console.error('[TenantModulesPage] load module diagnosis failed:', error)
+      ElMessage.error('模块诊断失败，请稍后重试')
+    } finally {
+      diagnosingCode.value = ''
+    }
+  }
+
+  function showDiagnosis(row: SystemModuleRecord, diagnosis: SystemModuleAccessDiagnosis) {
+    const lines = [
+      `${row.name || row.code}：${diagnosis.reason}`,
+      diagnosis.required_saas_module_codes?.length
+        ? `需要的 SaaS 模块：${diagnosis.required_saas_module_codes.join('、')}`
+        : '',
+      diagnosis.missing_saas_module_codes?.length
+        ? `当前缺少：${diagnosis.missing_saas_module_codes.join('、')}`
+        : '',
+      diagnosis.tenant_saas_module_codes?.length
+        ? `当前套餐模块：${diagnosis.tenant_saas_module_codes.join('、')}`
+        : '',
+      ...(diagnosis.suggestions?.length ? ['建议：', ...diagnosis.suggestions.map((item) => `- ${item}`)] : [])
+    ].filter(Boolean)
+
+    ElMessageBox.alert(lines.join('\n'), '模块访问诊断', {
+      confirmButtonText: '知道了'
+    })
   }
 
   function openModule(entryRoute: string) {
@@ -192,6 +263,19 @@
   .tenant-modules-page__module-code {
     color: var(--el-text-color-secondary);
     font-size: 12px;
+  }
+
+  .tenant-modules-page__reason {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .tenant-modules-page__reason.is-available {
+    color: var(--el-color-success);
+  }
+
+  .tenant-modules-page__reason.is-unavailable {
+    color: var(--el-color-warning);
   }
 
   @media (max-width: 640px) {

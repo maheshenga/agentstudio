@@ -20,6 +20,32 @@ export interface AssertModuleAccessOptions {
   requiredAnySaasModuleCodes?: string[];
 }
 
+export type ModuleAccessDiagnosisStatus =
+  | 'available'
+  | 'module_not_found'
+  | 'module_disabled'
+  | 'dependency_missing'
+  | 'missing_plan_module'
+  | 'missing_tenant_module'
+  | 'permission_missing';
+
+export interface SystemModuleAccessDiagnosis {
+  module_code: string;
+  module_name: string;
+  allowed: boolean;
+  status: ModuleAccessDiagnosisStatus;
+  reason: string;
+  required_saas_module_codes: string[];
+  missing_saas_module_codes: string[];
+  tenant_saas_module_codes: string[];
+  tenant_enabled: boolean;
+  tenant_entitlement_source: string | null;
+  suggestions: string[];
+  dependency_code?: string;
+  permission?: string;
+  system_module_status?: string;
+}
+
 const BASELINE_TENANT_SYSTEM_MODULES = new Set(['tenant_saas']);
 
 @Injectable()
@@ -37,20 +63,79 @@ export class SystemModuleAccessService {
   ) {}
 
   async assertModuleAccess(options: AssertModuleAccessOptions) {
+    const diagnosis = await this.diagnoseModuleAccess(options);
+    if (diagnosis.allowed) {
+      return true;
+    }
+
+    if (diagnosis.status === 'module_not_found') {
+      throw new NotFoundException(`Module ${options.moduleCode} not found`);
+    }
+    if (diagnosis.status === 'module_disabled') {
+      throw new BadRequestException('Module is disabled');
+    }
+    if (diagnosis.status === 'dependency_missing') {
+      throw new BadRequestException('Module dependency is not satisfied');
+    }
+    if (diagnosis.status === 'missing_plan_module') {
+      throw new BadRequestException('Current plan has not enabled this module');
+    }
+    if (diagnosis.status === 'missing_tenant_module') {
+      throw new BadRequestException('Tenant has not enabled this module');
+    }
+    if (diagnosis.status === 'permission_missing') {
+      throw new ForbiddenException('Missing module permission');
+    }
+
+    throw new BadRequestException(diagnosis.reason);
+  }
+
+  async diagnoseModuleAccess(options: AssertModuleAccessOptions): Promise<SystemModuleAccessDiagnosis> {
+    let tenantEntitlement:
+      | {
+          enabled: boolean;
+          source: string | null;
+          tenantSaasModuleCodes: string[];
+        }
+      | undefined;
+
     const module = await this.moduleRepo.findOne({
       where: { code: options.moduleCode, deleteTime: IsNull() },
     });
     if (!module) {
-      throw new NotFoundException(`Module ${options.moduleCode} not found`);
+      return this.createDiagnosis(options, {
+        allowed: false,
+        status: 'module_not_found',
+        reason: `系统模块 ${options.moduleCode} 不存在`,
+        suggestions: ['请在平台系统模块中注册或恢复该模块。'],
+      });
     }
     if (module.status !== 'enabled') {
-      throw new BadRequestException('Module is disabled');
+      return this.createDiagnosis(options, {
+        module,
+        allowed: false,
+        status: 'module_disabled',
+        reason: '系统模块未启用',
+        system_module_status: module.status,
+        suggestions: ['请在平台系统模块管理中启用该模块。'],
+      });
     }
 
-    await this.assertDependenciesEnabled(options.moduleCode);
+    const missingDependency = await this.findUnsatisfiedDependency(options.moduleCode);
+    if (missingDependency) {
+      return this.createDiagnosis(options, {
+        module,
+        allowed: false,
+        status: 'dependency_missing',
+        reason: '系统模块依赖未满足',
+        dependency_code: missingDependency,
+        suggestions: [`请先启用依赖模块 ${missingDependency}。`],
+      });
+    }
 
     if (options.tenantId !== undefined) {
       const requiredAnySaasModuleCodes = (options.requiredAnySaasModuleCodes || []).filter(Boolean);
+      const requiredSaasModuleCodes = this.getRequiredSaasModuleCodes(options);
       const tenantSaasModuleCodes =
         options.requiredSaasModuleCode || requiredAnySaasModuleCodes.length || options.saasModuleCodes
           ? options.saasModuleCodes ?? (await this.loadTenantSaasModuleCodes(options.tenantId))
@@ -60,27 +145,72 @@ export class SystemModuleAccessService {
         options.requiredSaasModuleCode &&
         !(tenantSaasModuleCodes || []).includes(options.requiredSaasModuleCode)
       ) {
-        throw new BadRequestException('Current plan has not enabled this module');
+        return this.createDiagnosis(options, {
+          module,
+          allowed: false,
+          status: 'missing_plan_module',
+          reason: '当前套餐未包含所需 SaaS 模块',
+          required_saas_module_codes: requiredSaasModuleCodes,
+          missing_saas_module_codes: [options.requiredSaasModuleCode],
+          tenant_saas_module_codes: tenantSaasModuleCodes || [],
+          suggestions: ['请升级套餐，或让平台管理员把所需 SaaS 模块加入当前套餐。'],
+        });
       }
 
       if (
         requiredAnySaasModuleCodes.length &&
         !requiredAnySaasModuleCodes.some((code) => (tenantSaasModuleCodes || []).includes(code))
       ) {
-        throw new BadRequestException('Current plan has not enabled this module');
+        return this.createDiagnosis(options, {
+          module,
+          allowed: false,
+          status: 'missing_plan_module',
+          reason: '当前套餐未包含所需 SaaS 模块',
+          required_saas_module_codes: requiredSaasModuleCodes,
+          missing_saas_module_codes: requiredAnySaasModuleCodes,
+          tenant_saas_module_codes: tenantSaasModuleCodes || [],
+          suggestions: ['请升级套餐，或让平台管理员把任一所需 SaaS 模块加入当前套餐。'],
+        });
       }
 
-      const entitled = await this.isTenantEntitled(options.tenantId, options.moduleCode, tenantSaasModuleCodes);
+      tenantEntitlement = await this.getTenantEntitlement(options.tenantId, options.moduleCode, tenantSaasModuleCodes);
+      const entitled = tenantEntitlement.enabled;
       if (!entitled) {
-        throw new BadRequestException('Tenant has not enabled this module');
+        return this.createDiagnosis(options, {
+          module,
+          allowed: false,
+          status: 'missing_tenant_module',
+          reason: '当前租户未启用该系统模块',
+          required_saas_module_codes: requiredSaasModuleCodes,
+          tenant_saas_module_codes: tenantEntitlement.tenantSaasModuleCodes,
+          tenant_enabled: false,
+          tenant_entitlement_source: null,
+          suggestions: ['请在平台后台为该租户开通模块，或调整 SaaS 模块到系统模块的桥接关系。'],
+        });
       }
     }
 
     if (options.permission && !(options.userPermissions || []).includes(options.permission)) {
-      throw new ForbiddenException('Missing module permission');
+      return this.createDiagnosis(options, {
+        module,
+        allowed: false,
+        status: 'permission_missing',
+        reason: '当前账号缺少模块权限',
+        permission: options.permission,
+        suggestions: ['请让管理员为当前账号分配对应权限。'],
+      });
     }
 
-    return true;
+    return this.createDiagnosis(options, {
+      module,
+      allowed: true,
+      status: 'available',
+      reason: '模块已开通',
+      tenant_enabled: tenantEntitlement?.enabled ?? false,
+      tenant_entitlement_source: tenantEntitlement?.source ?? null,
+      tenant_saas_module_codes: tenantEntitlement?.tenantSaasModuleCodes ?? options.saasModuleCodes ?? [],
+      suggestions: [],
+    });
   }
 
   async isTenantEntitled(tenantId: number, moduleCode: string, saasModuleCodes?: string[]) {
@@ -106,12 +236,12 @@ export class SystemModuleAccessService {
     return entitledSystemModuleCodes.has(moduleCode);
   }
 
-  private async assertDependenciesEnabled(moduleCode: string) {
+  private async findUnsatisfiedDependency(moduleCode: string) {
     const requiredDependencies = await this.dependencyRepo.find({
       where: { moduleCode, required: 1 },
     });
     if (!requiredDependencies.length) {
-      return;
+      return undefined;
     }
 
     for (const dependency of requiredDependencies) {
@@ -119,9 +249,10 @@ export class SystemModuleAccessService {
         where: { code: dependency.dependsOnCode, deleteTime: IsNull() },
       });
       if (!dependencyModule || dependencyModule.status !== 'enabled') {
-        throw new BadRequestException('Module dependency is not satisfied');
+        return dependency.dependsOnCode;
       }
     }
+    return undefined;
   }
 
   private async loadTenantSaasModuleCodes(tenantId: number) {
@@ -152,5 +283,75 @@ export class SystemModuleAccessService {
     }
 
     return new Set(uniqueCodes.flatMap((saasModuleCode) => SAAS_TO_SYSTEM_MODULE_BRIDGE[saasModuleCode] || []));
+  }
+
+  private getRequiredSaasModuleCodes(options: AssertModuleAccessOptions) {
+    return [
+      options.requiredSaasModuleCode,
+      ...(options.requiredAnySaasModuleCodes || []),
+    ].filter((code): code is string => Boolean(code));
+  }
+
+  private async getTenantEntitlement(tenantId: number, moduleCode: string, saasModuleCodes?: string[]) {
+    const explicitTenantModule = await this.tenantModuleRepo.findOne({
+      where: {
+        tenantId,
+        moduleCode,
+        enabled: 1,
+        deleteTime: IsNull(),
+      },
+    });
+    if (explicitTenantModule) {
+      return {
+        enabled: true,
+        source: explicitTenantModule.source || 'platform',
+        tenantSaasModuleCodes: saasModuleCodes || [],
+      };
+    }
+
+    if (BASELINE_TENANT_SYSTEM_MODULES.has(moduleCode)) {
+      return {
+        enabled: true,
+        source: 'system',
+        tenantSaasModuleCodes: saasModuleCodes || [],
+      };
+    }
+
+    const tenantSaasModuleCodes = saasModuleCodes ?? (await this.loadTenantSaasModuleCodes(tenantId));
+    const entitledSystemModuleCodes = await this.resolveSystemModuleCodesFromSaasModules(tenantSaasModuleCodes);
+    const enabled = entitledSystemModuleCodes.has(moduleCode);
+
+    return {
+      enabled,
+      source: enabled ? 'plan' : null,
+      tenantSaasModuleCodes,
+    };
+  }
+
+  private createDiagnosis(
+    options: AssertModuleAccessOptions,
+    diagnosis: Partial<SystemModuleAccessDiagnosis> & {
+      allowed: boolean;
+      status: ModuleAccessDiagnosisStatus;
+      reason: string;
+      module?: Partial<SystemModuleEntity>;
+    },
+  ): SystemModuleAccessDiagnosis {
+    return {
+      module_code: options.moduleCode,
+      module_name: diagnosis.module?.name || '',
+      allowed: diagnosis.allowed,
+      status: diagnosis.status,
+      reason: diagnosis.reason,
+      required_saas_module_codes: diagnosis.required_saas_module_codes || this.getRequiredSaasModuleCodes(options),
+      missing_saas_module_codes: diagnosis.missing_saas_module_codes || [],
+      tenant_saas_module_codes: diagnosis.tenant_saas_module_codes || options.saasModuleCodes || [],
+      tenant_enabled: diagnosis.tenant_enabled ?? false,
+      tenant_entitlement_source: diagnosis.tenant_entitlement_source ?? null,
+      suggestions: diagnosis.suggestions || [],
+      dependency_code: diagnosis.dependency_code,
+      permission: diagnosis.permission,
+      system_module_status: diagnosis.system_module_status || diagnosis.module?.status,
+    };
   }
 }

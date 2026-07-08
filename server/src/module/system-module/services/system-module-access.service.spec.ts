@@ -132,6 +132,97 @@ describe('SystemModuleAccessService', () => {
     );
   });
 
+  it('diagnoses missing required SaaS plan module without throwing', async () => {
+    const { service } = createService({
+      modules: [enabledModule('ai_console')],
+      saasModuleCodes: ['rag'],
+    });
+
+    await expect(
+      service.diagnoseModuleAccess({
+        tenantId: 10,
+        moduleCode: 'ai_console',
+        requiredSaasModuleCode: 'ai_chat',
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        allowed: false,
+        status: 'missing_plan_module',
+        reason: '当前套餐未包含所需 SaaS 模块',
+        required_saas_module_codes: ['ai_chat'],
+        missing_saas_module_codes: ['ai_chat'],
+        tenant_saas_module_codes: ['rag'],
+      }),
+    );
+  });
+
+  it('diagnoses missing tenant system-module entitlement without throwing', async () => {
+    const { service } = createService({
+      modules: [enabledModule('taixu_workspace')],
+      saasModuleCodes: ['member_management'],
+    });
+
+    await expect(
+      service.diagnoseModuleAccess({
+        tenantId: 10,
+        moduleCode: 'taixu_workspace',
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        allowed: false,
+        status: 'missing_tenant_module',
+        reason: '当前租户未启用该系统模块',
+        tenant_enabled: false,
+        tenant_entitlement_source: null,
+      }),
+    );
+  });
+
+  it('diagnoses explicit tenant entitlement as available', async () => {
+    const { service } = createService({
+      modules: [enabledModule('ai_console')],
+      tenantModules: [{ tenantId: 10, moduleCode: 'ai_console', enabled: 1, source: 'platform' }],
+    });
+
+    await expect(
+      service.diagnoseModuleAccess({
+        tenantId: 10,
+        moduleCode: 'ai_console',
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        allowed: true,
+        status: 'available',
+        reason: '模块已开通',
+        tenant_enabled: true,
+        tenant_entitlement_source: 'platform',
+      }),
+    );
+  });
+
+  it('diagnoses plan-derived tenant entitlement with a single SaaS module load', async () => {
+    const { service, saasModuleService } = createService({
+      modules: [enabledModule('ai_console')],
+      saasModuleCodes: ['ai_chat'],
+    });
+
+    await expect(
+      service.diagnoseModuleAccess({
+        tenantId: 10,
+        moduleCode: 'ai_console',
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        allowed: true,
+        status: 'available',
+        tenant_enabled: true,
+        tenant_entitlement_source: 'plan',
+        tenant_saas_module_codes: ['ai_chat'],
+      }),
+    );
+    expect(saasModuleService.listTenantModules).toHaveBeenCalledTimes(1);
+  });
+
   it('derives tenant availability from SaaS plan feature module codes', async () => {
     const { service } = createService({
       modules: [enabledModule('ai_console')],

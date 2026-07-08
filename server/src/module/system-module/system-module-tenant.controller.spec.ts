@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { getTenantId } from '../../common/utils/tenant.util';
+import { SystemModuleAccessService } from './services/system-module-access.service';
 import { SystemModuleRegistryService } from './services/system-module-registry.service';
 import { SystemModuleTenantController } from './system-module-tenant.controller';
 
@@ -14,6 +15,9 @@ describe('SystemModuleTenantController', () => {
   const registry = {
     listTenantModules: jest.fn(),
   };
+  const access = {
+    diagnoseModuleAccess: jest.fn(),
+  };
   const mockedGetTenantId = getTenantId as jest.MockedFunction<typeof getTenantId>;
 
   beforeEach(async () => {
@@ -21,7 +25,10 @@ describe('SystemModuleTenantController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [SystemModuleTenantController],
-      providers: [{ provide: SystemModuleRegistryService, useValue: registry }],
+      providers: [
+        { provide: SystemModuleRegistryService, useValue: registry },
+        { provide: SystemModuleAccessService, useValue: access },
+      ],
     }).compile();
 
     controller = module.get(SystemModuleTenantController);
@@ -47,5 +54,27 @@ describe('SystemModuleTenantController', () => {
     expect(result.code).toBe(401);
     expect(result.msg).toBe('Tenant context is required');
     expect(registry.listTenantModules).not.toHaveBeenCalled();
+  });
+
+  it('returns module access diagnosis for current tenant', async () => {
+    const diagnosis = { module_code: 'ai_console', allowed: false, status: 'missing_tenant_module' };
+    mockedGetTenantId.mockReturnValue(23);
+    access.diagnoseModuleAccess.mockResolvedValue(diagnosis);
+
+    const result = await controller.diagnoseModule('ai_console');
+
+    expect(access.diagnoseModuleAccess).toHaveBeenCalledWith({ tenantId: 23, moduleCode: 'ai_console' });
+    expect(access.diagnoseModuleAccess).toHaveBeenCalledTimes(1);
+    expect(result.data).toEqual(diagnosis);
+  });
+
+  it('returns 401 for module diagnosis without tenant context', async () => {
+    mockedGetTenantId.mockReturnValue(null);
+
+    const result = await controller.diagnoseModule('ai_console');
+
+    expect(result.code).toBe(401);
+    expect(result.msg).toBe('Tenant context is required');
+    expect(access.diagnoseModuleAccess).not.toHaveBeenCalled();
   });
 });
