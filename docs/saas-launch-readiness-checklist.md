@@ -53,6 +53,7 @@ pnpm.cmd test -- saas-readiness-command.spec.ts --runInBand --forceExit
 ```
 
 Backend readiness also covers authentication rate limits, JWT strategy tenant context, user refresh-token tenant continuity, menu permissions, and system-module guards.
+Backend readiness includes database initialization security, seed data integrity, migration menu alignment, and tenant role grant coverage.
 
 ## Environment Contract
 
