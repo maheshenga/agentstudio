@@ -1,8 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
 import { createSign, createVerify } from 'crypto';
+import { Repository } from 'typeorm';
 
-import { SAAS_ORDER_PENDING, SAAS_PAYMENT_ALIPAY } from '../constants';
+import { SAAS_ORDER_PAID, SAAS_ORDER_PENDING, SAAS_PAYMENT_ALIPAY } from '../constants';
+import { SaasPaymentNotifyLogEntity } from '../entities/saas-payment-notify-log.entity';
 import { SaasOrderService } from './saas-order.service';
 import { SaasPaymentConfigService } from './saas-payment-config.service';
 import { SaasResourcePackOrderService } from './saas-resource-pack-order.service';
@@ -51,6 +54,19 @@ export interface SaasAlipayPaidNotifyValidationResult {
   tradeNo?: string;
 }
 
+export type SaasPaymentNotifyOutcome = 'confirmed' | 'duplicate' | 'ignored' | 'rejected' | 'failed';
+
+export interface SaasPaymentNotifyResult {
+  ack: 'success' | 'fail';
+  outcome: SaasPaymentNotifyOutcome;
+  provider: typeof SAAS_PAYMENT_ALIPAY;
+  order_type?: SaasPaymentOrderType;
+  order_no?: string;
+  trade_no?: string;
+  trade_status?: string;
+  reason?: string;
+}
+
 interface AlipayConfig {
   enabled: boolean;
   appId: string;
@@ -76,6 +92,8 @@ export class SaasPaymentService {
     private readonly saasResourcePackOrderService: SaasResourcePackOrderService,
     private readonly configService: ConfigService,
     private readonly paymentConfigService: SaasPaymentConfigService,
+    @InjectRepository(SaasPaymentNotifyLogEntity)
+    private readonly paymentNotifyLogRepo: Repository<SaasPaymentNotifyLogEntity>,
   ) {}
 
   async createAlipayPayment(
@@ -157,6 +175,127 @@ export class SaasPaymentService {
       valid: true,
       tradeNo: String(body.trade_no || ''),
     };
+  }
+
+  async handleAlipayNotify(body: Record<string, any>): Promise<SaasPaymentNotifyResult> {
+    const orderNo = this.normalizeNotifyText(body.out_trade_no);
+    const tradeNo = this.normalizeNotifyText(body.trade_no);
+    const tradeStatus = this.normalizeNotifyText(body.trade_status);
+    const orderType = this.resolveNotifyOrderType(orderNo);
+
+    try {
+      if (!ALIPAY_PAID_TRADE_STATUSES.has(tradeStatus)) {
+        const validSignature = await this.verifyAlipayNotify(body);
+        const result: SaasPaymentNotifyResult = {
+          ack: validSignature ? 'success' : 'fail',
+          outcome: validSignature ? 'ignored' : 'rejected',
+          provider: SAAS_PAYMENT_ALIPAY,
+          order_type: orderType,
+          order_no: orderNo || undefined,
+          trade_no: tradeNo || undefined,
+          trade_status: tradeStatus || undefined,
+          reason: validSignature ? 'trade_not_paid' : 'invalid_signature',
+        };
+        await this.recordAlipayNotify(body, result);
+        return result;
+      }
+
+      if (!orderNo) {
+        return this.finalizeAlipayNotify(body, {
+          ack: 'fail',
+          outcome: 'failed',
+          provider: SAAS_PAYMENT_ALIPAY,
+          trade_no: tradeNo || undefined,
+          trade_status: tradeStatus || undefined,
+          reason: 'missing_order_no',
+        });
+      }
+
+      const order = await this.findPlatformPayableOrder(orderNo, orderType);
+      if (!order) {
+        return this.finalizeAlipayNotify(body, {
+          ack: 'fail',
+          outcome: 'failed',
+          provider: SAAS_PAYMENT_ALIPAY,
+          order_type: orderType,
+          order_no: orderNo,
+          trade_no: tradeNo || undefined,
+          trade_status: tradeStatus || undefined,
+          reason: 'order_not_found',
+        });
+      }
+
+      const expectedOrder = this.toAlipayExpectedOrder(order);
+      if (!expectedOrder) {
+        return this.finalizeAlipayNotify(body, {
+          ack: 'fail',
+          outcome: 'failed',
+          provider: SAAS_PAYMENT_ALIPAY,
+          order_type: orderType,
+          order_no: orderNo,
+          trade_no: tradeNo || undefined,
+          trade_status: tradeStatus || undefined,
+          reason: 'invalid_order_snapshot',
+        });
+      }
+
+      const validation = await this.verifyAlipayPaidNotify(body, expectedOrder);
+      if (!validation.valid) {
+        return this.finalizeAlipayNotify(body, {
+          ack: 'fail',
+          outcome: 'rejected',
+          provider: SAAS_PAYMENT_ALIPAY,
+          order_type: orderType,
+          order_no: orderNo,
+          trade_no: tradeNo || undefined,
+          trade_status: tradeStatus || undefined,
+          reason: validation.reason || 'invalid_paid_notify',
+        });
+      }
+
+      const resolvedTradeNo = validation.tradeNo || tradeNo;
+      if (this.isPaidOrder(order)) {
+        return this.finalizeAlipayNotify(body, {
+          ack: 'success',
+          outcome: 'duplicate',
+          provider: SAAS_PAYMENT_ALIPAY,
+          order_type: orderType,
+          order_no: orderNo,
+          trade_no: resolvedTradeNo || undefined,
+          trade_status: tradeStatus || undefined,
+          reason: 'order_already_paid',
+        });
+      }
+
+      if (orderType === 'resource_pack') {
+        await this.saasResourcePackOrderService.confirmAlipayPayment(orderNo, resolvedTradeNo);
+      } else {
+        await this.saasOrderService.confirmAlipayPayment(orderNo, resolvedTradeNo);
+      }
+
+      return this.finalizeAlipayNotify(body, {
+        ack: 'success',
+        outcome: 'confirmed',
+        provider: SAAS_PAYMENT_ALIPAY,
+        order_type: orderType,
+        order_no: orderNo,
+        trade_no: resolvedTradeNo || undefined,
+        trade_status: tradeStatus || undefined,
+      });
+    } catch (error) {
+      const result: SaasPaymentNotifyResult = {
+        ack: 'fail',
+        outcome: 'failed',
+        provider: SAAS_PAYMENT_ALIPAY,
+        order_type: orderType,
+        order_no: orderNo || undefined,
+        trade_no: tradeNo || undefined,
+        trade_status: tradeStatus || undefined,
+        reason: this.toNotifyFailureReason(error),
+      };
+      await this.recordAlipayNotifyIfPossible(body, result);
+      return result;
+    }
   }
 
   async getAlipayConfigStatus(): Promise<SaasAlipayConfigStatus> {
@@ -268,6 +407,13 @@ export class SaasPaymentService {
     };
   }
 
+  private async findPlatformPayableOrder(orderNo: string, orderType?: SaasPaymentOrderType) {
+    if (orderType === 'resource_pack') {
+      return this.saasResourcePackOrderService.findPlatformOrder(orderNo);
+    }
+    return this.saasOrderService.findPlatformOrder(orderNo);
+  }
+
   private async markPaymentRequested(
     tenantId: number,
     orderNo: string,
@@ -343,6 +489,75 @@ export class SaasPaymentService {
 
   private formatAmountYuan(amountCents: number): string {
     return ((Number(amountCents) || 0) / 100).toFixed(2);
+  }
+
+  private async finalizeAlipayNotify(
+    body: Record<string, any>,
+    result: SaasPaymentNotifyResult,
+  ): Promise<SaasPaymentNotifyResult> {
+    await this.recordAlipayNotify(body, result);
+    return result;
+  }
+
+  private async recordAlipayNotify(body: Record<string, any>, result: SaasPaymentNotifyResult): Promise<void> {
+    await this.paymentNotifyLogRepo.save(
+      this.paymentNotifyLogRepo.create({
+        provider: result.provider,
+        orderType: result.order_type,
+        orderNo: result.order_no,
+        tradeNo: result.trade_no,
+        tradeStatus: result.trade_status,
+        notifyId: this.normalizeNotifyText(body.notify_id) || undefined,
+        result: result.outcome,
+        reason: result.reason,
+        rawPayload: this.toSafeNotifyPayload(body),
+        processedAt: new Date(),
+      }),
+    );
+  }
+
+  private async recordAlipayNotifyIfPossible(body: Record<string, any>, result: SaasPaymentNotifyResult): Promise<void> {
+    try {
+      await this.recordAlipayNotify(body, result);
+    } catch {
+      // Nothing useful can be persisted if the audit log write itself is unavailable.
+    }
+  }
+
+  private resolveNotifyOrderType(orderNo: string): SaasPaymentOrderType | undefined {
+    if (!orderNo) {
+      return undefined;
+    }
+    return orderNo.startsWith('RPO') ? 'resource_pack' : 'plan';
+  }
+
+  private toAlipayExpectedOrder(order: Record<string, any> | null | undefined): SaasAlipayExpectedOrder | null {
+    if (!order) {
+      return null;
+    }
+    const orderNo = String(order.order_no || order.orderNo || '');
+    const amountCents = Number(order.amount_cents ?? order.amountCents);
+    if (!orderNo || !Number.isFinite(amountCents)) {
+      return null;
+    }
+    return { orderNo, amountCents };
+  }
+
+  private isPaidOrder(order: Record<string, any>): boolean {
+    return String(order.status || '') === SAAS_ORDER_PAID;
+  }
+
+  private normalizeNotifyText(value: unknown): string {
+    return String(value ?? '').trim();
+  }
+
+  private toSafeNotifyPayload(body: Record<string, any>): Record<string, unknown> {
+    return Object.fromEntries(Object.entries(body).map(([key, value]) => [key, value]));
+  }
+
+  private toNotifyFailureReason(error: unknown): string {
+    const message = error instanceof Error ? error.message : String(error || '');
+    return message.slice(0, 120) || 'notify_processing_failed';
   }
 
   private parseAlipayAmountCents(value: unknown): number | null {

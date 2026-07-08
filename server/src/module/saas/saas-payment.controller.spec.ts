@@ -18,6 +18,7 @@ describe('SaasPaymentController', () => {
   };
   const saasPaymentService = {
     createAlipayPayment: jest.fn(),
+    handleAlipayNotify: jest.fn(),
     verifyAlipayNotify: jest.fn(),
     verifyAlipayPaidNotify: jest.fn(),
     getAlipayConfigStatus: jest.fn(),
@@ -141,133 +142,27 @@ describe('SaasPaymentController', () => {
     expect(resourcePackOrderService.confirmDevPayment).not.toHaveBeenCalled();
   });
 
-  it('confirms an order when Alipay notifies trade success', async () => {
-    saasOrderService.findPlatformOrder.mockResolvedValue({
-      order_no: 'SO20260702000000001000001',
-      amount_cents: 99000,
-    });
-    saasPaymentService.verifyAlipayPaidNotify.mockResolvedValue({
-      valid: true,
-      tradeNo: '2026070222000000000001',
-    });
-    saasOrderService.confirmAlipayPayment.mockResolvedValue({
-      orderNo: 'SO20260702000000001000001',
-      status: 'paid',
-      alipayTradeNo: '2026070222000000000001',
-    });
+  it('delegates Alipay notify handling to payment service', async () => {
+    const body = { out_trade_no: 'SO1', trade_status: 'TRADE_SUCCESS' };
+    saasPaymentService.handleAlipayNotify.mockResolvedValue({ ack: 'success', outcome: 'confirmed' });
 
-    const result = await controller.alipayNotify({
-      out_trade_no: 'SO20260702000000001000001',
-      trade_no: '2026070222000000000001',
-      trade_status: 'TRADE_SUCCESS',
-    });
+    await expect(controller.alipayNotify(body)).resolves.toBe('success');
 
-    expect(result).toBe('success');
-    expect(saasOrderService.findPlatformOrder).toHaveBeenCalledWith('SO20260702000000001000001');
-    expect(saasPaymentService.verifyAlipayPaidNotify).toHaveBeenCalledWith({
-      out_trade_no: 'SO20260702000000001000001',
-      trade_no: '2026070222000000000001',
-      trade_status: 'TRADE_SUCCESS',
-    }, {
-      orderNo: 'SO20260702000000001000001',
-      amountCents: 99000,
-    });
-    expect(saasOrderService.confirmAlipayPayment).toHaveBeenCalledWith(
-      'SO20260702000000001000001',
-      '2026070222000000000001',
-    );
+    expect(saasPaymentService.handleAlipayNotify).toHaveBeenCalledWith(body);
+    expect(saasPaymentService.handleAlipayNotify).toHaveBeenCalledTimes(1);
+    expect(saasOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
+    expect(resourcePackOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
   });
 
-  it('routes RPO Alipay notify orders to resource pack confirmation', async () => {
-    resourcePackOrderService.findPlatformOrder.mockResolvedValue({
-      order_no: 'RPO20260703120000001000001',
-      amount_cents: 19900,
-    });
-    saasPaymentService.verifyAlipayPaidNotify.mockResolvedValue({
-      valid: true,
-      tradeNo: '2026070322000000000001',
-    });
-    resourcePackOrderService.confirmAlipayPayment.mockResolvedValue({ status: 'paid' });
+  it('returns fail when payment service rejects Alipay notify', async () => {
+    const body = { out_trade_no: 'SO1', trade_status: 'TRADE_SUCCESS' };
+    saasPaymentService.handleAlipayNotify.mockResolvedValue({ ack: 'fail', outcome: 'rejected' });
 
-    await expect(
-      controller.alipayNotify({
-        out_trade_no: 'RPO20260703120000001000001',
-        trade_no: '2026070322000000000001',
-        trade_status: 'TRADE_SUCCESS',
-      }),
-    ).resolves.toBe('success');
+    await expect(controller.alipayNotify(body)).resolves.toBe('fail');
 
-    expect(resourcePackOrderService.findPlatformOrder).toHaveBeenCalledWith('RPO20260703120000001000001');
-    expect(saasPaymentService.verifyAlipayPaidNotify).toHaveBeenCalledWith(
-      {
-        out_trade_no: 'RPO20260703120000001000001',
-        trade_no: '2026070322000000000001',
-        trade_status: 'TRADE_SUCCESS',
-      },
-      {
-        orderNo: 'RPO20260703120000001000001',
-        amountCents: 19900,
-      },
-    );
-    expect(resourcePackOrderService.confirmAlipayPayment).toHaveBeenCalledWith(
-      'RPO20260703120000001000001',
-      '2026070322000000000001',
-    );
+    expect(saasPaymentService.handleAlipayNotify).toHaveBeenCalledWith(body);
     expect(saasOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
-  });
-
-  it('ignores non-success Alipay notifications without mutating orders', async () => {
-    saasPaymentService.verifyAlipayNotify.mockReturnValue(true);
-
-    const result = await controller.alipayNotify({
-      out_trade_no: 'SO20260702000000001000001',
-      trade_no: '2026070222000000000001',
-      trade_status: 'WAIT_BUYER_PAY',
-    });
-
-    expect(saasOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
-    expect(result).toBe('success');
-  });
-
-  it('rejects Alipay notifications that fail signature verification', async () => {
-    saasOrderService.findPlatformOrder.mockResolvedValue({
-      order_no: 'SO20260702000000001000001',
-      amount_cents: 99000,
-    });
-    saasPaymentService.verifyAlipayPaidNotify.mockResolvedValue({
-      valid: false,
-      reason: 'invalid_signature',
-    });
-
-    const result = await controller.alipayNotify({
-      out_trade_no: 'SO20260702000000001000001',
-      trade_no: '2026070222000000000001',
-      trade_status: 'TRADE_SUCCESS',
-    });
-
-    expect(saasOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
-    expect(result).toBe('fail');
-  });
-
-  it('rejects paid Alipay notifications when local order data does not validate against the signed payload', async () => {
-    saasOrderService.findPlatformOrder.mockResolvedValue({
-      order_no: 'SO20260702000000001000001',
-      amount_cents: 99000,
-    });
-    saasPaymentService.verifyAlipayPaidNotify.mockResolvedValue({
-      valid: false,
-      reason: 'amount_mismatch',
-    });
-
-    const result = await controller.alipayNotify({
-      out_trade_no: 'SO20260702000000001000001',
-      trade_no: '2026070222000000000001',
-      trade_status: 'TRADE_SUCCESS',
-      total_amount: '9.90',
-    });
-
-    expect(result).toBe('fail');
-    expect(saasOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
+    expect(resourcePackOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
   });
 
   it('returns Alipay config status in tenant context', async () => {

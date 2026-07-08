@@ -45,7 +45,7 @@
     "verify:api:dev": "pnpm run build && pnpm run verify:api",
     "db:verify-init": "node scripts/verify-db-init.cjs",
     "test": "jest",
-    "verify:saas-readiness": "jest -- saas-main-flow.integration.spec.ts saas-route-consistency.spec.ts saas-tenant.controller.spec.ts saas-platform.controller.spec.ts saas-payment.controller.spec.ts saas-visible-text-encoding.spec.ts saas-resource-pack.service.spec.ts save-saas-resource-pack.dto.spec.ts align-saas-resource-pack-crud-permissions.spec.ts saas-env-contract.spec.ts saas-runtime-health.service.spec.ts --runInBand --forceExit",
+    "verify:saas-readiness": "jest -- saas-main-flow.integration.spec.ts saas-route-consistency.spec.ts saas-tenant.controller.spec.ts saas-platform.controller.spec.ts saas-payment.controller.spec.ts saas-payment.service.spec.ts create-saas-payment-notify-logs.spec.ts saas-visible-text-encoding.spec.ts saas-resource-pack.service.spec.ts save-saas-resource-pack.dto.spec.ts align-saas-resource-pack-crud-permissions.spec.ts saas-env-contract.spec.ts saas-runtime-health.service.spec.ts --runInBand --forceExit",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json",

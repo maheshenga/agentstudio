@@ -12,10 +12,14 @@ describe('SaasPaymentService', () => {
   const saasOrderService = {
     findTenantOrder: jest.fn(),
     markTenantPaymentRequested: jest.fn(),
+    findPlatformOrder: jest.fn(),
+    confirmAlipayPayment: jest.fn(),
   };
   const resourcePackOrderService = {
     findTenantOrder: jest.fn(),
     markTenantPaymentRequested: jest.fn(),
+    findPlatformOrder: jest.fn(),
+    confirmAlipayPayment: jest.fn(),
   };
   const configService = {
     get: jest.fn(),
@@ -23,6 +27,10 @@ describe('SaasPaymentService', () => {
   const paymentConfigService = {
     resolveAlipayConfig: jest.fn(),
     getAlipayConfigStatus: jest.fn(),
+  };
+  const paymentNotifyLogRepo = {
+    create: jest.fn((input) => input),
+    save: jest.fn(async (input) => input),
   };
 
   let service: SaasPaymentService;
@@ -34,10 +42,12 @@ describe('SaasPaymentService', () => {
       resourcePackOrderService as unknown as SaasResourcePackOrderService,
       configService as unknown as ConfigService,
       paymentConfigService as unknown as SaasPaymentConfigService,
+      paymentNotifyLogRepo as any,
     );
     paymentConfigService.resolveAlipayConfig.mockResolvedValue(null);
     saasOrderService.markTenantPaymentRequested.mockResolvedValue(undefined);
     resourcePackOrderService.markTenantPaymentRequested.mockResolvedValue(undefined);
+    paymentNotifyLogRepo.save.mockImplementation(async (input) => input);
   });
 
   it('returns an unconfigured Alipay result when sandbox keys are missing', async () => {
@@ -421,6 +431,161 @@ describe('SaasPaymentService', () => {
       valid: false,
       reason: 'invalid_signature',
     });
+  });
+
+  it('handles a paid plan notify by confirming and recording audit', async () => {
+    saasOrderService.findPlatformOrder.mockResolvedValue({
+      order_no: 'SO20260702000000001000001',
+      amount_cents: 99000,
+      status: SAAS_ORDER_PENDING,
+    });
+    jest.spyOn(service, 'verifyAlipayPaidNotify').mockResolvedValue({ valid: true, tradeNo: 'TRADE-1' });
+    saasOrderService.confirmAlipayPayment.mockResolvedValue({ status: SAAS_ORDER_PAID });
+
+    await expect(
+      service.handleAlipayNotify({
+        out_trade_no: 'SO20260702000000001000001',
+        trade_no: 'TRADE-1',
+        trade_status: 'TRADE_SUCCESS',
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        ack: 'success',
+        outcome: 'confirmed',
+        order_type: 'plan',
+        order_no: 'SO20260702000000001000001',
+      }),
+    );
+
+    expect(saasOrderService.confirmAlipayPayment).toHaveBeenCalledWith('SO20260702000000001000001', 'TRADE-1');
+    expect(paymentNotifyLogRepo.save).toHaveBeenCalledWith(expect.objectContaining({ result: 'confirmed' }));
+  });
+
+  it('handles a paid resource pack notify by confirming the resource pack order', async () => {
+    resourcePackOrderService.findPlatformOrder.mockResolvedValue({
+      order_no: 'RPO20260703120000001000001',
+      amount_cents: 19900,
+      status: SAAS_ORDER_PENDING,
+    });
+    jest.spyOn(service, 'verifyAlipayPaidNotify').mockResolvedValue({ valid: true, tradeNo: 'TRADE-RPO-1' });
+    resourcePackOrderService.confirmAlipayPayment.mockResolvedValue({ status: SAAS_ORDER_PAID });
+
+    await expect(
+      service.handleAlipayNotify({
+        out_trade_no: 'RPO20260703120000001000001',
+        trade_no: 'TRADE-RPO-1',
+        trade_status: 'TRADE_SUCCESS',
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        ack: 'success',
+        outcome: 'confirmed',
+        order_type: 'resource_pack',
+        order_no: 'RPO20260703120000001000001',
+      }),
+    );
+
+    expect(resourcePackOrderService.confirmAlipayPayment).toHaveBeenCalledWith(
+      'RPO20260703120000001000001',
+      'TRADE-RPO-1',
+    );
+    expect(saasOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
+    expect(paymentNotifyLogRepo.save).toHaveBeenCalledWith(expect.objectContaining({ result: 'confirmed' }));
+  });
+
+  it('handles duplicate paid plan notify without confirming again', async () => {
+    saasOrderService.findPlatformOrder.mockResolvedValue({
+      order_no: 'SO20260702000000001000001',
+      amount_cents: 99000,
+      status: SAAS_ORDER_PAID,
+    });
+    jest.spyOn(service, 'verifyAlipayPaidNotify').mockResolvedValue({ valid: true, tradeNo: 'TRADE-1' });
+
+    await expect(
+      service.handleAlipayNotify({
+        out_trade_no: 'SO20260702000000001000001',
+        trade_no: 'TRADE-1',
+        trade_status: 'TRADE_SUCCESS',
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        ack: 'success',
+        outcome: 'duplicate',
+        reason: 'order_already_paid',
+      }),
+    );
+
+    expect(saasOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
+    expect(paymentNotifyLogRepo.save).toHaveBeenCalledWith(expect.objectContaining({ result: 'duplicate' }));
+  });
+
+  it('ignores signed non-paid Alipay notify without mutating orders', async () => {
+    jest.spyOn(service, 'verifyAlipayNotify').mockResolvedValue(true);
+
+    await expect(
+      service.handleAlipayNotify({
+        out_trade_no: 'SO20260702000000001000001',
+        trade_no: 'TRADE-1',
+        trade_status: 'WAIT_BUYER_PAY',
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        ack: 'success',
+        outcome: 'ignored',
+        reason: 'trade_not_paid',
+      }),
+    );
+
+    expect(saasOrderService.findPlatformOrder).not.toHaveBeenCalled();
+    expect(saasOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
+    expect(paymentNotifyLogRepo.save).toHaveBeenCalledWith(expect.objectContaining({ result: 'ignored' }));
+  });
+
+  it('rejects paid Alipay notify when signed payload does not match local order', async () => {
+    saasOrderService.findPlatformOrder.mockResolvedValue({
+      order_no: 'SO20260702000000001000001',
+      amount_cents: 99000,
+      status: SAAS_ORDER_PENDING,
+    });
+    jest.spyOn(service, 'verifyAlipayPaidNotify').mockResolvedValue({ valid: false, reason: 'amount_mismatch' });
+
+    await expect(
+      service.handleAlipayNotify({
+        out_trade_no: 'SO20260702000000001000001',
+        trade_no: 'TRADE-1',
+        trade_status: 'TRADE_SUCCESS',
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        ack: 'fail',
+        outcome: 'rejected',
+        reason: 'amount_mismatch',
+      }),
+    );
+
+    expect(saasOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
+    expect(paymentNotifyLogRepo.save).toHaveBeenCalledWith(expect.objectContaining({ result: 'rejected' }));
+  });
+
+  it('fails paid Alipay notify for unknown local orders and records audit', async () => {
+    saasOrderService.findPlatformOrder.mockResolvedValue(null);
+
+    await expect(
+      service.handleAlipayNotify({
+        out_trade_no: 'SO20260702000000001000001',
+        trade_no: 'TRADE-1',
+        trade_status: 'TRADE_SUCCESS',
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        ack: 'fail',
+        outcome: 'failed',
+        reason: 'order_not_found',
+      }),
+    );
+
+    expect(saasOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
+    expect(paymentNotifyLogRepo.save).toHaveBeenCalledWith(expect.objectContaining({ result: 'failed' }));
   });
 
   it('rejects Alipay notify payloads without a usable signature', async () => {
