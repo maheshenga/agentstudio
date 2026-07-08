@@ -7,6 +7,7 @@ import { SaasModuleService } from './services/saas-module.service';
 import { SaasPlanService } from './services/saas-plan.service';
 import { SaasPlatformService } from './services/saas-platform.service';
 import { SaasProvisioningService } from './services/saas-provisioning.service';
+import { SaasResourcePackService } from './services/saas-resource-pack.service';
 import { SaasRevenueReportService } from './services/saas-revenue-report.service';
 
 describe('SaasPlatformController', () => {
@@ -49,6 +50,11 @@ describe('SaasPlatformController', () => {
     updatePlatformModuleStatus: jest.fn(),
     updatePlanModules: jest.fn(),
   };
+  const resourcePackService = {
+    createPlatformResourcePack: jest.fn(),
+    updatePlatformResourcePack: jest.fn(),
+    updatePlatformResourcePackStatus: jest.fn(),
+  };
   const revenueReportService = {
     getOverview: jest.fn(),
   };
@@ -64,6 +70,7 @@ describe('SaasPlatformController', () => {
         { provide: SaasPaymentConfigService, useValue: paymentConfigService },
         { provide: SaasPlanService, useValue: planService },
         { provide: SaasModuleService, useValue: moduleService },
+        { provide: SaasResourcePackService, useValue: resourcePackService },
         { provide: SaasRevenueReportService, useValue: revenueReportService },
       ],
     }).compile();
@@ -322,6 +329,41 @@ describe('SaasPlatformController', () => {
 
     expect(platformService.listResourcePacks).toHaveBeenCalledWith({ resource_type: 'tokens' });
     expect(result.data).toEqual({ list: [{ code: 'tokens_1m' }], total: 1, page: 1, limit: 20 });
+  });
+
+  it('creates a platform SaaS resource pack outside tenant scope', async () => {
+    const body = {
+      code: 'tokens_2m',
+      name: 'Tokens 2M',
+      resource_type: 'tokens',
+      quota_amount: 2000000,
+      price_cents: 29900,
+    };
+    resourcePackService.createPlatformResourcePack.mockResolvedValue({ code: 'tokens_2m' });
+
+    const result = await controller.createResourcePack(body as any, { userId: 1 } as any);
+
+    expect(resourcePackService.createPlatformResourcePack).toHaveBeenCalledWith(body);
+    expect(result.data).toEqual({ code: 'tokens_2m' });
+  });
+
+  it('updates a platform SaaS resource pack outside tenant scope', async () => {
+    const body = { name: 'Tokens 2M', quota_amount: 2000000 };
+    resourcePackService.updatePlatformResourcePack.mockResolvedValue({ code: 'tokens_1m', name: 'Tokens 2M' });
+
+    const result = await controller.updateResourcePack('tokens_1m', body as any, { userId: 1 } as any);
+
+    expect(resourcePackService.updatePlatformResourcePack).toHaveBeenCalledWith('tokens_1m', body);
+    expect(result.data).toEqual({ code: 'tokens_1m', name: 'Tokens 2M' });
+  });
+
+  it('updates a platform SaaS resource pack status outside tenant scope', async () => {
+    resourcePackService.updatePlatformResourcePackStatus.mockResolvedValue({ code: 'tokens_1m', status: 0 });
+
+    const result = await controller.updateResourcePackStatus('tokens_1m', { status: 0 } as any, { userId: 1 } as any);
+
+    expect(resourcePackService.updatePlatformResourcePackStatus).toHaveBeenCalledWith('tokens_1m', 0);
+    expect(result.data).toEqual({ code: 'tokens_1m', status: 0 });
   });
 
   it('lists platform SaaS resource pack orders outside tenant scope', async () => {

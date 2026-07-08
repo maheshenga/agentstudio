@@ -261,6 +261,18 @@ export interface SaasResourcePackListParams {
   resource_type?: string
 }
 
+export interface SaveSaasResourcePackParams {
+  code?: string
+  name: string
+  resource_type: string
+  quota_amount: number
+  price_cents: number
+  currency?: string
+  status?: number
+  sort?: number
+  remark?: string
+}
+
 export type SaasPaymentOrderType = 'plan' | 'resource_pack'
 
 export interface CreateResourcePackOrderParams {
@@ -746,6 +758,18 @@ export function fetchTenantModules() {
 
 export function fetchPlatformResourcePacks(params: SaasResourcePackListParams) {
   return request.get<SaasPlatformPageResult<SaasResourcePackRecord>>({ url: '/api/saas/platform/resource-packs', params })
+}
+
+export function createPlatformResourcePack(params: SaveSaasResourcePackParams) {
+  return request.post<SaasResourcePackRecord>({ url: '/api/saas/platform/resource-packs', data: params })
+}
+
+export function updatePlatformResourcePack(code: string, params: SaveSaasResourcePackParams) {
+  return request.put<SaasResourcePackRecord>({ url: `/api/saas/platform/resource-packs/${code}`, data: params })
+}
+
+export function updatePlatformResourcePackStatus(code: string, status: number) {
+  return request.put<SaasResourcePackRecord>({ url: `/api/saas/platform/resource-packs/${code}/status`, data: { status } })
 }
 
 export function fetchTenantResourcePacks() {

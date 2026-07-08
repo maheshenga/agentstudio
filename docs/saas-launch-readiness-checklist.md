@@ -30,6 +30,7 @@ pnpm.cmd exec tsx scripts/verify-saas-tenant-ui-state-readiness.ts
 pnpm.cmd exec tsx scripts/verify-saas-signup-activation.ts
 pnpm.cmd exec tsx scripts/verify-saas-platform-tenant-page.ts
 pnpm.cmd exec tsx scripts/verify-saas-payment-path-copy.ts
+pnpm.cmd exec tsx scripts/verify-saas-resource-pack-crud.ts
 pnpm.cmd exec tsx scripts/verify-no-legacy-saiadmin-composable.ts
 pnpm.cmd exec tsx scripts/verify-saas-public-brand-surfaces.ts
 pnpm.cmd build
@@ -40,7 +41,7 @@ cd server
 pnpm.cmd run verify:saas-readiness
 
 # Expanded backend gate
-pnpm.cmd test -- saas-main-flow.integration.spec.ts saas-route-consistency.spec.ts saas-tenant.controller.spec.ts saas-platform.controller.spec.ts saas-payment.controller.spec.ts saas-visible-text-encoding.spec.ts --runInBand --forceExit
+pnpm.cmd test -- saas-main-flow.integration.spec.ts saas-route-consistency.spec.ts saas-tenant.controller.spec.ts saas-platform.controller.spec.ts saas-payment.controller.spec.ts saas-visible-text-encoding.spec.ts saas-resource-pack.service.spec.ts save-saas-resource-pack.dto.spec.ts align-saas-resource-pack-crud-permissions.spec.ts --runInBand --forceExit
 ```
 
 ## Manual Visitor Flow

@@ -8,6 +8,11 @@ import { User } from '../system/user/user.decorator';
 import type { UserDto } from '../system/user/user.decorator';
 import { CreateSaasPlanDto } from './dto/create-saas-plan.dto';
 import { SaveSaasModuleDto, UpdatePlanModulesDto, UpdateSaasModuleStatusDto } from './dto/save-saas-module.dto';
+import {
+  SaveSaasResourcePackDto,
+  UpdateSaasResourcePackDto,
+  UpdateSaasResourcePackStatusDto,
+} from './dto/save-saas-resource-pack.dto';
 import { TenantProvisionDto } from './dto/tenant-provision.dto';
 import { UpdateAlipayConfigDto } from './dto/update-alipay-config.dto';
 import { UpdateSaasPlanQuotasDto } from './dto/update-saas-plan-quotas.dto';
@@ -24,6 +29,7 @@ import { SaasProvisioningService } from './services/saas-provisioning.service';
 import type { SaasQuotaLedgerPlatformListQuery } from './services/saas-quota.service';
 import { SaasRevenueReportService } from './services/saas-revenue-report.service';
 import type { SaasResourcePackOrderListQuery } from './services/saas-resource-pack-order.service';
+import { SaasResourcePackService } from './services/saas-resource-pack.service';
 import type { SaasResourcePackListQuery } from './services/saas-resource-pack.service';
 
 @ApiTags('SaaS Platform')
@@ -36,6 +42,7 @@ export class SaasPlatformController {
     private readonly paymentConfigService: SaasPaymentConfigService,
     private readonly planService: SaasPlanService,
     private readonly moduleService: SaasModuleService,
+    private readonly resourcePackService: SaasResourcePackService,
     private readonly revenueReportService: SaasRevenueReportService,
   ) {}
 
@@ -212,6 +219,29 @@ export class SaasPlatformController {
   @RequirePermission('saas:resource-pack:index')
   listResourcePacks(@Query() query: SaasResourcePackListQuery, @User() user: UserDto) {
     return this.runOutsideTenant(user, () => this.platformService.listResourcePacks(query).then((data) => ResultData.ok(data)));
+  }
+
+  @Post('resource-packs')
+  @ApiOperation({ summary: 'Create SaaS resource pack' })
+  @RequirePermission('saas:resource-pack:save')
+  createResourcePack(@Body() body: SaveSaasResourcePackDto, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () => this.resourcePackService.createPlatformResourcePack(body).then((data) => ResultData.ok(data)));
+  }
+
+  @Put('resource-packs/:code')
+  @ApiOperation({ summary: 'Update SaaS resource pack' })
+  @RequirePermission('saas:resource-pack:update')
+  updateResourcePack(@Param('code') code: string, @Body() body: UpdateSaasResourcePackDto, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () => this.resourcePackService.updatePlatformResourcePack(code, body).then((data) => ResultData.ok(data)));
+  }
+
+  @Put('resource-packs/:code/status')
+  @ApiOperation({ summary: 'Update SaaS resource pack status' })
+  @RequirePermission('saas:resource-pack:status')
+  updateResourcePackStatus(@Param('code') code: string, @Body() body: UpdateSaasResourcePackStatusDto, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () =>
+      this.resourcePackService.updatePlatformResourcePackStatus(code, body.status).then((data) => ResultData.ok(data)),
+    );
   }
 
   @Get('resource-pack-orders')

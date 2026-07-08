@@ -8,7 +8,10 @@ const expectedSuites = [
   'saas-tenant.controller.spec.ts',
   'saas-platform.controller.spec.ts',
   'saas-payment.controller.spec.ts',
-  'saas-visible-text-encoding.spec.ts'
+  'saas-visible-text-encoding.spec.ts',
+  'saas-resource-pack.service.spec.ts',
+  'save-saas-resource-pack.dto.spec.ts',
+  'align-saas-resource-pack-crud-permissions.spec.ts'
 ]
 
 function readFile(path: string) {

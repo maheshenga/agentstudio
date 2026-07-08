@@ -7,6 +7,7 @@ const checks = [
   'verify-saas-signup-activation.ts',
   'verify-saas-platform-tenant-page.ts',
   'verify-saas-payment-path-copy.ts',
+  'verify-saas-resource-pack-crud.ts',
   'verify-no-legacy-saiadmin-composable.ts',
   'verify-saas-public-brand-surfaces.ts'
 ]
