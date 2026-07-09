@@ -25,7 +25,7 @@ Platform SaaS pages:
 - `/#/saas-platform/tenants`
 - `/#/saas-platform/plans`
 - `/#/saas-platform/module`
-- `/#/saas-platform/subscriptions`
+- `/#/saas-platform/subscription`
 - `/#/saas-platform/resource-packs`
 - `/#/saas-platform/resource-pack-orders`
 - `/#/saas-platform/payment-config`

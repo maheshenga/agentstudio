@@ -5,6 +5,7 @@ const failures: string[] = []
 const expectedScripts = [
   'verify-saas-launch-flow-readiness.ts',
   'verify-saas-route-contract.ts',
+  'verify-saas-doc-route-baseline.ts',
   'verify-saas-ui-state-readiness.ts',
   'verify-saas-tenant-ui-state-readiness.ts',
   'verify-saas-visible-copy-encoding.ts',
