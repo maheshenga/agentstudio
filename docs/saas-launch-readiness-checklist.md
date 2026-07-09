@@ -60,6 +60,18 @@ Backend readiness includes database initialization security, seed data integrity
 Backend readiness includes AI provider/admin flows, chat runtime, Taixu LLM/model runtime, upload safety, scheduler tasks, log username length, and SaaS provisioning coverage.
 Backend readiness guards Jest option ordering so serial execution cannot silently become a test-name pattern. Forced exit is intentionally not used, so leaked handles remain visible.
 
+### Optional Public Live Smoke Gate
+
+Run this after deploying the frontend through Baota/Nginx and binding the public domain:
+
+```powershell
+cd web
+$env:SAAS_PUBLIC_LIVE_BASE_URL = 'https://studio.qingyouai.com'
+pnpm.cmd run verify:saas-public-live-smoke
+```
+
+This command is read-only. It checks the deployed app shell, direct-route fallback, robots.txt, sitemap.xml, SEO origin replacement, and static asset reachability. Keep it outside the default repository gate because it depends on public DNS, TLS, and Nginx availability.
+
 ### Optional Live Backend E2E Gate
 
 Run this against a running backend with seeded SaaS data before staging or production release:

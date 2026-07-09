@@ -93,6 +93,23 @@ assert(
     'tsx scripts/verify-saas-platform-live-browser-e2e.ts',
   'package.json must define verify:saas-platform-live-browser-e2e'
 )
+const publicLiveSmokePath = resolve(process.cwd(), 'scripts/verify-saas-public-live-smoke.ts')
+assert(existsSync(publicLiveSmokePath), 'scripts/verify-saas-public-live-smoke.ts must exist')
+assert(
+  packageJson.scripts?.['verify:saas-public-live-smoke'] ===
+    'tsx scripts/verify-saas-public-live-smoke.ts',
+  'package.json must define verify:saas-public-live-smoke'
+)
+const publicLiveSmokeSource = existsSync(publicLiveSmokePath)
+  ? readFile('scripts/verify-saas-public-live-smoke.ts')
+  : ''
+assertIncludes(publicLiveSmokeSource, 'SAAS_PUBLIC_LIVE_BASE_URL', 'public live smoke')
+assertIncludes(publicLiveSmokeSource, 'https://studio.qingyouai.com', 'public live smoke')
+assertIncludes(publicLiveSmokeSource, '%VITE_PUBLIC_SITE_URL%', 'public live smoke')
+assertIncludes(publicLiveSmokeSource, 'agentstudio.example.com', 'public live smoke')
+assertIncludes(publicLiveSmokeSource, 'robots.txt', 'public live smoke')
+assertIncludes(publicLiveSmokeSource, 'sitemap.xml', 'public live smoke')
+assertIncludes(publicLiveSmokeSource, '/auth/register', 'public live smoke')
 
 const checklist = readFile('../docs/saas-launch-readiness-checklist.md')
 assertIncludes(checklist, 'pnpm.cmd run verify:saas-readiness', 'launch readiness checklist')
@@ -148,6 +165,12 @@ assertIncludes(
   'SAAS_PLATFORM_LIVE_E2E_WEB_URL',
   'launch readiness checklist'
 )
+assertIncludes(
+  checklist,
+  'pnpm.cmd run verify:saas-public-live-smoke',
+  'launch readiness checklist'
+)
+assertIncludes(checklist, 'SAAS_PUBLIC_LIVE_BASE_URL', 'launch readiness checklist')
 
 const rootRunner = readFile('../scripts/run-saas-readiness.cjs')
 for (const token of [
