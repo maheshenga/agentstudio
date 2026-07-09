@@ -51,7 +51,14 @@ describe('AppDeveloperService', () => {
     platformService.createApp.mockResolvedValue({ code: 'creator_portal', developer_id: 17 });
 
     await service.createApp(
-      { code: 'creator_portal', name: 'Creator Portal', category: 'Tools' },
+      {
+        code: 'creator_portal',
+        name: 'Creator Portal',
+        category: 'Tools',
+        type: 'internal',
+        entry_url: '/system/user',
+        system_module_code: 'ai',
+      } as any,
       17,
       'Alice',
     );
@@ -67,6 +74,16 @@ describe('AppDeveloperService', () => {
       }),
       17,
     );
+    const [createParams] = platformService.createApp.mock.calls[0];
+    expect(createParams).not.toHaveProperty('entry_url');
+    expect(createParams).not.toHaveProperty('system_module_code');
+  });
+
+  it('rejects a blank app name', async () => {
+    await expect(service.createApp({ code: 'creator_portal', name: '   ' }, 17, 'Alice')).rejects.toThrow(
+      'App name is required',
+    );
+    expect(platformService.createApp).not.toHaveBeenCalled();
   });
 
   it('returns not found for another developer app', async () => {
@@ -103,12 +120,28 @@ describe('AppDeveloperService', () => {
     appRepo.findOne.mockResolvedValue({ code: 'creator_portal', developerId: 17, status: 'draft' });
     platformService.updateApp.mockResolvedValue({ code: 'creator_portal', name: 'Changed' });
 
-    await service.updateApp('creator_portal', { name: 'Changed', summary: 'Updated summary' }, 17);
+    await service.updateApp(
+      'creator_portal',
+      {
+        name: 'Changed',
+        summary: 'Updated summary',
+        visibility: 'platform',
+        entry_url: '/system/user',
+      } as any,
+      17,
+    );
 
     expect(platformService.updateApp).toHaveBeenCalledWith('creator_portal', {
       name: 'Changed',
       summary: 'Updated summary',
     });
+  });
+
+  it('rejects a blank app name update', async () => {
+    appRepo.findOne.mockResolvedValue({ code: 'creator_portal', developerId: 17, status: 'draft' });
+
+    await expect(service.updateApp('creator_portal', { name: '   ' }, 17)).rejects.toThrow('App name is required');
+    expect(platformService.updateApp).not.toHaveBeenCalled();
   });
 
   it('blocks uploads for disabled or archived apps', async () => {

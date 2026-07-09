@@ -23,10 +23,13 @@ export class AppDeveloperService {
     return this.appPlatformService.getApp(code);
   }
 
-  createApp(dto: CreateDeveloperAppDto, developerId: number, developerName: string) {
+  async createApp(dto: CreateDeveloperAppDto, developerId: number, developerName: string) {
+    const metadata = this.sanitizeMetadata(dto);
     return this.appPlatformService.createApp(
       {
-        ...dto,
+        code: dto.code.trim(),
+        ...metadata,
+        name: this.sanitizeRequiredName(dto.name),
         type: 'static',
         visibility: 'marketplace',
         developer_name: String(developerName || `User ${developerId}`).slice(0, 100),
@@ -40,7 +43,7 @@ export class AppDeveloperService {
     if (app.status !== 'draft' && app.status !== 'rejected') {
       throw new BadRequestException('Only draft or rejected apps can be edited');
     }
-    return this.appPlatformService.updateApp(code, dto);
+    return this.appPlatformService.updateApp(code, this.sanitizeMetadata(dto));
   }
 
   async uploadVersion(code: string, file: Express.Multer.File, developerId: number) {
@@ -64,5 +67,26 @@ export class AppDeveloperService {
       throw new NotFoundException(`App ${code} not found`);
     }
     return app;
+  }
+
+  private sanitizeMetadata(dto: UpdateDeveloperAppDto) {
+    const metadata: UpdateDeveloperAppDto = {};
+    if (dto.name !== undefined) {
+      metadata.name = this.sanitizeRequiredName(dto.name);
+    }
+    for (const key of ['category', 'icon', 'summary', 'description'] as const) {
+      if (dto[key] !== undefined) {
+        metadata[key] = dto[key]?.trim();
+      }
+    }
+    return metadata;
+  }
+
+  private sanitizeRequiredName(value: string) {
+    const name = String(value || '').trim();
+    if (!name) {
+      throw new BadRequestException('App name is required');
+    }
+    return name;
   }
 }
