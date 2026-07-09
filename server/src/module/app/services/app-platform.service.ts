@@ -321,6 +321,8 @@ export class AppPlatformService {
     if (appVersion.reviewStatus !== 'approved') {
       throw new BadRequestException('Only approved versions can be published');
     }
+    const shouldApplyVersionMetadata =
+      app.status === 'published' || Boolean(app.entryUrl) || Boolean(appVersion.publishPath);
 
     const published = await this.storage.publishVersion({
       appCode: code,
@@ -334,7 +336,7 @@ export class AppPlatformService {
     app.status = 'published';
     app.entryUrl = published.entryUrl;
     app.entryMode = 'static';
-    if (appVersion.manifest) {
+    if (shouldApplyVersionMetadata && appVersion.manifest) {
       this.applyManifestMetadata(app, appVersion.manifest as unknown as StaticAppManifest);
     }
 

@@ -571,9 +571,9 @@ describe('AppPlatformService', () => {
       code: 'job_board',
       name: 'Job Board',
       type: 'static',
-      status: 'approved',
+      status: 'published',
       entryMode: 'static',
-      entryUrl: '',
+      entryUrl: '/apps-static/job_board/0.9.0/dist/index.html',
     });
     versionRepo.findOne.mockResolvedValue({
       id: 8,
@@ -629,6 +629,59 @@ describe('AppPlatformService', () => {
         summary: 'Reviewed summary',
         status: 'published',
         entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
+      }),
+    );
+  });
+
+  it('preserves reviewed app metadata on the first version publish', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 4,
+      code: 'job_board',
+      name: 'Edited Job Board',
+      category: 'Creator Tools',
+      summary: 'Edited after review feedback',
+      type: 'static',
+      status: 'approved',
+      entryMode: 'static',
+      entryUrl: '',
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 8,
+      appId: 4,
+      version: '1.0.0',
+      reviewStatus: 'approved',
+      publishStatus: 'unpublished',
+      packagePath: '/safe/packages/job_board/1.0.0',
+      publishPath: '',
+      entryFile: 'dist/index.html',
+      manifest: {
+        code: 'job_board',
+        name: 'Original Manifest Name',
+        version: '1.0.0',
+        type: 'static',
+        entry: 'dist/index.html',
+        category: 'Original',
+        summary: 'Original summary',
+        description: '',
+        icon: '',
+        tenant_scoped: true,
+        permissions: [],
+      },
+    });
+    versionRepo.save.mockImplementation(async (value) => value);
+    storageService.publishVersion.mockResolvedValue({
+      publishPath: '/safe/public/job_board/1.0.0',
+      entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
+    });
+
+    await service.publishVersion('job_board', '1.0.0', 66);
+
+    expect(appRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Edited Job Board',
+        category: 'Creator Tools',
+        summary: 'Edited after review feedback',
+        status: 'published',
       }),
     );
   });
