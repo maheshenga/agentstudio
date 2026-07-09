@@ -5,6 +5,8 @@ import { SaasModule } from '../saas/saas.module';
 import { SystemModuleRegistryModule } from '../system-module/system-module.module';
 import { AppPlatformController } from './app-platform.controller';
 import { AppTenantController } from './app-tenant.controller';
+import { AppFactoryModuleEntity } from './entities/app-factory-module.entity';
+import { AppFactoryPublishLogEntity } from './entities/app-factory-publish-log.entity';
 import { AppOpenLogEntity } from './entities/app-open-log.entity';
 import { AppPackageVersionEntity } from './entities/app-package-version.entity';
 import { AppPackageEntity } from './entities/app-package.entity';
@@ -25,6 +27,8 @@ import { AppTenantService } from './services/app-tenant.service';
       AppReviewLogEntity,
       TenantAppInstallEntity,
       AppOpenLogEntity,
+      AppFactoryModuleEntity,
+      AppFactoryPublishLogEntity,
     ]),
   ],
   controllers: [AppPlatformController, AppTenantController],
