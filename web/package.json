@@ -23,7 +23,8 @@
     "verify:saas-browser-smoke": "tsx scripts/verify-saas-browser-smoke.ts",
     "verify:saas-public-live-smoke": "tsx scripts/verify-saas-public-live-smoke.ts",
     "verify:saas-live-browser-e2e": "tsx scripts/verify-saas-live-browser-e2e.ts",
-    "verify:saas-platform-live-browser-e2e": "tsx scripts/verify-saas-platform-live-browser-e2e.ts"
+    "verify:saas-platform-live-browser-e2e": "tsx scripts/verify-saas-platform-live-browser-e2e.ts",
+    "verify:app-marketplace-readiness": "tsx scripts/verify-app-marketplace-readiness.ts"
   },
   "config": {
     "commitizen": {

@@ -9,6 +9,8 @@ This checklist verifies the AgentStudio SaaS system is ready for local demo, QA 
 - Visitor: can open registration and create a tenant owner account.
 - Tenant owner: can log in, view subscription, usage, enabled modules, members, and resource packs.
 - Platform admin: can manage tenants, plans, modules, subscriptions, usage, revenue, resource packs, resource-pack orders, and Alipay settings.
+- Platform app admin: can create internal/iframe/static app records, upload static app zip packages, review versions, publish approved versions, and disable unsafe apps.
+- Tenant app user: can browse approved marketplace apps, install tenant apps, view installed apps, and open installed apps through the sandboxed runner.
 
 ## Automated Gates
 
@@ -42,6 +44,7 @@ pnpm.cmd exec tsx scripts/verify-no-legacy-saiadmin-composable.ts
 pnpm.cmd exec tsx scripts/verify-saas-public-brand-surfaces.ts
 pnpm.cmd exec tsx scripts/verify-saas-public-origin.ts
 pnpm.cmd exec tsx scripts/verify-saas-readiness-command.ts
+pnpm.cmd run verify:app-marketplace-readiness
 pnpm.cmd build
 pnpm.cmd run verify:saas-preview-smoke
 pnpm.cmd run verify:saas-browser-smoke
@@ -240,6 +243,16 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 8. Open `/#/saas-platform/resource-pack-orders` and confirm resource-pack order operations render.
 9. Open `/#/saas-platform/payment-config` and confirm Alipay config status and edit form render.
 10. Open or call `GET /api/saas/platform/runtime-health` and confirm dependencies, required env keys, payment config, and operational switches render without exposing secret values.
+11. Open `/#/app-platform/apps` and confirm platform admins can create internal/iframe/static apps, upload static zip packages, review pending versions, publish approved versions, and disable apps.
+
+## Manual App Center Flow
+
+1. Open `/#/app-center/marketplace` as a tenant user and confirm approved marketplace apps render with install state.
+2. Install an available app and confirm the row changes to Installed.
+3. Open `/#/app-center/installed` and confirm the installed app shows app name, type, source, and open/uninstall actions.
+4. Open an installed internal app and confirm it redirects to the configured internal route.
+5. Open an installed static or iframe app and confirm `/#/app-center/open?code=<app_code>` renders an iframe runner.
+6. Confirm uploaded static apps run in a sandboxed iframe without `allow-same-origin`.
 
 ## Acceptance Criteria
 
@@ -248,6 +261,9 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 - All tenant-owned APIs require tenant context and permissions.
 - Platform admin APIs are not tenant-scoped.
 - Tenant modules flow uses the system-module registry endpoint `GET /api/tenant/modules`.
+- App marketplace flow uses `GET /api/app-tenant/marketplace`, `POST /api/app-tenant/apps/:code/install`, and `GET /api/app-tenant/apps/:code/open`.
+- Static app packages are reviewed before publishing and served from `/apps-static/`.
+- Uploaded apps are never executed as backend code in P0.
 - Resource-pack and plan payment paths show whether Alipay is configured before a user attempts payment.
 - Empty, loading, and error states are visible for tenant and platform pages.
 - If PowerShell `Get-Content` displays Chinese as mojibake, verify with Node UTF-8 reads or run `verify-saas-visible-copy-encoding.ts` before editing source files. The browser/Vite path reads these source files as UTF-8.
@@ -255,5 +271,6 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 ## Known Out-of-Scope Items
 
 - Invoice functionality is intentionally excluded.
+- Backend-executable service plugins, app revenue sharing, and app-store SEO landing pages are intentionally excluded from P0.
 - External payment settlement still depends on real Alipay credentials and callback reachability.
 - The automated browser smoke verifies public signup rendering and protected-route login redirects. Seeded browser UI order and development-payment coverage is available through the optional live browser E2E gate, but remains outside the default repository gate because it depends on live seeded data and mutates orders.
