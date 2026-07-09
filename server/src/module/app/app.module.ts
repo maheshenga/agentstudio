@@ -8,6 +8,7 @@ import { AppPlatformController } from './app-platform.controller';
 import { AppTenantController } from './app-tenant.controller';
 import { AppFactoryModuleEntity } from './entities/app-factory-module.entity';
 import { AppFactoryPublishLogEntity } from './entities/app-factory-publish-log.entity';
+import { AppFactoryTemplateEntity } from './entities/app-factory-template.entity';
 import { AppOpenLogEntity } from './entities/app-open-log.entity';
 import { AppPackageVersionEntity } from './entities/app-package-version.entity';
 import { AppPackageEntity } from './entities/app-package.entity';
@@ -31,6 +32,7 @@ import { AppTenantService } from './services/app-tenant.service';
       AppOpenLogEntity,
       AppFactoryModuleEntity,
       AppFactoryPublishLogEntity,
+      AppFactoryTemplateEntity,
     ]),
   ],
   controllers: [AppPlatformController, AppTenantController, AppFactoryController],
