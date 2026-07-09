@@ -75,9 +75,34 @@ describe('AppPlatformService', () => {
         developerId: 17,
       },
     ]);
+    versionRepo.find.mockResolvedValue([
+      {
+        id: 11,
+        appId: 5,
+        version: '1.1.0',
+        reviewStatus: 'rejected',
+        publishStatus: 'unpublished',
+        reviewMessage: 'Remove external script',
+      },
+      {
+        id: 10,
+        appId: 5,
+        version: '1.0.0',
+        reviewStatus: 'approved',
+        publishStatus: 'published',
+        reviewMessage: '',
+      },
+    ]);
 
     await expect(service.listDeveloperApps(17)).resolves.toEqual([
-      expect.objectContaining({ code: 'creator_portal', developer_id: 17 }),
+      expect.objectContaining({
+        code: 'creator_portal',
+        developer_id: 17,
+        latest_version: '1.1.0',
+        latest_review_status: 'rejected',
+        latest_publish_status: 'unpublished',
+        latest_review_message: 'Remove external script',
+      }),
     ]);
     expect(appRepo.find).toHaveBeenCalledWith(
       expect.objectContaining({

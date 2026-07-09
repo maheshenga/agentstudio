@@ -64,7 +64,31 @@ export class AppPlatformService {
       where: { developerId, deleteTime: IsNull() },
       order: { sort: 'ASC', id: 'ASC' },
     });
-    return apps.map((app) => this.toResponse(app));
+    const appIds = apps.map((app) => Number(app.id)).filter(Boolean);
+    const versions = appIds.length
+      ? await this.versionRepo.find({
+          where: { appId: In(appIds), deleteTime: IsNull() } as any,
+          order: { id: 'DESC' },
+        })
+      : [];
+    const latestVersionByAppId = new Map<number, AppPackageVersionEntity>();
+    for (const version of versions) {
+      const appId = Number(version.appId);
+      if (!latestVersionByAppId.has(appId)) {
+        latestVersionByAppId.set(appId, version);
+      }
+    }
+
+    return apps.map((app) => {
+      const latest = latestVersionByAppId.get(Number(app.id));
+      return {
+        ...this.toResponse(app),
+        latest_version: latest?.version || '',
+        latest_review_status: latest?.reviewStatus || '',
+        latest_publish_status: latest?.publishStatus || '',
+        latest_review_message: latest?.reviewMessage || '',
+      };
+    });
   }
 
   async listReviewQueue(query: AppReviewQueueQuery = {}) {
