@@ -19,7 +19,7 @@ Run these before demo or release review:
 node scripts/run-saas-readiness.cjs
 ```
 
-This aggregate gate runs frontend readiness, frontend build, frontend preview smoke, backend build, and backend readiness.
+This aggregate gate runs frontend readiness, frontend build, frontend preview smoke, frontend browser smoke, backend build, and backend readiness.
 
 ```powershell
 cd web
@@ -44,6 +44,7 @@ pnpm.cmd exec tsx scripts/verify-saas-public-origin.ts
 pnpm.cmd exec tsx scripts/verify-saas-readiness-command.ts
 pnpm.cmd build
 pnpm.cmd run verify:saas-preview-smoke
+pnpm.cmd run verify:saas-browser-smoke
 ```
 
 ```powershell
@@ -115,4 +116,4 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 
 - Invoice functionality is intentionally excluded.
 - External payment settlement still depends on real Alipay credentials and callback reachability.
-- This checklist does not replace a full browser E2E test with a seeded database; it is a P0 readiness gate for wiring, route, API, and manual acceptance coverage.
+- The automated browser smoke verifies public signup rendering and protected-route login redirects, but does not replace a full seeded-database login and payment E2E suite.
