@@ -49,12 +49,13 @@ cd server
 pnpm.cmd run verify:saas-readiness
 
 # Expanded backend gate is defined in server/package.json and guarded by:
-pnpm.cmd test -- saas-readiness-command.spec.ts --runInBand --forceExit
+pnpm.cmd exec jest --runInBand -- saas-readiness-command.spec.ts
 ```
 
 Backend readiness also covers authentication rate limits, JWT strategy tenant context, user refresh-token tenant continuity, menu permissions, and system-module guards.
 Backend readiness includes database initialization security, seed data integrity, migration menu alignment, and tenant role grant coverage.
 Backend readiness includes AI provider/admin flows, chat runtime, Taixu LLM/model runtime, upload safety, scheduler tasks, log username length, and SaaS provisioning coverage.
+Backend readiness guards Jest option ordering so serial execution cannot silently become a test-name pattern. Forced exit is intentionally not used, so leaked handles remain visible.
 
 ## Environment Contract
 

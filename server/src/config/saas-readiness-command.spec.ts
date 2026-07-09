@@ -99,6 +99,12 @@ describe('SaaS backend readiness command', () => {
     }
 
     expect(command).toContain('--runInBand');
-    expect(command).toContain('--forceExit');
+    expect(command).not.toContain('--forceExit');
+
+    const [jestCommand, specPatternSegment] = command.split(' -- ');
+    expect(jestCommand).toContain('--runInBand');
+    expect(jestCommand).not.toContain('--forceExit');
+    expect(specPatternSegment).not.toContain('--runInBand');
+    expect(specPatternSegment).not.toContain('--forceExit');
   });
 });
