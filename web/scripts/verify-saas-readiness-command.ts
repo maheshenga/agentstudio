@@ -72,6 +72,14 @@ assert(
     'tsx scripts/verify-saas-live-browser-e2e.ts',
   'package.json must define verify:saas-live-browser-e2e'
 )
+const liveBrowserE2ESource = existsSync(liveBrowserE2EPath)
+  ? readFile('scripts/verify-saas-live-browser-e2e.ts')
+  : ''
+assertIncludes(liveBrowserE2ESource, '/#/tenant-saas/resource-packs', 'live browser E2E')
+assertIncludes(liveBrowserE2ESource, 'SAAS_LIVE_E2E_RUN_RESOURCE_PACK', 'live browser E2E')
+assertIncludes(liveBrowserE2ESource, 'SAAS_LIVE_E2E_RESOURCE_PACK_CODE', 'live browser E2E')
+assertIncludes(liveBrowserE2ESource, "requestPayload?.order_type === 'resource_pack'", 'live browser E2E')
+assertIncludes(liveBrowserE2ESource, 'observedResourcePackDevPaymentStatus', 'live browser E2E')
 const platformLiveBrowserE2EPath = resolve(
   process.cwd(),
   'scripts/verify-saas-platform-live-browser-e2e.ts'
@@ -113,6 +121,21 @@ assertIncludes(
 assertIncludes(
   checklist,
   'SAAS_LIVE_E2E_WEB_URL',
+  'launch readiness checklist'
+)
+assertIncludes(
+  checklist,
+  'SAAS_LIVE_E2E_RUN_RESOURCE_PACK',
+  'launch readiness checklist'
+)
+assertIncludes(
+  checklist,
+  'SAAS_LIVE_E2E_RESOURCE_PACK_CODE',
+  'launch readiness checklist'
+)
+assertIncludes(
+  checklist,
+  'SAAS_LIVE_E2E_RUN_RESOURCE_PACK_PAYMENT',
   'launch readiness checklist'
 )
 assertIncludes(

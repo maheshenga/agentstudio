@@ -91,6 +91,22 @@ pnpm.cmd run verify:saas-live-e2e
 
 Only enable `SAAS_LIVE_E2E_RUN_PAYMENT=1` against disposable or resettable data because it creates and confirms a real SaaS order through the development confirmation endpoint.
 
+To validate resource-pack order creation and optional development payment in a non-production seeded environment:
+
+```powershell
+cd server
+$env:SAAS_LIVE_E2E_BASE_URL = 'http://127.0.0.1:3000'
+$env:SAAS_LIVE_E2E_USERNAME = '<seeded-tenant-owner-username>'
+$env:SAAS_LIVE_E2E_PASSWORD = '<seeded-tenant-owner-password>'
+$env:SAAS_LIVE_E2E_RESOURCE_PACK_CODE = '<resource-pack-code>'
+$env:SAAS_LIVE_E2E_RUN_RESOURCE_PACK = '1'
+# Optional: also confirm the resource-pack order through the development payment endpoint
+$env:SAAS_LIVE_E2E_RUN_RESOURCE_PACK_PAYMENT = '1'
+pnpm.cmd run verify:saas-live-e2e
+```
+
+Only enable `SAAS_LIVE_E2E_RUN_RESOURCE_PACK=1` against disposable or resettable data because it creates a real SaaS resource-pack order. `SAAS_LIVE_E2E_RUN_RESOURCE_PACK_PAYMENT=1` additionally confirms the order through the development payment endpoint.
+
 ### Optional Platform Admin Live E2E Gate
 
 Run this against a running backend with seeded platform administrator credentials before staging or production release:
@@ -155,6 +171,22 @@ pnpm.cmd run verify:saas-live-browser-e2e
 ```
 
 Only run this command against disposable or resettable seeded data. The base browser check creates a SaaS upgrade order; `SAAS_LIVE_E2E_RUN_PAYMENT=1` additionally confirms the order through the development payment endpoint.
+
+To also create a resource-pack order through the UI:
+
+```powershell
+cd web
+$env:SAAS_LIVE_E2E_BASE_URL = 'http://127.0.0.1:3000'
+$env:SAAS_LIVE_E2E_USERNAME = '<seeded-tenant-owner-username>'
+$env:SAAS_LIVE_E2E_PASSWORD = '<seeded-tenant-owner-password>'
+$env:SAAS_LIVE_E2E_RESOURCE_PACK_CODE = '<resource-pack-code>'
+$env:SAAS_LIVE_E2E_RUN_RESOURCE_PACK = '1'
+# Optional: also click the local development payment confirmation control
+$env:SAAS_LIVE_E2E_RUN_RESOURCE_PACK_PAYMENT = '1'
+pnpm.cmd run verify:saas-live-browser-e2e
+```
+
+Only run the resource-pack browser mutation against disposable or resettable seeded data. `SAAS_LIVE_E2E_RUN_RESOURCE_PACK=1` creates a resource-pack order, and `SAAS_LIVE_E2E_RUN_RESOURCE_PACK_PAYMENT=1` additionally confirms it through the development payment endpoint.
 
 ## Environment Contract
 

@@ -22,6 +22,12 @@ type LoginData = {
   tenant_id?: number | string
 }
 
+type ResourcePackItem = {
+  code?: string
+  name?: string
+  status?: number | string
+}
+
 type RequestOptions = {
   method?: 'GET' | 'POST'
   token?: string
@@ -39,6 +45,9 @@ const requestedWebUrl = process.env.SAAS_LIVE_E2E_WEB_URL?.trim()
 const requestedPlanCode = process.env.SAAS_LIVE_E2E_PLAN_CODE?.trim()
 const billingCycle = process.env.SAAS_LIVE_E2E_BILLING_CYCLE?.trim() || 'monthly'
 const runPayment = process.env.SAAS_LIVE_E2E_RUN_PAYMENT === '1'
+const runResourcePack = process.env.SAAS_LIVE_E2E_RUN_RESOURCE_PACK === '1'
+const runResourcePackPayment = process.env.SAAS_LIVE_E2E_RUN_RESOURCE_PACK_PAYMENT === '1'
+const requestedResourcePackCode = process.env.SAAS_LIVE_E2E_RESOURCE_PACK_CODE?.trim()
 const appVersion = process.env.SAAS_LIVE_E2E_APP_VERSION?.trim() || '3.0.1'
 const host = '127.0.0.1'
 const webPort = Number(process.env.SAAS_LIVE_E2E_WEB_PORT || 4182)
@@ -49,6 +58,10 @@ const viteCli = resolve(webRoot, 'node_modules/vite/bin/vite.js')
 
 let observedCreatedOrderNo = ''
 let observedDevPaymentStatus = ''
+let observedCreatedResourcePackOrderNo = ''
+let observedResourcePackDevPaymentStatus = ''
+let observedResourcePackCode = ''
+let observedResourcePacks: ResourcePackItem[] = []
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim()
@@ -247,15 +260,31 @@ function pickFulfillHeaders(headers: Headers) {
   return nextHeaders
 }
 
-function observeApiResponse(targetUrl: URL, method: string, bodyText: string) {
+function observeApiResponse(targetUrl: URL, method: string, requestBodyText: string, bodyText: string) {
+  if (method === 'GET' && targetUrl.pathname === '/api/saas/tenant/resource-packs') {
+    const parsed = tryParseJson<ApiEnvelope<ResourcePackItem[]>>(bodyText)
+    observedResourcePacks = Array.isArray(parsed?.data) ? parsed.data : observedResourcePacks
+  }
+
   if (method === 'POST' && targetUrl.pathname === '/api/saas/tenant/orders') {
     const parsed = tryParseJson<ApiEnvelope<{ order_no?: string }>>(bodyText)
     observedCreatedOrderNo = parsed?.data?.order_no || observedCreatedOrderNo
   }
 
+  if (method === 'POST' && targetUrl.pathname === '/api/saas/tenant/resource-pack-orders') {
+    const parsed = tryParseJson<ApiEnvelope<{ order_no?: string; resource_pack_code?: string }>>(bodyText)
+    observedCreatedResourcePackOrderNo = parsed?.data?.order_no || observedCreatedResourcePackOrderNo
+    observedResourcePackCode = parsed?.data?.resource_pack_code || observedResourcePackCode
+  }
+
   if (method === 'POST' && targetUrl.pathname === '/api/saas/payment/dev-confirm') {
+    const requestPayload = tryParseJson<{ order_type?: string }>(requestBodyText)
     const parsed = tryParseJson<ApiEnvelope<{ status?: string }>>(bodyText)
-    observedDevPaymentStatus = parsed?.data?.status || observedDevPaymentStatus
+    if (requestPayload?.order_type === 'resource_pack') {
+      observedResourcePackDevPaymentStatus = parsed?.data?.status || observedResourcePackDevPaymentStatus
+    } else {
+      observedDevPaymentStatus = parsed?.data?.status || observedDevPaymentStatus
+    }
   }
 }
 
@@ -272,6 +301,7 @@ async function proxyLiveBackendApi(route: Route) {
   const targetUrl = mapBrowserApiUrl(request.url())
   const method = request.method()
   const body = method === 'GET' || method === 'HEAD' ? undefined : request.postDataBuffer() || undefined
+  const requestBodyText = body ? Buffer.from(body).toString('utf8') : ''
 
   try {
     const backendResponse = await fetch(targetUrl, {
@@ -281,7 +311,7 @@ async function proxyLiveBackendApi(route: Route) {
     })
     const responseBuffer = Buffer.from(await backendResponse.arrayBuffer())
     const responseText = responseBuffer.toString('utf8')
-    observeApiResponse(targetUrl, method, responseText)
+    observeApiResponse(targetUrl, method, requestBodyText, responseText)
 
     await route.fulfill({
       status: backendResponse.status,
@@ -391,6 +421,26 @@ async function waitForObservedOrderNo() {
   return ''
 }
 
+async function waitForObservedResourcePackOrderNo() {
+  const deadline = Date.now() + 15_000
+  while (Date.now() < deadline) {
+    if (observedCreatedResourcePackOrderNo) return observedCreatedResourcePackOrderNo
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 250))
+  }
+  return ''
+}
+
+async function waitForResourcePackDevPaymentPaid() {
+  const deadline = Date.now() + 20_000
+  while (Date.now() < deadline && observedResourcePackDevPaymentStatus !== 'paid') {
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 250))
+  }
+  assert(
+    observedResourcePackDevPaymentStatus === 'paid',
+    `resource-pack development payment confirmation must return paid status, got ${observedResourcePackDevPaymentStatus || 'empty'}`
+  )
+}
+
 async function verifyOrderFlow(page: Page) {
   const orderButton = await findOrderButton(page)
   if (!orderButton || failures.length) return
@@ -423,6 +473,78 @@ async function verifyOrderFlow(page: Page) {
   )
 }
 
+async function assertHealthyTenantResourcePackPage(page: Page) {
+  await page.goto(`${webUrl.replace(/\/$/, '')}/#/tenant-saas/resource-packs`, { waitUntil: 'domcontentloaded' })
+  await page.waitForSelector('.tenant-resource-pack-page__pack', { timeout: 30_000 })
+  await page.waitForSelector('.tenant-resource-pack-page__orders', { timeout: 30_000 })
+
+  const currentUrl = page.url()
+  assert(!currentUrl.includes('#/auth/login'), `tenant resource-pack page must not redirect to login, got ${currentUrl}`)
+  assert(!currentUrl.includes('exception'), `tenant resource-pack page must not route to exception page, got ${currentUrl}`)
+
+  const bodyText = await page.locator('body').innerText({ timeout: 5_000 }).catch(() => '')
+  assert(bodyText.trim().length > 0, 'tenant resource-pack page must render visible text')
+  assert(!/\b(404|500)\b/.test(bodyText), 'tenant resource-pack page must not render an exception status')
+}
+
+async function findResourcePackOrderButton(page: Page) {
+  const cards = page.locator('.tenant-resource-pack-page__pack')
+  const cardCount = await cards.count()
+  assert(cardCount > 0, 'tenant resource-pack page must render at least one resource-pack card')
+  if (!cardCount) return undefined
+
+  let selectedIndex = 0
+  if (requestedResourcePackCode) {
+    selectedIndex = observedResourcePacks.findIndex((pack) => pack.code === requestedResourcePackCode)
+    assert(
+      selectedIndex >= 0,
+      `SAAS_LIVE_E2E_RESOURCE_PACK_CODE ${requestedResourcePackCode} was not found in tenant resource packs`
+    )
+    if (selectedIndex < 0) return undefined
+    assert(
+      selectedIndex < cardCount,
+      `resource-pack card for ${requestedResourcePackCode} was not rendered; API index ${selectedIndex}, card count ${cardCount}`
+    )
+    if (selectedIndex >= cardCount) return undefined
+  }
+
+  const card = cards.nth(selectedIndex)
+  const enabledButton = card.locator('button:not([disabled])').first()
+  assert((await enabledButton.count()) > 0, 'selected resource-pack card must have an enabled order button')
+  return (await enabledButton.count()) > 0 ? enabledButton : undefined
+}
+
+async function verifyResourcePackOrderFlow(page: Page) {
+  if (!runResourcePack && !runResourcePackPayment) {
+    console.log('Skipping UI resource-pack mutation; set SAAS_LIVE_E2E_RUN_RESOURCE_PACK=1 to click a resource-pack order button.')
+    return
+  }
+
+  await assertHealthyTenantResourcePackPage(page)
+  if (failures.length) return
+
+  const orderButton = await findResourcePackOrderButton(page)
+  if (!orderButton || failures.length) return
+
+  await orderButton.click()
+  await page.waitForSelector('.tenant-resource-pack-page__order', { timeout: 30_000 })
+  const orderNo = await waitForObservedResourcePackOrderNo()
+  assert(orderNo, 'tenant resource-pack UI order creation must return data.order_no')
+  if (!orderNo || !runResourcePackPayment) return
+
+  const devPaymentButton = page
+    .locator('.tenant-resource-pack-page__order')
+    .getByRole('button', { name: /本地模拟支付成功/ })
+  assert(
+    (await devPaymentButton.count()) > 0,
+    'resource-pack development payment button must be visible; rebuild with VITE_ENABLE_DEV_PAYMENT_CONFIRM=true before running SAAS_LIVE_E2E_RUN_RESOURCE_PACK_PAYMENT=1'
+  )
+  if ((await devPaymentButton.count()) === 0) return
+
+  await devPaymentButton.first().click()
+  await waitForResourcePackDevPaymentPaid()
+}
+
 async function verifyLiveBrowserE2E(auth: Awaited<ReturnType<typeof authenticate>>) {
   if (!auth) return
 
@@ -446,6 +568,7 @@ async function verifyLiveBrowserE2E(auth: Awaited<ReturnType<typeof authenticate
     if (failures.length) return
 
     await verifyOrderFlow(page)
+    await verifyResourcePackOrderFlow(page)
     assert(pageErrors.length === 0, `live browser E2E must not emit page errors: ${pageErrors.join('; ')}`)
 
     if (!failures.length) {
@@ -457,7 +580,10 @@ async function verifyLiveBrowserE2E(auth: Awaited<ReturnType<typeof authenticate
             tenant_id: auth.tenantId,
             order_checked: Boolean(observedCreatedOrderNo),
             payment_checked: runPayment,
-            plan_code: requestedPlanCode || 'first-enabled'
+            plan_code: requestedPlanCode || 'first-enabled',
+            resource_pack_order_checked: Boolean(observedCreatedResourcePackOrderNo),
+            resource_pack_payment_checked: runResourcePackPayment,
+            resource_pack_code: requestedResourcePackCode || observedResourcePackCode || undefined
           },
           null,
           2

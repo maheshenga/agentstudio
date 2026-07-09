@@ -25,9 +25,22 @@ type PlanItem = {
   status?: number | string;
 };
 
+type ResourcePackItem = {
+  code?: string;
+  name?: string;
+  status?: number | string;
+  price_cents?: number;
+};
+
 type OrderData = {
   order_no?: string;
   status?: string;
+};
+
+type ResourcePackOrderData = {
+  order_no?: string;
+  status?: string;
+  resource_pack_code?: string;
 };
 
 type RequestOptions = {
@@ -46,6 +59,12 @@ const requestedTenantId = process.env.SAAS_LIVE_E2E_TENANT_ID?.trim();
 const planCode = process.env.SAAS_LIVE_E2E_PLAN_CODE?.trim() || 'pro';
 const billingCycle = process.env.SAAS_LIVE_E2E_BILLING_CYCLE?.trim() || 'monthly';
 const runPayment = process.env.SAAS_LIVE_E2E_RUN_PAYMENT === '1';
+const runResourcePack = process.env.SAAS_LIVE_E2E_RUN_RESOURCE_PACK === '1';
+const runResourcePackPayment = process.env.SAAS_LIVE_E2E_RUN_RESOURCE_PACK_PAYMENT === '1';
+const resourcePackCode = process.env.SAAS_LIVE_E2E_RESOURCE_PACK_CODE?.trim();
+let resourcePackOrderChecked = false;
+let resourcePackPaymentChecked = false;
+let selectedResourcePackCode = '';
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -175,11 +194,25 @@ async function verifyLiveE2E() {
   await verifyReadEndpoint('tenant subscription', '/api/saas/tenant/subscription', token);
   await verifyReadEndpoint('tenant modules', '/api/saas/tenant/modules', token);
   await verifyReadEndpoint('Alipay config status', '/api/saas/payment/alipay/config-status', token);
+  const resourcePacks = (await verifyReadEndpoint(
+    'tenant resource packs',
+    '/api/saas/tenant/resource-packs',
+    token,
+  )) as ResourcePackItem[] | undefined;
+  await verifyReadEndpoint('tenant resource-pack orders', '/api/saas/tenant/resource-pack-orders', token);
 
   if (runPayment) {
     await verifyPaymentFlow(token, plans);
   } else {
     console.log('Skipping payment mutation; set SAAS_LIVE_E2E_RUN_PAYMENT=1 to verify dev payment confirmation.');
+  }
+
+  if (runResourcePack || runResourcePackPayment) {
+    await verifyResourcePackFlow(token, resourcePacks);
+  } else {
+    console.log(
+      'Skipping resource-pack mutation; set SAAS_LIVE_E2E_RUN_RESOURCE_PACK=1 to verify resource-pack order creation.',
+    );
   }
 
   if (failures.length) return;
@@ -193,6 +226,9 @@ async function verifyLiveE2E() {
         read_checks: completedReadChecks,
         payment_checked: runPayment,
         plan_code: runPayment ? planCode : undefined,
+        resource_pack_order_checked: resourcePackOrderChecked,
+        resource_pack_payment_checked: resourcePackPaymentChecked,
+        resource_pack_code: selectedResourcePackCode || undefined,
       },
       null,
       2,
@@ -226,6 +262,49 @@ async function verifyPaymentFlow(token: string, plans: PlanItem[] | undefined) {
     }),
   );
   assert(paidOrder?.status === 'paid', `dev payment confirmation must return paid status, got ${paidOrder?.status}`);
+}
+
+async function verifyResourcePackFlow(token: string, resourcePacks: ResourcePackItem[] | undefined) {
+  assert(Array.isArray(resourcePacks), 'tenant resource packs must return an array before resource-pack order can be checked');
+  const selectedPack = resourcePackCode
+    ? resourcePacks?.find((pack) => pack.code === resourcePackCode)
+    : resourcePacks?.[0];
+  assert(
+    selectedPack?.code,
+    resourcePackCode
+      ? `SAAS_LIVE_E2E_RESOURCE_PACK_CODE ${resourcePackCode} was not found in tenant resource packs`
+      : 'tenant resource packs must include at least one purchasable resource pack',
+  );
+  if (!selectedPack?.code) return;
+
+  selectedResourcePackCode = selectedPack.code;
+  const order = assertOk<ResourcePackOrderData>(
+    'create resource-pack order',
+    await requestJson('/api/saas/tenant/resource-pack-orders', {
+      method: 'POST',
+      token,
+      body: { resource_pack_code: selectedPack.code, payment_method: 'alipay' },
+    }),
+  );
+  assert(order?.order_no, 'create resource-pack order must return data.order_no');
+  if (!order?.order_no) return;
+
+  resourcePackOrderChecked = true;
+  if (!runResourcePackPayment) return;
+
+  const paidOrder = assertOk<ResourcePackOrderData>(
+    'resource-pack dev payment confirmation',
+    await requestJson('/api/saas/payment/dev-confirm', {
+      method: 'POST',
+      token,
+      body: { order_no: order.order_no, order_type: 'resource_pack' },
+    }),
+  );
+  assert(
+    paidOrder?.status === 'paid',
+    `resource-pack dev payment confirmation must return paid status, got ${paidOrder?.status}`,
+  );
+  resourcePackPaymentChecked = paidOrder?.status === 'paid';
 }
 
 async function main() {

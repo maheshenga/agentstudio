@@ -110,6 +110,12 @@ describe('SaaS backend readiness command', () => {
     const liveE2eScript = join(REPO_ROOT, 'server/scripts/verify-saas-live-e2e.ts');
     expect(existsSync(liveE2eScript)).toBe(true);
     expect(packageJson.scripts?.['verify:saas-live-e2e']).toBe('tsx scripts/verify-saas-live-e2e.ts');
+    const liveE2eSource = readFileSync(liveE2eScript, 'utf8');
+    expect(liveE2eSource).toContain('/api/saas/tenant/resource-packs');
+    expect(liveE2eSource).toContain('/api/saas/tenant/resource-pack-orders');
+    expect(liveE2eSource).toContain('SAAS_LIVE_E2E_RUN_RESOURCE_PACK');
+    expect(liveE2eSource).toContain('SAAS_LIVE_E2E_RESOURCE_PACK_CODE');
+    expect(liveE2eSource).toContain("order_type: 'resource_pack'");
 
     const platformLiveE2eScript = join(REPO_ROOT, 'server/scripts/verify-saas-platform-live-e2e.ts');
     expect(existsSync(platformLiveE2eScript)).toBe(true);
@@ -121,6 +127,9 @@ describe('SaaS backend readiness command', () => {
     expect(checklist).toContain('SAAS_LIVE_E2E_USERNAME');
     expect(checklist).toContain('SAAS_LIVE_E2E_PASSWORD');
     expect(checklist).toContain('SAAS_LIVE_E2E_RUN_PAYMENT=1');
+    expect(checklist).toContain('SAAS_LIVE_E2E_RUN_RESOURCE_PACK');
+    expect(checklist).toContain('SAAS_LIVE_E2E_RESOURCE_PACK_CODE');
+    expect(checklist).toContain('SAAS_LIVE_E2E_RUN_RESOURCE_PACK_PAYMENT');
     expect(checklist).toContain('pnpm.cmd run verify:saas-platform-live-e2e');
     expect(checklist).toContain('SAAS_PLATFORM_LIVE_E2E_BASE_URL');
     expect(checklist).toContain('SAAS_PLATFORM_LIVE_E2E_USERNAME');
