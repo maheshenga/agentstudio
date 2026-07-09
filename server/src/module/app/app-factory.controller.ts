@@ -5,17 +5,40 @@ import { RequirePermission } from '../../common/decorators/require-permission.de
 import { ResultData } from '../../common/utils/result';
 import { User } from '../system/user/user.decorator';
 import type { UserDto } from '../system/user/user.decorator';
-import { AppFactoryListQueryDto, PublishAppFactoryModuleDto, SaveAppFactoryModuleDto } from './dto/app-factory.dto';
+import {
+  AppFactoryListQueryDto,
+  AppFactoryTemplateListQueryDto,
+  PublishAppFactoryModuleDto,
+  SaveAppFactoryModuleDto,
+} from './dto/app-factory.dto';
 import { AppFactoryService } from './services/app-factory.service';
+import { AppFactoryTemplateService } from './services/app-factory-template.service';
 
 @ApiTags('App Factory')
 @ApiBearerAuth('Authorization')
 @Controller('api/app-platform/factory')
 export class AppFactoryController {
-  constructor(private readonly factoryService: AppFactoryService) {}
+  constructor(
+    private readonly factoryService: AppFactoryService,
+    private readonly templateService: AppFactoryTemplateService,
+  ) {}
 
   private getOperatorId(user?: UserDto) {
     return Number(user?.userId || user?.user?.id) || undefined;
+  }
+
+  @Get('templates')
+  @ApiOperation({ summary: 'List app factory templates' })
+  @RequirePermission('app:factory:template:list')
+  listTemplates(@Query() query: AppFactoryTemplateListQueryDto) {
+    return this.templateService.listTemplates(query).then((data) => ResultData.ok(data));
+  }
+
+  @Get('templates/:code')
+  @ApiOperation({ summary: 'Get app factory template' })
+  @RequirePermission('app:factory:template:list')
+  getTemplate(@Param('code') code: string) {
+    return this.templateService.getTemplate(code).then((data) => ResultData.ok(data));
   }
 
   @Get('modules')

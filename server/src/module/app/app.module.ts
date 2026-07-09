@@ -15,6 +15,7 @@ import { AppPackageEntity } from './entities/app-package.entity';
 import { AppReviewLogEntity } from './entities/app-review-log.entity';
 import { TenantAppInstallEntity } from './entities/tenant-app-install.entity';
 import { AppManifestService } from './services/app-manifest.service';
+import { AppFactoryTemplateService } from './services/app-factory-template.service';
 import { AppFactoryService } from './services/app-factory.service';
 import { AppPackageStorageService } from './services/app-package-storage.service';
 import { AppPlatformService } from './services/app-platform.service';
@@ -36,7 +37,21 @@ import { AppTenantService } from './services/app-tenant.service';
     ]),
   ],
   controllers: [AppPlatformController, AppTenantController, AppFactoryController],
-  providers: [AppManifestService, AppPackageStorageService, AppPlatformService, AppTenantService, AppFactoryService],
-  exports: [AppManifestService, AppPackageStorageService, AppPlatformService, AppTenantService, AppFactoryService],
+  providers: [
+    AppManifestService,
+    AppPackageStorageService,
+    AppPlatformService,
+    AppTenantService,
+    AppFactoryService,
+    AppFactoryTemplateService,
+  ],
+  exports: [
+    AppManifestService,
+    AppPackageStorageService,
+    AppPlatformService,
+    AppTenantService,
+    AppFactoryService,
+    AppFactoryTemplateService,
+  ],
 })
 export class AppMarketplaceModule {}

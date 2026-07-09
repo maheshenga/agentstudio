@@ -18,6 +18,23 @@ export class AppFactoryListQueryDto {
   status?: string;
 }
 
+export class AppFactoryTemplateListQueryDto {
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  keyword?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  category?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  status?: string;
+}
+
 export class SaveAppFactoryModuleDto {
   @ApiProperty({ required: false })
   @IsOptional()
