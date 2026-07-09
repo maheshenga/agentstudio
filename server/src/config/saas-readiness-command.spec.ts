@@ -111,11 +111,19 @@ describe('SaaS backend readiness command', () => {
     expect(existsSync(liveE2eScript)).toBe(true);
     expect(packageJson.scripts?.['verify:saas-live-e2e']).toBe('tsx scripts/verify-saas-live-e2e.ts');
 
+    const platformLiveE2eScript = join(REPO_ROOT, 'server/scripts/verify-saas-platform-live-e2e.ts');
+    expect(existsSync(platformLiveE2eScript)).toBe(true);
+    expect(packageJson.scripts?.['verify:saas-platform-live-e2e']).toBe('tsx scripts/verify-saas-platform-live-e2e.ts');
+
     const checklist = readFileSync(join(REPO_ROOT, 'docs/saas-launch-readiness-checklist.md'), 'utf8');
     expect(checklist).toContain('pnpm.cmd run verify:saas-live-e2e');
     expect(checklist).toContain('SAAS_LIVE_E2E_BASE_URL');
     expect(checklist).toContain('SAAS_LIVE_E2E_USERNAME');
     expect(checklist).toContain('SAAS_LIVE_E2E_PASSWORD');
     expect(checklist).toContain('SAAS_LIVE_E2E_RUN_PAYMENT=1');
+    expect(checklist).toContain('pnpm.cmd run verify:saas-platform-live-e2e');
+    expect(checklist).toContain('SAAS_PLATFORM_LIVE_E2E_BASE_URL');
+    expect(checklist).toContain('SAAS_PLATFORM_LIVE_E2E_USERNAME');
+    expect(checklist).toContain('SAAS_PLATFORM_LIVE_E2E_PASSWORD');
   });
 });
