@@ -113,14 +113,7 @@ export class AppPlatformService {
     const versions = await this.versionRepo.find({ where: { appId: app.id, deleteTime: IsNull() }, order: { id: 'DESC' } });
     return {
       ...this.toResponse(app),
-      versions: versions.map((version) => ({
-        id: version.id,
-        version: version.version,
-        review_status: version.reviewStatus,
-        publish_status: version.publishStatus,
-        entry_file: version.entryFile,
-        create_time: version.createTime,
-      })),
+      versions: versions.map((version) => this.toVersionResponse(version, app.code, app.entryUrl)),
     };
   }
 
@@ -268,7 +261,64 @@ export class AppPlatformService {
     await this.recordAppEvent(app.id, appVersion.id, 'publish', `Published version ${version}`, operatorId, {
       entryUrl: published.entryUrl,
     });
-    return this.toVersionResponse(savedVersion);
+    return this.toVersionResponse(savedVersion, app.code, app.entryUrl);
+  }
+
+  async unpublishVersion(code: string, version: string, message = '', operatorId?: number) {
+    const app = await this.findApp(code);
+    this.assertStaticApp(app);
+    const appVersion = await this.findVersion(app.id, version);
+    if (appVersion.publishStatus !== 'published') {
+      throw new BadRequestException('Only published versions can be unpublished');
+    }
+
+    const targetEntryUrl = this.createStaticEntryUrl(app.code, appVersion.version, appVersion.entryFile);
+    const wasActiveVersion = app.entryUrl === targetEntryUrl || !app.entryUrl;
+    appVersion.publishStatus = 'unpublished_retired';
+    const savedVersion = await this.versionRepo.save(appVersion);
+
+    if (wasActiveVersion) {
+      const fallback = (await this.findPublishedVersions(app.id)).find((item) => Number(item.id) !== Number(appVersion.id));
+      if (fallback) {
+        app.status = 'published';
+        app.entryMode = 'static';
+        app.entryUrl = this.createStaticEntryUrl(app.code, fallback.version, fallback.entryFile);
+      } else {
+        app.status = 'approved';
+        app.entryUrl = '';
+      }
+      await this.appRepo.save(app);
+    }
+
+    await this.recordAppEvent(app.id, appVersion.id, 'unpublish', message || `Unpublished version ${version}`, operatorId);
+    return this.toVersionResponse(savedVersion, app.code, app.entryUrl);
+  }
+
+  async rollbackVersion(code: string, version: string, message = '', operatorId?: number) {
+    const app = await this.findApp(code);
+    this.assertStaticApp(app);
+    const appVersion = await this.findVersion(app.id, version);
+    if (appVersion.reviewStatus !== 'approved') {
+      throw new BadRequestException('Only approved versions can be rolled back');
+    }
+    if (!appVersion.publishPath || !appVersion.entryFile) {
+      throw new BadRequestException('App version has no published artifact');
+    }
+
+    await this.retirePublishedVersions(app.id, appVersion.id);
+    appVersion.publishStatus = 'published';
+    const entryUrl = this.createStaticEntryUrl(app.code, appVersion.version, appVersion.entryFile);
+    const savedVersion = await this.versionRepo.save(appVersion);
+
+    app.status = 'published';
+    app.entryMode = 'static';
+    app.entryUrl = entryUrl;
+    await this.appRepo.save(app);
+
+    await this.recordAppEvent(app.id, appVersion.id, 'rollback', message || `Rolled back to version ${version}`, operatorId, {
+      entryUrl,
+    });
+    return this.toVersionResponse(savedVersion, app.code, app.entryUrl);
   }
 
   private resolveEntryMode(type: AppPackageType) {
@@ -327,6 +377,35 @@ export class AppPlatformService {
     return appVersion;
   }
 
+  private assertStaticApp(app: AppPackageEntity) {
+    if (app.type !== 'static') {
+      throw new BadRequestException('Only static app versions can be governed');
+    }
+  }
+
+  private async findPublishedVersions(appId: number) {
+    return this.versionRepo.find({
+      where: { appId, reviewStatus: 'approved', publishStatus: 'published', deleteTime: IsNull() },
+      order: { id: 'DESC' },
+    } as any);
+  }
+
+  private async retirePublishedVersions(appId: number, exceptVersionId?: number) {
+    const versions = await this.findPublishedVersions(appId);
+    for (const item of versions) {
+      if (exceptVersionId && Number(item.id) === Number(exceptVersionId)) {
+        continue;
+      }
+      item.publishStatus = 'unpublished_retired';
+      await this.versionRepo.save(item);
+    }
+  }
+
+  private createStaticEntryUrl(appCode: string, version: string, entryFile: string) {
+    const normalizedEntry = String(entryFile || '').replace(/\\/g, '/').replace(/^\/+/, '');
+    return `${this.storage.getPublicPrefix()}${appCode}/${version}/${normalizedEntry}`;
+  }
+
   private async loadZip(buffer: Buffer) {
     try {
       return await JSZip.loadAsync(buffer);
@@ -376,7 +455,10 @@ export class AppPlatformService {
     );
   }
 
-  private toVersionResponse(version: Partial<AppPackageVersionEntity>) {
+  private toVersionResponse(version: Partial<AppPackageVersionEntity>, appCode?: string, activeEntryUrl?: string) {
+    const entryUrl = appCode && version.version && version.entryFile
+      ? this.createStaticEntryUrl(appCode, version.version, version.entryFile)
+      : '';
     return {
       id: version.id,
       app_id: version.appId,
@@ -389,6 +471,8 @@ export class AppPlatformService {
       file_size: Number(version.fileSize) || 0,
       review_status: version.reviewStatus,
       publish_status: version.publishStatus,
+      entry_url: entryUrl,
+      is_active: Boolean(entryUrl && activeEntryUrl === entryUrl && version.publishStatus === 'published'),
       review_message: version.reviewMessage || '',
       reviewer_id: version.reviewerId ?? null,
       review_time: version.reviewTime,

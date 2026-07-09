@@ -32,6 +32,7 @@ describe('AppPlatformService', () => {
   const storageService = {
     extractStaticPackage: jest.fn(),
     publishVersion: jest.fn(),
+    getPublicPrefix: jest.fn(),
   };
   const manifestService = {
     validateStaticManifest: jest.fn(),
@@ -42,6 +43,7 @@ describe('AppPlatformService', () => {
     appRepo.create.mockImplementation((value) => ({ ...value }));
     appRepo.find.mockResolvedValue([]);
     appRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 1, ...value }));
+    storageService.getPublicPrefix.mockReturnValue('/apps-static/');
     reviewLogRepo.create.mockImplementation((value) => ({ ...value }));
     reviewLogRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 1, ...value }));
 
@@ -380,5 +382,120 @@ describe('AppPlatformService', () => {
         entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
       }),
     );
+  });
+
+  it('unpublishes the active static version and records an audit log', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 4,
+      code: 'job_board',
+      name: 'Job Board',
+      type: 'static',
+      status: 'published',
+      entryMode: 'static',
+      entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 8,
+      appId: 4,
+      version: '1.0.0',
+      reviewStatus: 'approved',
+      publishStatus: 'published',
+      publishPath: '/safe/public/job_board/1.0.0',
+      entryFile: 'dist/index.html',
+    });
+    versionRepo.find.mockResolvedValue([]);
+    versionRepo.save.mockImplementation(async (value) => value);
+
+    await expect(service.unpublishVersion('job_board', '1.0.0', 'bad release', 66)).resolves.toMatchObject({
+      version: '1.0.0',
+      publish_status: 'unpublished_retired',
+    });
+
+    expect(versionRepo.save).toHaveBeenCalledWith(expect.objectContaining({ publishStatus: 'unpublished_retired' }));
+    expect(appRepo.save).toHaveBeenCalledWith(expect.objectContaining({ status: 'approved', entryUrl: '' }));
+    expect(reviewLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 4,
+        versionId: 8,
+        action: 'unpublish',
+        message: 'bad release',
+        operatorId: 66,
+      }),
+    );
+  });
+
+  it('rolls back to an approved publishable version and retires competing published versions', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 4,
+      code: 'job_board',
+      name: 'Job Board',
+      type: 'static',
+      status: 'published',
+      entryMode: 'static',
+      entryUrl: '/apps-static/job_board/2.0.0/dist/index.html',
+    });
+    const rollbackTarget = {
+      id: 8,
+      appId: 4,
+      version: '1.0.0',
+      reviewStatus: 'approved',
+      publishStatus: 'unpublished_retired',
+      publishPath: '/safe/public/job_board/1.0.0',
+      entryFile: 'dist/index.html',
+    };
+    const currentVersion = {
+      id: 9,
+      appId: 4,
+      version: '2.0.0',
+      reviewStatus: 'approved',
+      publishStatus: 'published',
+      publishPath: '/safe/public/job_board/2.0.0',
+      entryFile: 'dist/index.html',
+    };
+    versionRepo.findOne.mockResolvedValue(rollbackTarget);
+    versionRepo.find.mockResolvedValue([currentVersion]);
+    versionRepo.save.mockImplementation(async (value) => value);
+
+    await expect(service.rollbackVersion('job_board', '1.0.0', 'restore stable', 66)).resolves.toMatchObject({
+      version: '1.0.0',
+      publish_status: 'published',
+      entry_url: '/apps-static/job_board/1.0.0/dist/index.html',
+    });
+
+    expect(versionRepo.save).toHaveBeenCalledWith(expect.objectContaining({ id: 9, publishStatus: 'unpublished_retired' }));
+    expect(versionRepo.save).toHaveBeenCalledWith(expect.objectContaining({ id: 8, publishStatus: 'published' }));
+    expect(appRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'published',
+        entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
+      }),
+    );
+    expect(reviewLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 4,
+        versionId: 8,
+        action: 'rollback',
+        message: 'restore stable',
+        operatorId: 66,
+      }),
+    );
+  });
+
+  it('rejects rollback when the target version has no published path', async () => {
+    appRepo.findOne.mockResolvedValue({ id: 4, code: 'job_board', type: 'static', status: 'published' });
+    versionRepo.findOne.mockResolvedValue({
+      id: 8,
+      appId: 4,
+      version: '1.0.0',
+      reviewStatus: 'approved',
+      publishStatus: 'unpublished',
+      publishPath: '',
+      entryFile: 'dist/index.html',
+    });
+
+    await expect(service.rollbackVersion('job_board', '1.0.0', '', 66)).rejects.toThrow(
+      'App version has no published artifact',
+    );
+    expect(appRepo.save).not.toHaveBeenCalled();
   });
 });

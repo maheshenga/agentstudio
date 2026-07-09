@@ -147,11 +147,7 @@ export class AppTenantService {
     }
     this.assertAvailability(await this.getAppAvailability(tenantId, app));
 
-    const version = app.type === 'static'
-      ? install.versionId
-        ? await this.findVersionById(app.id, Number(install.versionId))
-        : await this.findPublishedVersion(app.id)
-      : null;
+    const version = app.type === 'static' ? await this.resolveOpenVersion(app, install) : null;
 
     const openMode = app.type === 'internal' ? 'internal_route' : 'iframe';
     await this.openLogRepo.save(
@@ -260,6 +256,19 @@ export class AppTenantService {
       throw new BadRequestException('App has no published version');
     }
     return version;
+  }
+
+  private async resolveOpenVersion(app: AppPackageEntity, install: TenantAppInstallEntity) {
+    if (install.versionId) {
+      try {
+        return await this.findVersionById(app.id, Number(install.versionId));
+      } catch (error) {
+        if (!(error instanceof BadRequestException)) {
+          throw error;
+        }
+      }
+    }
+    return this.findPublishedVersion(app.id);
   }
 
   private async findVersionById(appId: number, id: number) {

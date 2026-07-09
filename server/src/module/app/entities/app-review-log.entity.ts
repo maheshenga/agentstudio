@@ -1,6 +1,14 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
-export type AppReviewAction = 'submit' | 'approve' | 'reject' | 'publish' | 'disable' | 'archive';
+export type AppReviewAction =
+  | 'submit'
+  | 'approve'
+  | 'reject'
+  | 'publish'
+  | 'unpublish'
+  | 'rollback'
+  | 'disable'
+  | 'archive';
 
 @Index('idx_app_review_log_app', ['appId', 'versionId'])
 @Entity('app_review_log')

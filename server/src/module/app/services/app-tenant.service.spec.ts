@@ -349,6 +349,41 @@ describe('AppTenantService', () => {
     );
   });
 
+  it('falls back to the current published version when an installed version was retired', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 1,
+      code: 'job_board',
+      name: 'Job Board',
+      type: 'static',
+      status: 'published',
+      entryMode: 'static',
+      entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
+    });
+    installRepo.findOne.mockResolvedValue({ id: 4, tenantId: 23, appId: 1, versionId: 10, enabled: 1 });
+    versionRepo.findOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 9,
+        appId: 1,
+        version: '1.0.0',
+        publishStatus: 'published',
+        reviewStatus: 'approved',
+      });
+
+    await expect(service.getOpenMetadata(23, 'job_board', 7)).resolves.toMatchObject({
+      code: 'job_board',
+      type: 'static',
+      entry_url: '/apps-static/job_board/1.0.0/dist/index.html',
+      version: '1.0.0',
+    });
+
+    expect(openLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        versionId: 9,
+      }),
+    );
+  });
+
   it('rejects opening an installed app when the mapped system module is unavailable', async () => {
     appRepo.findOne.mockResolvedValue({
       id: 8,

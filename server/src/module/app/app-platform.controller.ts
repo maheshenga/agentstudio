@@ -117,6 +117,34 @@ export class AppPlatformController {
     );
   }
 
+  @Post(':code/versions/:version/unpublish')
+  @ApiOperation({ summary: 'Unpublish app version' })
+  @RequirePermission('app:platform:publish')
+  unpublishVersion(
+    @Param('code') code: string,
+    @Param('version') version: string,
+    @Body() body: ReviewAppPackageVersionDto,
+    @User() user: UserDto,
+  ) {
+    return this.runOutsideTenant(user, () =>
+      this.appPlatformService.unpublishVersion(code, version, body.message || '', user?.userId).then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Post(':code/versions/:version/rollback')
+  @ApiOperation({ summary: 'Rollback app version' })
+  @RequirePermission('app:platform:publish')
+  rollbackVersion(
+    @Param('code') code: string,
+    @Param('version') version: string,
+    @Body() body: ReviewAppPackageVersionDto,
+    @User() user: UserDto,
+  ) {
+    return this.runOutsideTenant(user, () =>
+      this.appPlatformService.rollbackVersion(code, version, body.message || '', user?.userId).then((data) => ResultData.ok(data)),
+    );
+  }
+
   private runOutsideTenant(user: UserDto, callback: () => Promise<ResultData>) {
     return TenantContext.run(
       {
