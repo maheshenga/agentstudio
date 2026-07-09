@@ -3,12 +3,16 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'crypto';
 import JSZip from 'jszip';
 import * as path from 'path';
-import { IsNull, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 
 import { normalizeExternalHttpUrl } from '../../../common/utils/safe-url.util';
 import { CreateAppPackageDto, UpdateAppPackageDto } from '../dto/app-platform.dto';
 import { AppPackageEntity, AppPackageStatus, AppPackageType } from '../entities/app-package.entity';
-import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
+import {
+  AppPackageVersionEntity,
+  AppVersionPublishStatus,
+  AppVersionReviewStatus,
+} from '../entities/app-package-version.entity';
 import { AppReviewAction, AppReviewLogEntity } from '../entities/app-review-log.entity';
 import { AppManifestService } from './app-manifest.service';
 import { AppPackageStorageService } from './app-package-storage.service';
@@ -17,6 +21,13 @@ export interface AppPlatformListQuery {
   keyword?: string;
   type?: AppPackageType;
   status?: AppPackageStatus;
+}
+
+export interface AppReviewQueueQuery {
+  keyword?: string;
+  type?: AppPackageType;
+  review_status?: AppVersionReviewStatus;
+  publish_status?: AppVersionPublishStatus;
 }
 
 @Injectable()
@@ -46,6 +57,38 @@ export class AppPlatformService {
         );
       })
       .map((app) => this.toResponse(app));
+  }
+
+  async listReviewQueue(query: AppReviewQueueQuery = {}) {
+    const versions = await this.versionRepo.find({ where: { deleteTime: IsNull() }, order: { id: 'DESC' } });
+    const appIds = [...new Set(versions.map((version) => Number(version.appId)).filter(Boolean))];
+    if (!appIds.length) return [];
+
+    const apps = await this.appRepo.find({ where: { id: In(appIds), deleteTime: IsNull() } as any });
+    const appById = new Map(apps.map((app) => [Number(app.id), app]));
+    const keyword = String(query.keyword || '').trim().toLowerCase();
+
+    return versions
+      .map((version) => {
+        const app = appById.get(Number(version.appId));
+        if (!app) return null;
+        return this.toReviewQueueResponse(app, version);
+      })
+      .filter((record): record is NonNullable<typeof record> => Boolean(record))
+      .filter((record) => {
+        if (query.type && record.app_type !== query.type) return false;
+        if (query.review_status && record.review_status !== query.review_status) return false;
+        if (query.publish_status && record.publish_status !== query.publish_status) return false;
+        if (!keyword) return true;
+        return [
+          record.app_code,
+          record.app_name,
+          record.category,
+          record.developer_name,
+          record.version,
+          record.review_message,
+        ].some((value) => String(value || '').toLowerCase().includes(keyword));
+      });
   }
 
   async createApp(dto: CreateAppPackageDto, operatorId?: number) {
@@ -478,6 +521,18 @@ export class AppPlatformService {
       review_time: version.reviewTime,
       create_time: version.createTime,
       update_time: version.updateTime,
+    };
+  }
+
+  private toReviewQueueResponse(app: AppPackageEntity, version: AppPackageVersionEntity) {
+    return {
+      ...this.toVersionResponse(version, app.code, app.entryUrl),
+      app_code: app.code,
+      app_name: app.name,
+      app_type: app.type,
+      app_status: app.status,
+      category: app.category || '',
+      developer_name: app.developerName || '',
     };
   }
 

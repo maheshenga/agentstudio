@@ -2,6 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
 
 import type { AppPackageStatus, AppPackageType, AppPackageVisibility } from '../entities/app-package.entity';
+import type { AppVersionPublishStatus, AppVersionReviewStatus } from '../entities/app-package-version.entity';
 
 export const APP_PACKAGE_TYPES: AppPackageType[] = ['internal', 'static', 'iframe'];
 export const APP_PACKAGE_STATUSES: AppPackageStatus[] = [
@@ -14,6 +15,13 @@ export const APP_PACKAGE_STATUSES: AppPackageStatus[] = [
   'archived',
 ];
 export const APP_PACKAGE_VISIBILITIES: AppPackageVisibility[] = ['platform', 'tenant', 'marketplace', 'private'];
+export const APP_VERSION_REVIEW_STATUSES: AppVersionReviewStatus[] = ['pending', 'approved', 'rejected'];
+export const APP_VERSION_PUBLISH_STATUSES: AppVersionPublishStatus[] = [
+  'unpublished',
+  'published',
+  'failed',
+  'unpublished_retired',
+];
 
 export class AppPlatformListQueryDto {
   @ApiProperty({ required: false })
@@ -30,6 +38,28 @@ export class AppPlatformListQueryDto {
   @IsOptional()
   @IsIn(APP_PACKAGE_STATUSES)
   status?: AppPackageStatus;
+}
+
+export class AppReviewQueueQueryDto {
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  keyword?: string;
+
+  @ApiProperty({ required: false, enum: APP_PACKAGE_TYPES })
+  @IsOptional()
+  @IsIn(APP_PACKAGE_TYPES)
+  type?: AppPackageType;
+
+  @ApiProperty({ required: false, enum: APP_VERSION_REVIEW_STATUSES })
+  @IsOptional()
+  @IsIn(APP_VERSION_REVIEW_STATUSES)
+  review_status?: AppVersionReviewStatus;
+
+  @ApiProperty({ required: false, enum: APP_VERSION_PUBLISH_STATUSES })
+  @IsOptional()
+  @IsIn(APP_VERSION_PUBLISH_STATUSES)
+  publish_status?: AppVersionPublishStatus;
 }
 
 export class CreateAppPackageDto {

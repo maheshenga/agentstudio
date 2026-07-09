@@ -498,4 +498,68 @@ describe('AppPlatformService', () => {
     );
     expect(appRepo.save).not.toHaveBeenCalled();
   });
+
+  it('lists review queue records with app and version context', async () => {
+    versionRepo.find.mockResolvedValue([
+      {
+        id: 8,
+        appId: 4,
+        version: '1.0.0',
+        reviewStatus: 'pending',
+        publishStatus: 'unpublished',
+        entryFile: 'dist/index.html',
+        reviewMessage: '',
+      },
+    ]);
+    appRepo.find.mockResolvedValue([
+      {
+        id: 4,
+        code: 'job_board',
+        name: 'Job Board',
+        type: 'static',
+        status: 'pending_review',
+        category: 'Industry',
+        developerName: 'Module Factory',
+        entryUrl: '',
+      },
+    ]);
+
+    await expect(service.listReviewQueue({ review_status: 'pending' })).resolves.toEqual([
+      expect.objectContaining({
+        app_code: 'job_board',
+        app_name: 'Job Board',
+        app_type: 'static',
+        review_status: 'pending',
+        publish_status: 'unpublished',
+        entry_url: '/apps-static/job_board/1.0.0/dist/index.html',
+      }),
+    ]);
+  });
+
+  it('filters review queue records by keyword and app type', async () => {
+    versionRepo.find.mockResolvedValue([
+      {
+        id: 8,
+        appId: 4,
+        version: '1.0.0',
+        reviewStatus: 'pending',
+        publishStatus: 'unpublished',
+        entryFile: 'dist/index.html',
+      },
+      {
+        id: 9,
+        appId: 5,
+        version: '1.0.0',
+        reviewStatus: 'approved',
+        publishStatus: 'published',
+        entryFile: 'dist/index.html',
+      },
+    ]);
+    appRepo.find.mockResolvedValue([
+      { id: 4, code: 'job_board', name: 'Job Board', type: 'static', status: 'pending_review', entryUrl: '' },
+      { id: 5, code: 'crm_iframe', name: 'CRM', type: 'iframe', status: 'published', entryUrl: 'https://crm.example.com' },
+    ]);
+
+    await expect(service.listReviewQueue({ keyword: 'job', type: 'static' })).resolves.toHaveLength(1);
+  });
 });
