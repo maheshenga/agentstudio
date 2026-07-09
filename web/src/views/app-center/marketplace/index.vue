@@ -33,21 +33,36 @@
         </ElTableColumn>
         <ElTableColumn label="Status" width="140">
           <template #default="{ row }">
-            <ElTag :type="row.installed ? 'success' : 'info'" effect="light">
-              {{ row.installed ? 'Installed' : 'Available' }}
+            <ElTag :type="row.installed ? 'success' : row.available ? 'info' : 'warning'" effect="light">
+              {{ row.installed ? 'Installed' : row.available ? 'Available' : 'Unavailable' }}
             </ElTag>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="Access" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span v-if="row.available">{{ availabilityText(row.availability_status) }}</span>
+            <span v-else>{{ row.availability_reason || availabilityText(row.availability_status) }}</span>
           </template>
         </ElTableColumn>
         <ElTableColumn prop="summary" label="Summary" min-width="260" show-overflow-tooltip>
           <template #default="{ row }">{{ row.summary || row.description || '-' }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Actions" fixed="right" width="220">
+        <ElTableColumn label="Actions" fixed="right" width="260">
           <template #default="{ row }">
+            <ElButton
+              v-if="row.availability_status === 'missing_plan_module'"
+              link
+              type="warning"
+              @click="openUpgrade"
+            >
+              Upgrade
+            </ElButton>
             <ElButton
               v-if="!row.installed"
               link
               type="primary"
               :icon="ShoppingCart"
+              :disabled="!row.available"
               :loading="operatingCode === row.code"
               @click="installApp(row.code)"
             >
@@ -58,6 +73,7 @@
               link
               type="success"
               :icon="Link"
+              :disabled="!row.available"
               :loading="operatingCode === row.code"
               @click="openApp(row.code)"
             >
@@ -101,6 +117,16 @@
     return type ? map[type] || 'info' : 'info'
   }
 
+  function availabilityText(status?: string) {
+    const map: Record<string, string> = {
+      available: 'Ready',
+      missing_plan_module: 'Requires upgrade',
+      missing_system_module: 'Module disabled for tenant',
+      system_module_unavailable: 'System module unavailable'
+    }
+    return status ? map[status] || status : 'Ready'
+  }
+
   async function loadApps() {
     loading.value = true
     loadError.value = ''
@@ -128,6 +154,10 @@
 
   function openApp(code: string) {
     router.push({ path: '/app-center/open', query: { code } })
+  }
+
+  function openUpgrade() {
+    router.push('/tenant-saas/plan')
   }
 
   onMounted(() => {

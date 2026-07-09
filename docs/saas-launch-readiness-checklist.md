@@ -253,6 +253,8 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 4. Open an installed internal app and confirm it redirects to the configured internal route.
 5. Open an installed static or iframe app and confirm `/#/app-center/open?code=<app_code>` renders an iframe runner.
 6. Confirm uploaded static apps run in a sandboxed iframe without `allow-same-origin`.
+7. Confirm an app bound to a missing SaaS module shows Requires upgrade and cannot be installed.
+8. Confirm an installed app bound to a disabled system module cannot be opened and shows Tenant has not enabled this module.
 
 ## Acceptance Criteria
 

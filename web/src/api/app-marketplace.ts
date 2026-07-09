@@ -11,6 +11,11 @@ export type AppPackageStatus =
   | 'archived'
 export type AppPackageVisibility = 'platform' | 'tenant' | 'marketplace' | 'private'
 export type AppOpenMode = 'internal_route' | 'iframe'
+export type AppAvailabilityStatus =
+  | 'available'
+  | 'missing_plan_module'
+  | 'missing_system_module'
+  | 'system_module_unavailable'
 
 export interface AppPackageRecord {
   id: number
@@ -29,6 +34,11 @@ export interface AppPackageRecord {
   entry_url?: string
   system_module_code?: string
   saas_module_code?: string
+  available?: boolean
+  availability_status?: AppAvailabilityStatus
+  availability_reason?: string
+  required_saas_module_code?: string
+  required_system_module_code?: string
   sort?: number
   remark?: string
   create_time?: string | Date | null

@@ -30,7 +30,17 @@
         </ElTableColumn>
         <ElTableColumn label="Status" width="120">
           <template #default="{ row }">
-            <ElTag :type="row.enabled ? 'success' : 'info'" effect="light">{{ row.enabled ? 'Enabled' : 'Disabled' }}</ElTag>
+            <ElTag :type="row.enabled && row.app?.available !== false ? 'success' : 'info'" effect="light">
+              {{ row.enabled && row.app?.available !== false ? 'Enabled' : 'Disabled' }}
+            </ElTag>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="Access" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span v-if="row.app?.available === false">
+              {{ row.app?.availability_reason || availabilityText(row.app?.availability_status) }}
+            </span>
+            <span v-else>{{ availabilityText(row.app?.availability_status) }}</span>
           </template>
         </ElTableColumn>
         <ElTableColumn label="Source" width="130">
@@ -48,7 +58,7 @@
               link
               type="primary"
               :icon="Link"
-              :disabled="!row.enabled || !row.app?.code"
+              :disabled="isOpenDisabled(row)"
               @click="openApp(row.app?.code)"
             >
               Open
@@ -113,6 +123,20 @@
   function sourceText(source?: string) {
     const map: Record<string, string> = { marketplace: 'Marketplace', plan: 'Plan', platform: 'Platform', manual: 'Manual' }
     return source ? map[source] || source : '-'
+  }
+
+  function availabilityText(status?: string) {
+    const map: Record<string, string> = {
+      available: 'Ready',
+      missing_plan_module: 'Requires upgrade',
+      missing_system_module: 'Module disabled for tenant',
+      system_module_unavailable: 'System module unavailable'
+    }
+    return status ? map[status] || status : 'Ready'
+  }
+
+  function isOpenDisabled(row: TenantAppInstallRecord) {
+    return row.app?.available === false || !row.enabled || !row.app?.code
   }
 
   function formatDateTime(value: unknown) {

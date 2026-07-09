@@ -47,7 +47,12 @@ for (const token of [
   '/api/app-tenant/installed',
   '/api/app-tenant/apps/${code}/install',
   '/api/app-tenant/apps/${code}/open',
-  'multipart/form-data'
+  'multipart/form-data',
+  'available',
+  'availability_status',
+  'availability_reason',
+  'required_saas_module_code',
+  'required_system_module_code'
 ]) {
   assertIncludes(apiSource, token, 'app marketplace API')
 }
@@ -72,12 +77,28 @@ for (const token of [
 }
 
 const marketplacePage = readFile('web/src/views/app-center/marketplace/index.vue')
-for (const token of ['fetchTenantAppMarketplace', 'installTenantApp', '/app-center/open', 'ElTable']) {
+for (const token of [
+  'fetchTenantAppMarketplace',
+  'installTenantApp',
+  '/app-center/open',
+  'ElTable',
+  'availability_reason',
+  ':disabled="!row.available"',
+  'Upgrade'
+]) {
   assertIncludes(marketplacePage, token, 'tenant marketplace page')
 }
 
 const installedPage = readFile('web/src/views/app-center/installed/index.vue')
-for (const token of ['fetchTenantInstalledApps', 'uninstallTenantApp', '/app-center/open', 'row.app?.name']) {
+for (const token of [
+  'fetchTenantInstalledApps',
+  'uninstallTenantApp',
+  '/app-center/open',
+  'row.app?.name',
+  'availability_reason',
+  ':disabled="isOpenDisabled(row)"',
+  'row.app?.available === false'
+]) {
   assertIncludes(installedPage, token, 'tenant installed page')
 }
 
