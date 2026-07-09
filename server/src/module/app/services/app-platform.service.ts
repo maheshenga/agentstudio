@@ -1,11 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { createHash } from 'crypto';
+import JSZip from 'jszip';
+import * as path from 'path';
 import { IsNull, Repository } from 'typeorm';
 
 import { CreateAppPackageDto, UpdateAppPackageDto } from '../dto/app-platform.dto';
 import { AppPackageEntity, AppPackageStatus, AppPackageType } from '../entities/app-package.entity';
 import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
 import { AppReviewAction, AppReviewLogEntity } from '../entities/app-review-log.entity';
+import { AppManifestService } from './app-manifest.service';
 import { AppPackageStorageService } from './app-package-storage.service';
 
 export interface AppPlatformListQuery {
@@ -24,6 +28,7 @@ export class AppPlatformService {
     @InjectRepository(AppReviewLogEntity)
     private readonly reviewLogRepo: Repository<AppReviewLogEntity>,
     private readonly storage: AppPackageStorageService,
+    private readonly manifestService: AppManifestService,
   ) {}
 
   async listApps(query: AppPlatformListQuery = {}) {
@@ -116,6 +121,76 @@ export class AppPlatformService {
         create_time: version.createTime,
       })),
     };
+  }
+
+  async uploadStaticVersion(code: string, file: Express.Multer.File, operatorId?: number) {
+    const app = await this.findApp(code);
+    if (app.type !== 'static') {
+      throw new BadRequestException('Only static apps can upload packages');
+    }
+    if (!file?.buffer || !Buffer.isBuffer(file.buffer)) {
+      throw new BadRequestException('App package file is required');
+    }
+
+    const zip = await this.loadZip(file.buffer);
+    const zipFiles = Object.values(zip.files).filter((zipFile) => !zipFile.dir);
+    const entries = zipFiles.map((zipFile) => this.getZipEntryName(zipFile));
+    const manifestFile = zipFiles.find((zipFile) => this.normalizeZipEntryName(this.getZipEntryName(zipFile)) === 'manifest.json');
+    if (!manifestFile) {
+      throw new BadRequestException('App manifest not found');
+    }
+
+    const manifestPayload = await this.readManifestJson(manifestFile);
+    const manifest = this.manifestService.validateStaticManifest({
+      manifest: manifestPayload,
+      entries,
+    });
+    if (manifest.code !== code) {
+      throw new BadRequestException('Manifest code does not match app code');
+    }
+
+    const existingVersion = await this.versionRepo.findOne({
+      where: { appId: app.id, version: manifest.version },
+      withDeleted: true,
+    } as any);
+    if (existingVersion) {
+      throw new BadRequestException(`App version ${manifest.version} already exists`);
+    }
+
+    const extracted = await this.storage.extractStaticPackage({
+      appCode: code,
+      version: manifest.version,
+      zipBuffer: file.buffer,
+    });
+    const versionEntity = this.versionRepo.create({
+      appId: app.id,
+      version: manifest.version,
+      manifest: manifest as unknown as Record<string, unknown>,
+      packagePath: extracted.packagePath,
+      publishPath: '',
+      entryFile: manifest.entry,
+      fileHash: createHash('sha256').update(file.buffer).digest('hex'),
+      fileSize: file.size || file.buffer.length,
+      reviewStatus: 'pending',
+      publishStatus: 'unpublished',
+      reviewMessage: '',
+    } as Partial<AppPackageVersionEntity>) as AppPackageVersionEntity;
+    const savedVersion = await this.versionRepo.save(versionEntity);
+
+    app.name = manifest.name || app.name;
+    app.category = manifest.category || app.category;
+    app.icon = manifest.icon || app.icon;
+    app.summary = manifest.summary || app.summary;
+    app.description = manifest.description || app.description;
+    app.status = 'pending_review';
+    app.entryMode = 'static';
+    await this.appRepo.save(app);
+    await this.recordAppEvent(app.id, savedVersion.id, 'submit', `Uploaded version ${manifest.version} for review`, operatorId, {
+      fileHash: savedVersion.fileHash,
+      fileSize: savedVersion.fileSize,
+    });
+
+    return this.toVersionResponse(savedVersion);
   }
 
   async submitVersion(code: string, version: string, operatorId?: number) {
@@ -224,6 +299,35 @@ export class AppPlatformService {
       throw new NotFoundException(`App version ${version} not found`);
     }
     return appVersion;
+  }
+
+  private async loadZip(buffer: Buffer) {
+    try {
+      return await JSZip.loadAsync(buffer);
+    } catch {
+      throw new BadRequestException('Invalid app package zip');
+    }
+  }
+
+  private async readManifestJson(zipFile: JSZip.JSZipObject) {
+    try {
+      return JSON.parse(await zipFile.async('string')) as Record<string, unknown>;
+    } catch {
+      throw new BadRequestException('Invalid app manifest json');
+    }
+  }
+
+  private normalizeZipEntryName(value: string) {
+    const normalized = String(value || '').replace(/\\/g, '/').replace(/^\/+/, '');
+    const resolved = path.posix.normalize(normalized);
+    if (!resolved || resolved === '.' || resolved.startsWith('../') || resolved.includes('/../') || path.posix.isAbsolute(resolved)) {
+      throw new BadRequestException('Invalid app entry');
+    }
+    return resolved;
+  }
+
+  private getZipEntryName(zipFile: JSZip.JSZipObject) {
+    return String((zipFile as any).unsafeOriginalName || zipFile.name || '');
   }
 
   private async recordAppEvent(

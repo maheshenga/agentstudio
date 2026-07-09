@@ -2,6 +2,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import JSZip from 'jszip';
+
 import { AppPackageStorageService } from './app-package-storage.service';
 
 describe('AppPackageStorageService', () => {
@@ -64,6 +66,27 @@ describe('AppPackageStorageService', () => {
     });
     expect(fs.readFileSync(path.join(publicRoot, 'job_board', '1.0.0', 'dist', 'index.html'), 'utf8')).toBe(
       '<html>ok</html>',
+    );
+  });
+
+  it('extracts an uploaded static app package under the package root', async () => {
+    const zip = new JSZip();
+    zip.file('manifest.json', '{"code":"job_board","version":"1.0.0"}');
+    zip.file('dist/index.html', '<html>job board</html>');
+    zip.file('dist/assets/app.js', 'console.log("ok")');
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+    const result = await service.extractStaticPackage({
+      appCode: 'job_board',
+      version: '1.0.0',
+      zipBuffer: buffer,
+    });
+
+    expect(result).toEqual({
+      packagePath: path.join(packageRoot, 'job_board', '1.0.0'),
+    });
+    expect(fs.readFileSync(path.join(packageRoot, 'job_board', '1.0.0', 'dist', 'index.html'), 'utf8')).toBe(
+      '<html>job board</html>',
     );
   });
 

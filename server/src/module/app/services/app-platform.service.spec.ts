@@ -1,10 +1,12 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import JSZip from 'jszip';
 
 import { AppPackageEntity } from '../entities/app-package.entity';
 import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
 import { AppReviewLogEntity } from '../entities/app-review-log.entity';
+import { AppManifestService } from './app-manifest.service';
 import { AppPackageStorageService } from './app-package-storage.service';
 import { AppPlatformService } from './app-platform.service';
 
@@ -18,6 +20,7 @@ describe('AppPlatformService', () => {
     save: jest.fn(),
   };
   const versionRepo = {
+    create: jest.fn(),
     find: jest.fn(),
     findOne: jest.fn(),
     save: jest.fn(),
@@ -27,7 +30,11 @@ describe('AppPlatformService', () => {
     save: jest.fn(),
   };
   const storageService = {
+    extractStaticPackage: jest.fn(),
     publishVersion: jest.fn(),
+  };
+  const manifestService = {
+    validateStaticManifest: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -45,6 +52,7 @@ describe('AppPlatformService', () => {
         { provide: getRepositoryToken(AppPackageVersionEntity), useValue: versionRepo },
         { provide: getRepositoryToken(AppReviewLogEntity), useValue: reviewLogRepo },
         { provide: AppPackageStorageService, useValue: storageService },
+        { provide: AppManifestService, useValue: manifestService },
       ],
     }).compile();
 
@@ -198,6 +206,99 @@ describe('AppPlatformService', () => {
         versionId: 8,
         action: 'approve',
         message: 'Looks safe',
+        operatorId: 66,
+      }),
+    );
+  });
+
+  it('uploads a static app package as a pending review version', async () => {
+    const zip = new JSZip();
+    zip.file(
+      'manifest.json',
+      JSON.stringify({
+        code: 'job_board',
+        name: 'Job Board',
+        version: '1.0.0',
+        type: 'static',
+        entry: 'dist/index.html',
+      }),
+    );
+    zip.file('dist/index.html', '<html>job board</html>');
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+    appRepo.findOne.mockResolvedValueOnce({
+      id: 4,
+      code: 'job_board',
+      name: 'Job Board',
+      type: 'static',
+      status: 'draft',
+      entryMode: 'static',
+      entryUrl: '',
+    });
+    versionRepo.findOne.mockResolvedValue(null);
+    versionRepo.create.mockImplementation((value) => ({ ...value }));
+    versionRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 12, ...value }));
+    manifestService.validateStaticManifest.mockReturnValue({
+      code: 'job_board',
+      name: 'Job Board',
+      version: '1.0.0',
+      type: 'static',
+      entry: 'dist/index.html',
+      category: 'Industry',
+      summary: 'Hiring board',
+      description: 'Recruiting app',
+      icon: 'ri:briefcase-line',
+      tenant_scoped: true,
+      permissions: [],
+    });
+    storageService.extractStaticPackage.mockResolvedValue({
+      packagePath: '/safe/packages/job_board/1.0.0',
+    });
+
+    await expect(
+      service.uploadStaticVersion(
+        'job_board',
+        {
+          originalname: 'job-board.zip',
+          mimetype: 'application/zip',
+          size: buffer.length,
+          buffer,
+        } as Express.Multer.File,
+        66,
+      ),
+    ).resolves.toMatchObject({
+      version: '1.0.0',
+      review_status: 'pending',
+      publish_status: 'unpublished',
+      package_path: '/safe/packages/job_board/1.0.0',
+      entry_file: 'dist/index.html',
+      file_size: buffer.length,
+    });
+
+    expect(versionRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 4,
+        version: '1.0.0',
+        packagePath: '/safe/packages/job_board/1.0.0',
+        entryFile: 'dist/index.html',
+        reviewStatus: 'pending',
+        publishStatus: 'unpublished',
+      }),
+    );
+    expect(appRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 4,
+        status: 'pending_review',
+        name: 'Job Board',
+        category: 'Industry',
+        summary: 'Hiring board',
+      }),
+    );
+    expect(reviewLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 4,
+        versionId: 12,
+        action: 'submit',
         operatorId: 66,
       }),
     );

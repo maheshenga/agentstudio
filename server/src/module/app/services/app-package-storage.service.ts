@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
+import JSZip from 'jszip';
 
 export interface PublishAppVersionInput {
   appCode: string;
@@ -13,6 +14,16 @@ export interface PublishAppVersionInput {
 export interface PublishAppVersionResult {
   publishPath: string;
   entryUrl: string;
+}
+
+export interface ExtractStaticPackageInput {
+  appCode: string;
+  version: string;
+  zipBuffer: Buffer;
+}
+
+export interface ExtractStaticPackageResult {
+  packagePath: string;
 }
 
 @Injectable()
@@ -40,6 +51,38 @@ export class AppPackageStorageService {
 
   resolvePublicPath(...segments: string[]) {
     return this.resolveInside(this.getPublicRoot(), 'Invalid app public path', ...segments);
+  }
+
+  async extractStaticPackage(input: ExtractStaticPackageInput): Promise<ExtractStaticPackageResult> {
+    const appCode = this.safeSegment(input.appCode, 'Invalid app code');
+    const version = this.safeVersion(input.version);
+    if (!Buffer.isBuffer(input.zipBuffer) || input.zipBuffer.length === 0) {
+      throw new BadRequestException('App package file is required');
+    }
+
+    let zip: JSZip;
+    try {
+      zip = await JSZip.loadAsync(input.zipBuffer);
+    } catch {
+      throw new BadRequestException('Invalid app package zip');
+    }
+
+    const packagePath = this.resolvePackagePath(appCode, version);
+    fs.rmSync(packagePath, { recursive: true, force: true });
+    fs.mkdirSync(packagePath, { recursive: true });
+
+    for (const zipFile of Object.values(zip.files)) {
+      if (zipFile.dir) continue;
+      const entryName = this.normalizeRelativeFile(this.getZipEntryName(zipFile));
+      const targetPath = path.resolve(packagePath, ...entryName.split('/'));
+      if (!this.isPathInside(targetPath, packagePath)) {
+        throw new BadRequestException('Invalid app package path');
+      }
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+      fs.writeFileSync(targetPath, await zipFile.async('nodebuffer'));
+    }
+
+    return { packagePath };
   }
 
   async publishVersion(input: PublishAppVersionInput): Promise<PublishAppVersionResult> {
@@ -110,5 +153,9 @@ export class AppPackageStorageService {
       throw new BadRequestException('Invalid app entry');
     }
     return resolved;
+  }
+
+  private getZipEntryName(zipFile: JSZip.JSZipObject) {
+    return String((zipFile as any).unsafeOriginalName || zipFile.name || '');
   }
 }

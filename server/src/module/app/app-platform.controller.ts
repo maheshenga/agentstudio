@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -66,6 +67,16 @@ export class AppPlatformController {
   submitVersion(@Param('code') code: string, @Param('version') version: string, @User() user: UserDto) {
     return this.runOutsideTenant(user, () =>
       this.appPlatformService.submitVersion(code, version, user?.userId).then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Post(':code/versions/upload')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({ summary: 'Upload static app version package' })
+  @RequirePermission('app:platform:upload')
+  uploadVersion(@Param('code') code: string, @UploadedFile() file: Express.Multer.File, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () =>
+      this.appPlatformService.uploadStaticVersion(code, file, user?.userId).then((data) => ResultData.ok(data)),
     );
   }
 
