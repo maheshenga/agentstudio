@@ -43,6 +43,8 @@ for (const token of [
   '/api/app-platform/apps/${code}/versions/upload',
   '/api/app-platform/apps/${code}/versions/${version}/approve',
   '/api/app-platform/apps/${code}/versions/${version}/publish',
+  '/api/app-platform/apps/${code}/versions/${version}/unpublish',
+  '/api/app-platform/apps/${code}/versions/${version}/rollback',
   '/api/app-tenant/marketplace',
   '/api/app-tenant/installed',
   '/api/app-tenant/apps/${code}/install',
@@ -52,7 +54,11 @@ for (const token of [
   'availability_status',
   'availability_reason',
   'required_saas_module_code',
-  'required_system_module_code'
+  'required_system_module_code',
+  'unpublishPlatformAppVersion',
+  'rollbackPlatformAppVersion',
+  'is_active',
+  'entry_url'
 ]) {
   assertIncludes(apiSource, token, 'app marketplace API')
 }
@@ -68,6 +74,13 @@ for (const token of [
   'fetchSystemModules',
   'saasModuleOptions',
   'systemModuleOptions',
+  'unpublishPlatformAppVersion',
+  'rollbackPlatformAppVersion',
+  'versionGovernance',
+  'Rollback',
+  'Unpublish',
+  'is_active',
+  'entry_url',
   'ElOption',
   'ElTable',
   'ElDialog',

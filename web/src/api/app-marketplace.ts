@@ -53,6 +53,8 @@ export interface AppPackageVersionRecord {
   package_path?: string
   publish_path?: string
   entry_file?: string
+  entry_url?: string
+  is_active?: boolean
   file_hash?: string
   file_size?: number
   review_status: 'pending' | 'approved' | 'rejected'
@@ -165,6 +167,20 @@ export function rejectPlatformAppVersion(code: string, version: string, message?
 
 export function publishPlatformAppVersion(code: string, version: string) {
   return request.post<AppPackageVersionRecord>({ url: `/api/app-platform/apps/${code}/versions/${version}/publish` })
+}
+
+export function unpublishPlatformAppVersion(code: string, version: string, message?: string) {
+  return request.post<AppPackageVersionRecord>({
+    url: `/api/app-platform/apps/${code}/versions/${version}/unpublish`,
+    data: { message }
+  })
+}
+
+export function rollbackPlatformAppVersion(code: string, version: string, message?: string) {
+  return request.post<AppPackageVersionRecord>({
+    url: `/api/app-platform/apps/${code}/versions/${version}/rollback`,
+    data: { message }
+  })
 }
 
 export function fetchTenantAppMarketplace() {

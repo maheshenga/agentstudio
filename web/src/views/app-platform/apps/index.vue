@@ -185,7 +185,7 @@
       </template>
     </ElDialog>
 
-    <ElDrawer v-model="detailVisible" title="App Versions" size="720px">
+    <ElDrawer v-model="detailVisible" title="App Versions" size="860px">
       <div v-if="selectedDetail" class="app-platform-page__detail">
         <div class="app-platform-page__detail-header">
           <div>
@@ -204,7 +204,14 @@
         />
 
         <ElTable :data="selectedDetail.versions" border>
-          <ElTableColumn prop="version" label="Version" width="120" />
+          <ElTableColumn label="Version" width="140">
+            <template #default="{ row }">
+              <div class="app-platform-page__version">
+                <span>{{ row.version }}</span>
+                <ElTag v-if="row.is_active" size="small" type="success" effect="light">Active</ElTag>
+              </div>
+            </template>
+          </ElTableColumn>
           <ElTableColumn label="Review" width="120">
             <template #default="{ row }">
               <ElTag :type="reviewTagType(row.review_status)" effect="light">{{ row.review_status }}</ElTag>
@@ -216,7 +223,11 @@
             </template>
           </ElTableColumn>
           <ElTableColumn prop="entry_file" label="Entry" min-width="180" show-overflow-tooltip />
-          <ElTableColumn label="Actions" fixed="right" width="220">
+          <ElTableColumn prop="entry_url" label="Runtime URL" min-width="220" show-overflow-tooltip />
+          <ElTableColumn prop="review_message" label="Message" min-width="160" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.review_message || '-' }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="Actions" fixed="right" width="360">
             <template #default="{ row }">
               <ElButton
                 link
@@ -245,6 +256,24 @@
               >
                 Publish
               </ElButton>
+              <ElButton
+                link
+                type="warning"
+                :loading="versionGovernanceLoading === `rollback:${row.version}`"
+                :disabled="row.review_status !== 'approved' || !row.publish_path || row.is_active"
+                @click="versionGovernance(row.version, 'rollback')"
+              >
+                Rollback
+              </ElButton>
+              <ElButton
+                link
+                type="danger"
+                :loading="versionGovernanceLoading === `unpublish:${row.version}`"
+                :disabled="row.publish_status !== 'published'"
+                @click="versionGovernance(row.version, 'unpublish')"
+              >
+                Unpublish
+              </ElButton>
             </template>
           </ElTableColumn>
           <template #empty>
@@ -267,6 +296,8 @@
     fetchPlatformApps,
     publishPlatformAppVersion,
     rejectPlatformAppVersion,
+    rollbackPlatformAppVersion,
+    unpublishPlatformAppVersion,
     updatePlatformApp,
     updatePlatformAppStatus,
     uploadPlatformStaticAppVersion,
@@ -291,6 +322,7 @@
   const editingCode = ref('')
   const uploadingCode = ref('')
   const detailLoadingCode = ref('')
+  const versionGovernanceLoading = ref('')
   const selectedDetail = ref<AppPackageDetailRecord | null>(null)
   const saasModuleOptions = ref<SaasModuleRecord[]>([])
   const systemModuleOptions = ref<SystemModuleRecord[]>([])
@@ -573,6 +605,30 @@
     await loadApps()
   }
 
+  async function versionGovernance(version: string, action: 'rollback' | 'unpublish') {
+    if (!selectedDetail.value) return
+    const actionText = action === 'rollback' ? 'Rollback' : 'Unpublish'
+    const { value } = await ElMessageBox.prompt(`Reason for ${actionText.toLowerCase()} ${version}`, actionText, {
+      confirmButtonText: actionText,
+      cancelButtonText: 'Cancel',
+      inputPlaceholder: action === 'rollback' ? 'Restore stable version' : 'Retire unsafe or obsolete version',
+      inputValue: action === 'rollback' ? 'Restore stable version' : 'Retire version'
+    })
+    versionGovernanceLoading.value = `${action}:${version}`
+    try {
+      if (action === 'rollback') {
+        await rollbackPlatformAppVersion(selectedDetail.value.code, version, String(value || ''))
+      } else {
+        await unpublishPlatformAppVersion(selectedDetail.value.code, version, String(value || ''))
+      }
+      ElMessage.success(`${actionText} completed`)
+      await refreshSelectedDetail()
+      await loadApps()
+    } finally {
+      versionGovernanceLoading.value = ''
+    }
+  }
+
   async function toggleStatus(row: AppPackageRecord) {
     const nextStatus: AppPackageStatus = row.status === 'disabled' ? 'published' : 'disabled'
     await ElMessageBox.confirm(`Change ${row.name} to ${statusText(nextStatus)}?`, 'Update status', {
@@ -677,6 +733,13 @@
     margin: 4px 0 0;
     color: var(--el-text-color-secondary);
     font-size: 13px;
+  }
+
+  .app-platform-page__version {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
   }
 
   :deep(.el-upload) {

@@ -244,7 +244,7 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 8. Open `/#/saas-platform/resource-pack-orders` and confirm resource-pack order operations render.
 9. Open `/#/saas-platform/payment-config` and confirm Alipay config status and edit form render.
 10. Open or call `GET /api/saas/platform/runtime-health` and confirm dependencies, required env keys, payment config, and operational switches render without exposing secret values.
-11. Open `/#/app-platform/apps` and confirm platform admins can create internal/iframe/static apps, upload static zip packages, review pending versions, publish approved versions, and disable apps.
+11. Open `/#/app-platform/apps` and confirm platform admins can create internal/iframe/static apps, upload static zip packages, review pending versions, publish approved versions, unpublish unsafe versions, rollback to a previous approved version, and disable apps.
 12. Open `/#/app-platform/factory` and confirm platform admins can use curated templates, create static HTML/CSS modules, bind optional SaaS/system modules, preview content, and publish a generated static marketplace app version.
 
 ## Manual App Center Flow
@@ -257,6 +257,7 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 6. Confirm uploaded static apps run in a sandboxed iframe without `allow-same-origin`.
 7. Confirm an app bound to a missing SaaS module shows Requires upgrade and cannot be installed.
 8. Confirm an installed app bound to a disabled system module cannot be opened and shows Tenant has not enabled this module.
+9. Confirm a platform rollback makes the tenant app runner open the restored static version instead of a retired installed version.
 
 ## Acceptance Criteria
 
@@ -267,6 +268,7 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 - Tenant modules flow uses the system-module registry endpoint `GET /api/tenant/modules`.
 - App marketplace flow uses `GET /api/app-tenant/marketplace`, `POST /api/app-tenant/apps/:code/install`, and `GET /api/app-tenant/apps/:code/open`.
 - Static app packages are reviewed before publishing and served from `/apps-static/`.
+- Platform app versions can be unpublished or rolled back with audit reasons.
 - Module factory flow uses `GET /api/app-platform/factory/modules`, creates static HTML/CSS modules only, and publishes generated apps through the existing marketplace runtime.
 - Module factory template flow uses `GET /api/app-platform/factory/templates`, applies curated static templates into drafts, and never executes template code on the backend.
 - Uploaded apps are never executed as backend code in P0.
