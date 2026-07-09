@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 
 import { AppOpenLogEntity } from '../entities/app-open-log.entity';
 import { AppPackageEntity } from '../entities/app-package.entity';
@@ -48,7 +48,18 @@ export class AppTenantService {
 
   async listInstalled(tenantId: number) {
     const installs = await this.installRepo.find({ where: { tenantId, deleteTime: IsNull() }, order: { id: 'DESC' } });
-    return installs.map((install) => this.toInstallResponse(install));
+    const appIds = [...new Set(installs.map((install) => Number(install.appId)).filter(Boolean))];
+    const apps = appIds.length
+      ? await this.appRepo.find({
+          where: { id: In(appIds), deleteTime: IsNull() },
+        } as any)
+      : [];
+    const appById = new Map(apps.map((app) => [Number(app.id), app]));
+
+    return installs.map((install) => ({
+      ...this.toInstallResponse(install),
+      app: appById.has(Number(install.appId)) ? this.toAppResponse(appById.get(Number(install.appId))!) : null,
+    }));
   }
 
   async installApp(tenantId: number, code: string, userId?: number) {

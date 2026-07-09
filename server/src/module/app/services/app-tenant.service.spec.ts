@@ -95,6 +95,45 @@ describe('AppTenantService', () => {
     expect(installRepo.save).not.toHaveBeenCalled();
   });
 
+  it('lists installed apps with app metadata for tenant UI', async () => {
+    installRepo.find.mockResolvedValue([
+      {
+        id: 6,
+        tenantId: 23,
+        appId: 1,
+        versionId: 9,
+        enabled: 1,
+        source: 'marketplace',
+        installedBy: 7,
+      },
+    ]);
+    appRepo.find.mockResolvedValue([
+      {
+        id: 1,
+        code: 'job_board',
+        name: 'Job Board',
+        type: 'static',
+        status: 'published',
+        visibility: 'marketplace',
+        entryMode: 'static',
+        entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
+      },
+    ]);
+
+    await expect(service.listInstalled(23)).resolves.toEqual([
+      expect.objectContaining({
+        id: 6,
+        enabled: true,
+        app: expect.objectContaining({
+          code: 'job_board',
+          name: 'Job Board',
+          type: 'static',
+          status: 'published',
+        }),
+      }),
+    ]);
+  });
+
   it('installs a published static app with its published version', async () => {
     appRepo.findOne.mockResolvedValue({
       id: 1,
