@@ -91,6 +91,37 @@ pnpm.cmd run verify:saas-live-e2e
 
 Only enable `SAAS_LIVE_E2E_RUN_PAYMENT=1` against disposable or resettable data because it creates and confirms a real SaaS order through the development confirmation endpoint.
 
+### Optional Live Browser E2E Gate
+
+Run this after `cd web` and `pnpm.cmd build` when a live backend with seeded SaaS data is available. The script opens the built tenant SaaS plan page in Chromium, proxies browser API calls to the live backend, creates an upgrade order through the UI, and verifies the order panel renders.
+
+```powershell
+cd web
+$env:SAAS_LIVE_E2E_BASE_URL = 'http://127.0.0.1:3000'
+$env:SAAS_LIVE_E2E_USERNAME = '<seeded-tenant-owner-username>'
+$env:SAAS_LIVE_E2E_PASSWORD = '<seeded-tenant-owner-password>'
+# Optional: force a known tenant and plan
+$env:SAAS_LIVE_E2E_TENANT_ID = '<tenant-id>'
+$env:SAAS_LIVE_E2E_PLAN_CODE = 'pro'
+$env:SAAS_LIVE_E2E_BILLING_CYCLE = 'monthly'
+pnpm.cmd run verify:saas-live-browser-e2e
+```
+
+Leave `SAAS_LIVE_E2E_WEB_URL` unset to let the script start Vite preview from `dist`. Set `SAAS_LIVE_E2E_WEB_URL` only when an already running frontend should be tested instead.
+
+To also click the local development payment confirmation control, rebuild the frontend with `VITE_ENABLE_DEV_PAYMENT_CONFIRM=true`, then run:
+
+```powershell
+cd web
+$env:SAAS_LIVE_E2E_BASE_URL = 'http://127.0.0.1:3000'
+$env:SAAS_LIVE_E2E_USERNAME = '<seeded-tenant-owner-username>'
+$env:SAAS_LIVE_E2E_PASSWORD = '<seeded-tenant-owner-password>'
+$env:SAAS_LIVE_E2E_RUN_PAYMENT = '1'
+pnpm.cmd run verify:saas-live-browser-e2e
+```
+
+Only run this command against disposable or resettable seeded data. The base browser check creates a SaaS upgrade order; `SAAS_LIVE_E2E_RUN_PAYMENT=1` additionally confirms the order through the development payment endpoint.
+
 ## Environment Contract
 
 Required local/demo backend keys:
@@ -147,4 +178,4 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 
 - Invoice functionality is intentionally excluded.
 - External payment settlement still depends on real Alipay credentials and callback reachability.
-- The automated browser smoke verifies public signup rendering and protected-route login redirects. The optional live backend E2E verifies seeded login and dev payment APIs, but a full seeded browser UI payment E2E remains outside the default repository gate.
+- The automated browser smoke verifies public signup rendering and protected-route login redirects. Seeded browser UI order and development-payment coverage is available through the optional live browser E2E gate, but remains outside the default repository gate because it depends on live seeded data and mutates orders.

@@ -20,7 +20,8 @@
     "clean:dev": "tsx scripts/clean-dev.ts",
     "verify:saas-readiness": "tsx scripts/run-saas-readiness.ts",
     "verify:saas-preview-smoke": "tsx scripts/verify-saas-preview-smoke.ts",
-    "verify:saas-browser-smoke": "tsx scripts/verify-saas-browser-smoke.ts"
+    "verify:saas-browser-smoke": "tsx scripts/verify-saas-browser-smoke.ts",
+    "verify:saas-live-browser-e2e": "tsx scripts/verify-saas-live-browser-e2e.ts"
   },
   "config": {
     "commitizen": {
