@@ -59,6 +59,11 @@ for (const token of [
   'uploadPlatformStaticAppVersion',
   'approvePlatformAppVersion',
   'publishPlatformAppVersion',
+  'fetchPlatformModules',
+  'fetchSystemModules',
+  'saasModuleOptions',
+  'systemModuleOptions',
+  'ElOption',
   'ElTable',
   'ElDialog',
   'ElDrawer'

@@ -140,10 +140,34 @@
           <ElInput v-model="appForm.developer_name" maxlength="100" />
         </ElFormItem>
         <ElFormItem label="SaaS Module">
-          <ElInput v-model="appForm.saas_module_code" maxlength="50" placeholder="Optional entitlement code" />
+          <ElSelect
+            v-model="appForm.saas_module_code"
+            clearable
+            filterable
+            placeholder="Optional entitlement module"
+          >
+            <ElOption
+              v-for="item in saasModuleOptions"
+              :key="item.code"
+              :label="`${item.name} (${item.code})`"
+              :value="item.code"
+            />
+          </ElSelect>
         </ElFormItem>
         <ElFormItem label="System Module">
-          <ElInput v-model="appForm.system_module_code" maxlength="80" placeholder="Optional runtime guard code" />
+          <ElSelect
+            v-model="appForm.system_module_code"
+            clearable
+            filterable
+            placeholder="Optional runtime guard module"
+          >
+            <ElOption
+              v-for="item in systemModuleOptions"
+              :key="item.code"
+              :label="`${item.name} (${item.code})`"
+              :value="item.code"
+            />
+          </ElSelect>
         </ElFormItem>
         <ElFormItem label="Sort">
           <ElInputNumber v-model="appForm.sort" :min="0" :step="10" controls-position="right" />
@@ -253,6 +277,8 @@
     type AppPackageVisibility,
     type SaveAppPackageParams
   } from '@/api/app-marketplace'
+  import { fetchPlatformModules, type SaasModuleRecord } from '@/api/saas'
+  import { fetchSystemModules, type SystemModuleRecord } from '@/api/system-module'
 
   defineOptions({ name: 'AppPlatformAppsPage' })
 
@@ -266,6 +292,8 @@
   const uploadingCode = ref('')
   const detailLoadingCode = ref('')
   const selectedDetail = ref<AppPackageDetailRecord | null>(null)
+  const saasModuleOptions = ref<SaasModuleRecord[]>([])
+  const systemModuleOptions = ref<SystemModuleRecord[]>([])
   const appFormRef = ref<FormInstance>()
   const statusOptions: AppPackageStatus[] = ['draft', 'pending_review', 'approved', 'published', 'rejected', 'disabled', 'archived']
   const filters = reactive<{ keyword: string; type: AppPackageType | ''; status: AppPackageStatus | '' }>({
@@ -408,6 +436,21 @@
     }
   }
 
+  async function loadModuleOptions() {
+    try {
+      const [saasModules, systemModules] = await Promise.all([
+        fetchPlatformModules({ status: 1 }),
+        fetchSystemModules({ status: 'enabled' })
+      ])
+      saasModuleOptions.value = Array.isArray(saasModules) ? saasModules : []
+      systemModuleOptions.value = Array.isArray(systemModules) ? systemModules : []
+    } catch (error) {
+      console.error('[AppPlatformAppsPage] load module options failed:', error)
+      saasModuleOptions.value = []
+      systemModuleOptions.value = []
+    }
+  }
+
   function resetFilters() {
     filters.keyword = ''
     filters.type = ''
@@ -544,6 +587,7 @@
 
   onMounted(() => {
     loadApps()
+    loadModuleOptions()
   })
 </script>
 
