@@ -423,7 +423,7 @@ describe('AppPlatformService', () => {
       'manifest.json',
       JSON.stringify({
         code: 'job_board',
-        name: 'Job Board',
+        name: 'Job Board Next',
         version: '2.0.0',
         type: 'static',
         entry: 'dist/index.html',
@@ -437,6 +437,8 @@ describe('AppPlatformService', () => {
       code: 'job_board',
       name: 'Job Board',
       type: 'static',
+      category: 'Industry',
+      summary: 'Current public summary',
       status: 'published',
       entryMode: 'static',
       entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
@@ -446,10 +448,12 @@ describe('AppPlatformService', () => {
     versionRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 13, ...value }));
     manifestService.validateStaticManifest.mockReturnValue({
       code: 'job_board',
-      name: 'Job Board',
+      name: 'Job Board Next',
       version: '2.0.0',
       type: 'static',
       entry: 'dist/index.html',
+      category: 'Recruiting',
+      summary: 'Unreviewed summary',
       tenant_scoped: true,
       permissions: [],
     });
@@ -470,6 +474,9 @@ describe('AppPlatformService', () => {
 
     expect(appRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({
+        name: 'Job Board',
+        category: 'Industry',
+        summary: 'Current public summary',
         status: 'published',
         entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
       }),
@@ -551,6 +558,19 @@ describe('AppPlatformService', () => {
       publishStatus: 'unpublished',
       packagePath: '/safe/packages/job_board/1.0.0',
       entryFile: 'dist/index.html',
+      manifest: {
+        code: 'job_board',
+        name: 'Job Board Next',
+        version: '1.0.0',
+        type: 'static',
+        entry: 'dist/index.html',
+        category: 'Recruiting',
+        summary: 'Reviewed summary',
+        description: 'Reviewed description',
+        icon: 'ri:briefcase-line',
+        tenant_scoped: true,
+        permissions: [],
+      },
     });
     versionRepo.save.mockImplementation(async (value) => value);
     storageService.publishVersion.mockResolvedValue({
@@ -579,6 +599,9 @@ describe('AppPlatformService', () => {
     expect(appRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({
         id: 4,
+        name: 'Job Board Next',
+        category: 'Recruiting',
+        summary: 'Reviewed summary',
         status: 'published',
         entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
       }),
@@ -643,6 +666,19 @@ describe('AppPlatformService', () => {
       publishStatus: 'unpublished_retired',
       publishPath: '/safe/public/job_board/1.0.0',
       entryFile: 'dist/index.html',
+      manifest: {
+        code: 'job_board',
+        name: 'Job Board Classic',
+        version: '1.0.0',
+        type: 'static',
+        entry: 'dist/index.html',
+        category: 'Industry',
+        summary: 'Stable release',
+        description: 'Stable description',
+        icon: 'ri:briefcase-line',
+        tenant_scoped: true,
+        permissions: [],
+      },
     };
     const currentVersion = {
       id: 9,
@@ -667,6 +703,9 @@ describe('AppPlatformService', () => {
     expect(versionRepo.save).toHaveBeenCalledWith(expect.objectContaining({ id: 8, publishStatus: 'published' }));
     expect(appRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({
+        name: 'Job Board Classic',
+        category: 'Industry',
+        summary: 'Stable release',
         status: 'published',
         entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
       }),

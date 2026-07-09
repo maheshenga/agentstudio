@@ -14,7 +14,7 @@ import {
   AppVersionReviewStatus,
 } from '../entities/app-package-version.entity';
 import { AppReviewAction, AppReviewLogEntity } from '../entities/app-review-log.entity';
-import { AppManifestService } from './app-manifest.service';
+import { AppManifestService, type StaticAppManifest } from './app-manifest.service';
 import { AppPackageStorageService } from './app-package-storage.service';
 
 export interface AppPlatformListQuery {
@@ -222,11 +222,9 @@ export class AppPlatformService {
     } as Partial<AppPackageVersionEntity>) as AppPackageVersionEntity;
     const savedVersion = await this.versionRepo.save(versionEntity);
 
-    app.name = manifest.name || app.name;
-    app.category = manifest.category || app.category;
-    app.icon = manifest.icon || app.icon;
-    app.summary = manifest.summary || app.summary;
-    app.description = manifest.description || app.description;
+    if (app.status !== 'published') {
+      this.applyManifestMetadata(app, manifest);
+    }
     this.updateAppReviewStatus(app, 'pending_review');
     app.entryMode = 'static';
     await this.appRepo.save(app);
@@ -312,6 +310,9 @@ export class AppPlatformService {
     app.status = 'published';
     app.entryUrl = published.entryUrl;
     app.entryMode = 'static';
+    if (appVersion.manifest) {
+      this.applyManifestMetadata(app, appVersion.manifest as unknown as StaticAppManifest);
+    }
 
     const savedVersion = await this.versionRepo.save(appVersion);
     await this.appRepo.save(app);
@@ -370,6 +371,9 @@ export class AppPlatformService {
     app.status = 'published';
     app.entryMode = 'static';
     app.entryUrl = entryUrl;
+    if (appVersion.manifest) {
+      this.applyManifestMetadata(app, appVersion.manifest as unknown as StaticAppManifest);
+    }
     await this.appRepo.save(app);
 
     await this.recordAppEvent(app.id, appVersion.id, 'rollback', message || `Rolled back to version ${version}`, operatorId, {
@@ -413,6 +417,14 @@ export class AppPlatformService {
     if (app.status !== 'published') {
       app.status = status;
     }
+  }
+
+  private applyManifestMetadata(app: AppPackageEntity, manifest: StaticAppManifest) {
+    app.name = manifest.name || app.name;
+    app.category = manifest.category || app.category;
+    app.icon = manifest.icon || app.icon;
+    app.summary = manifest.summary || app.summary;
+    app.description = manifest.description || app.description;
   }
 
   private statusToAction(status: AppPackageStatus): AppReviewAction {
