@@ -2,6 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository } from 'typeorm';
 
+import { SaasModuleService } from '../../saas/services/saas-module.service';
+import { SystemModuleAccessService } from '../../system-module/services/system-module-access.service';
 import { AppOpenLogEntity } from '../entities/app-open-log.entity';
 import { AppPackageEntity } from '../entities/app-package.entity';
 import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
@@ -10,6 +12,20 @@ import { TenantAppInstallEntity } from '../entities/tenant-app-install.entity';
 export interface AppOpenClientInfo {
   ip?: string;
   userAgent?: string;
+}
+
+export type AppAvailabilityStatus =
+  | 'available'
+  | 'missing_plan_module'
+  | 'missing_system_module'
+  | 'system_module_unavailable';
+
+export interface AppAvailability {
+  available: boolean;
+  availability_status: AppAvailabilityStatus;
+  availability_reason: string;
+  required_saas_module_code: string;
+  required_system_module_code: string;
 }
 
 const STATIC_APP_SANDBOX = 'allow-scripts allow-forms allow-popups allow-downloads';
@@ -25,6 +41,8 @@ export class AppTenantService {
     private readonly installRepo: Repository<TenantAppInstallEntity>,
     @InjectRepository(AppOpenLogEntity)
     private readonly openLogRepo: Repository<AppOpenLogEntity>,
+    private readonly saasModuleService: SaasModuleService,
+    private readonly systemModuleAccessService: SystemModuleAccessService,
   ) {}
 
   async listMarketplace(tenantId: number) {
@@ -34,16 +52,19 @@ export class AppTenantService {
     ]);
     const installByAppId = new Map(installs.map((install) => [Number(install.appId), install]));
 
-    return apps
-      .filter((app) => app.status === 'published')
-      .filter((app) => ['marketplace', 'tenant', 'platform'].includes(app.visibility || 'marketplace'))
-      .map((app) => {
+    return Promise.all(
+      apps
+        .filter((app) => app.status === 'published')
+        .filter((app) => ['marketplace', 'tenant', 'platform'].includes(app.visibility || 'marketplace'))
+        .map(async (app) => {
         const install = installByAppId.get(Number(app.id));
         return {
           ...this.toAppResponse(app),
+          ...(await this.getAppAvailability(tenantId, app)),
           installed: Boolean(install && Number(install.enabled) === 1),
         };
-      });
+        }),
+    );
   }
 
   async listInstalled(tenantId: number) {
@@ -56,10 +77,20 @@ export class AppTenantService {
       : [];
     const appById = new Map(apps.map((app) => [Number(app.id), app]));
 
-    return installs.map((install) => ({
-      ...this.toInstallResponse(install),
-      app: appById.has(Number(install.appId)) ? this.toAppResponse(appById.get(Number(install.appId))!) : null,
-    }));
+    return Promise.all(
+      installs.map(async (install) => {
+        const app = appById.get(Number(install.appId));
+        return {
+          ...this.toInstallResponse(install),
+          app: app
+            ? {
+                ...this.toAppResponse(app),
+                ...(await this.getAppAvailability(tenantId, app)),
+              }
+            : null,
+        };
+      }),
+    );
   }
 
   async installApp(tenantId: number, code: string, userId?: number) {
@@ -142,6 +173,58 @@ export class AppTenantService {
       sandbox: app.type === 'internal' ? '' : STATIC_APP_SANDBOX,
       version: version?.version || '',
     };
+  }
+
+  async getAppAvailability(tenantId: number, app: Partial<AppPackageEntity>): Promise<AppAvailability> {
+    const saasModuleCode = app.saasModuleCode || '';
+    const systemModuleCode = app.systemModuleCode || '';
+
+    if (saasModuleCode) {
+      try {
+        await this.saasModuleService.assertTenantModuleEnabled(tenantId, saasModuleCode);
+      } catch (error) {
+        return this.createAvailability(false, 'missing_plan_module', this.getErrorMessage(error), app);
+      }
+    }
+
+    if (systemModuleCode) {
+      const diagnosis = await this.systemModuleAccessService.diagnoseModuleAccess({
+        tenantId,
+        moduleCode: systemModuleCode,
+        requiredSaasModuleCode: saasModuleCode || undefined,
+      });
+      if (!diagnosis.allowed) {
+        const status =
+          diagnosis.status === 'missing_plan_module'
+            ? 'missing_plan_module'
+            : diagnosis.status === 'missing_tenant_module'
+              ? 'missing_system_module'
+              : 'system_module_unavailable';
+        return this.createAvailability(false, status, diagnosis.reason || 'App is not available for this tenant', app);
+      }
+    }
+
+    return this.createAvailability(true, 'available', '', app);
+  }
+
+  private createAvailability(
+    available: boolean,
+    status: AppAvailabilityStatus,
+    reason: string,
+    app: Partial<AppPackageEntity>,
+  ): AppAvailability {
+    return {
+      available,
+      availability_status: status,
+      availability_reason: available ? '' : reason || 'App is not available for this tenant',
+      required_saas_module_code: app.saasModuleCode || '',
+      required_system_module_code: app.systemModuleCode || '',
+    };
+  }
+
+  private getErrorMessage(error: unknown) {
+    if (error instanceof Error && error.message) return error.message;
+    return 'App is not available for this tenant';
   }
 
   private async findApp(code: string) {

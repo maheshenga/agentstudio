@@ -7,6 +7,8 @@ import { AppPackageEntity } from '../entities/app-package.entity';
 import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
 import { TenantAppInstallEntity } from '../entities/tenant-app-install.entity';
 import { AppTenantService } from './app-tenant.service';
+import { SaasModuleService } from '../../saas/services/saas-module.service';
+import { SystemModuleAccessService } from '../../system-module/services/system-module-access.service';
 
 describe('AppTenantService', () => {
   let service: AppTenantService;
@@ -28,6 +30,13 @@ describe('AppTenantService', () => {
     create: jest.fn(),
     save: jest.fn(),
   };
+  const saasModuleService = {
+    assertTenantModuleEnabled: jest.fn(),
+  };
+  const systemModuleAccessService = {
+    diagnoseModuleAccess: jest.fn(),
+    assertModuleAccess: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -35,6 +44,21 @@ describe('AppTenantService', () => {
     installRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 1, ...value }));
     openLogRepo.create.mockImplementation((value) => ({ ...value }));
     openLogRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 1, ...value }));
+    saasModuleService.assertTenantModuleEnabled.mockResolvedValue(true);
+    systemModuleAccessService.diagnoseModuleAccess.mockResolvedValue({
+      allowed: true,
+      status: 'available',
+      reason: 'Module is available',
+      module_code: 'test_module',
+      module_name: 'Test Module',
+      required_saas_module_codes: [],
+      missing_saas_module_codes: [],
+      tenant_saas_module_codes: [],
+      tenant_enabled: true,
+      tenant_entitlement_source: 'platform',
+      suggestions: [],
+    });
+    systemModuleAccessService.assertModuleAccess.mockResolvedValue(true);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -43,6 +67,8 @@ describe('AppTenantService', () => {
         { provide: getRepositoryToken(AppPackageVersionEntity), useValue: versionRepo },
         { provide: getRepositoryToken(TenantAppInstallEntity), useValue: installRepo },
         { provide: getRepositoryToken(AppOpenLogEntity), useValue: openLogRepo },
+        { provide: SaasModuleService, useValue: saasModuleService },
+        { provide: SystemModuleAccessService, useValue: systemModuleAccessService },
       ],
     }).compile();
 
@@ -77,6 +103,76 @@ describe('AppTenantService', () => {
     await expect(service.listMarketplace(23)).resolves.toEqual([
       expect.objectContaining({ code: 'job_board', installed: true }),
       expect.objectContaining({ code: 'supplier_portal', installed: false }),
+    ]);
+  });
+
+  it('marks marketplace apps unavailable when the SaaS plan does not include the required module', async () => {
+    appRepo.find.mockResolvedValue([
+      {
+        id: 7,
+        code: 'job_board',
+        name: 'Job Board',
+        type: 'iframe',
+        status: 'published',
+        visibility: 'marketplace',
+        entryMode: 'iframe',
+        entryUrl: 'https://jobs.example.com',
+        saasModuleCode: 'recruiting',
+      },
+    ]);
+    installRepo.find.mockResolvedValue([]);
+    saasModuleService.assertTenantModuleEnabled.mockRejectedValue(
+      new BadRequestException('Current plan has not enabled this module'),
+    );
+
+    await expect(service.listMarketplace(23)).resolves.toEqual([
+      expect.objectContaining({
+        code: 'job_board',
+        available: false,
+        availability_status: 'missing_plan_module',
+        availability_reason: 'Current plan has not enabled this module',
+        required_saas_module_code: 'recruiting',
+      }),
+    ]);
+  });
+
+  it('marks marketplace apps unavailable when the mapped system module is not enabled for the tenant', async () => {
+    appRepo.find.mockResolvedValue([
+      {
+        id: 8,
+        code: 'crm_portal',
+        name: 'CRM Portal',
+        type: 'iframe',
+        status: 'published',
+        visibility: 'marketplace',
+        entryMode: 'iframe',
+        entryUrl: 'https://crm.example.com',
+        systemModuleCode: 'crm',
+      },
+    ]);
+    installRepo.find.mockResolvedValue([]);
+    systemModuleAccessService.diagnoseModuleAccess.mockResolvedValue({
+      allowed: false,
+      status: 'missing_tenant_module',
+      reason: 'Tenant has not enabled this module',
+      module_code: 'crm',
+      module_name: 'CRM',
+      required_saas_module_codes: [],
+      missing_saas_module_codes: [],
+      tenant_saas_module_codes: [],
+      tenant_enabled: false,
+      tenant_entitlement_source: null,
+      suggestions: [],
+    });
+
+    await expect(service.listMarketplace(23)).resolves.toEqual([
+      expect.objectContaining({
+        code: 'crm_portal',
+        available: false,
+        availability_status: 'missing_system_module',
+        availability_reason: 'Tenant has not enabled this module',
+        required_system_module_code: 'crm',
+      }),
     ]);
   });
 

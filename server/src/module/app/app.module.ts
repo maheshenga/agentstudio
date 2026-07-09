@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { SaasModule } from '../saas/saas.module';
+import { SystemModuleRegistryModule } from '../system-module/system-module.module';
 import { AppPlatformController } from './app-platform.controller';
 import { AppTenantController } from './app-tenant.controller';
 import { AppOpenLogEntity } from './entities/app-open-log.entity';
@@ -15,6 +17,8 @@ import { AppTenantService } from './services/app-tenant.service';
 
 @Module({
   imports: [
+    SaasModule,
+    SystemModuleRegistryModule,
     TypeOrmModule.forFeature([
       AppPackageEntity,
       AppPackageVersionEntity,
