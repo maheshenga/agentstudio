@@ -46,6 +46,7 @@ pnpm.cmd exec tsx scripts/verify-saas-public-origin.ts
 pnpm.cmd exec tsx scripts/verify-saas-readiness-command.ts
 pnpm.cmd run verify:app-marketplace-readiness
 pnpm.cmd run verify:app-factory-readiness
+pnpm.cmd run verify:app-developer-readiness
 pnpm.cmd build
 pnpm.cmd run verify:saas-preview-smoke
 pnpm.cmd run verify:saas-browser-smoke
@@ -260,6 +261,15 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 8. Confirm an installed app bound to a disabled system module cannot be opened and shows Tenant has not enabled this module.
 9. Confirm a platform rollback makes the tenant app runner open the restored static version instead of a retired installed version.
 
+## Manual Developer App Flow
+
+1. Grant an approved creator the `AppDeveloperApps` menu and `app:developer:*` permissions through role management.
+2. Open `/#/app-center/developer` and confirm the creator can create a static app draft and edit draft metadata.
+3. Upload a valid ZIP package and confirm the latest version becomes Pending without changing metadata or availability of an already published version.
+4. Reject the version as a platform reviewer, then confirm the creator sees the review message and can resubmit it.
+5. Request another creator's app code through the developer detail, update, upload, and submit APIs and confirm each foreign app request returns not found.
+6. Confirm the developer page has no approve, reject, publish, rollback, unpublish, disable, archive, module-binding, or visibility controls.
+
 ## Acceptance Criteria
 
 - All automated gates exit with code 0.
@@ -272,6 +282,7 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 - Platform app versions can be unpublished or rolled back with audit reasons.
 - Module factory flow uses `GET /api/app-platform/factory/modules`, creates static HTML/CSS modules only, and publishes generated apps through the existing marketplace runtime.
 - Module factory template flow uses `GET /api/app-platform/factory/templates`, applies curated static templates into drafts, and never executes template code on the backend.
+- Developer app flow uses authenticated ownership checks for every detail and mutation and exposes no platform governance action.
 - Uploaded apps are never executed as backend code in P0.
 - Resource-pack and plan payment paths show whether Alipay is configured before a user attempts payment.
 - Empty, loading, and error states are visible for tenant and platform pages.
