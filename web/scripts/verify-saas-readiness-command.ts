@@ -61,6 +61,13 @@ assert(
 
 const checklist = readFile('../docs/saas-launch-readiness-checklist.md')
 assertIncludes(checklist, 'pnpm.cmd run verify:saas-readiness', 'launch readiness checklist')
+for (const script of expectedScripts) {
+  assertIncludes(
+    checklist,
+    `pnpm.cmd exec tsx scripts/${script}`,
+    'launch readiness checklist'
+  )
+}
 assertIncludes(
   checklist,
   'pnpm.cmd run verify:saas-preview-smoke',

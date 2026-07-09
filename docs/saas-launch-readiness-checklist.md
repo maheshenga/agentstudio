@@ -28,6 +28,7 @@ pnpm.cmd run verify:saas-readiness
 # Expanded frontend gates
 pnpm.cmd exec tsx scripts/verify-saas-launch-flow-readiness.ts
 pnpm.cmd exec tsx scripts/verify-saas-route-contract.ts
+pnpm.cmd exec tsx scripts/verify-saas-doc-route-baseline.ts
 pnpm.cmd exec tsx scripts/verify-saas-ui-state-readiness.ts
 pnpm.cmd exec tsx scripts/verify-saas-tenant-ui-state-readiness.ts
 pnpm.cmd exec tsx scripts/verify-saas-visible-copy-encoding.ts
@@ -39,6 +40,7 @@ pnpm.cmd exec tsx scripts/verify-saas-payment-path-copy.ts
 pnpm.cmd exec tsx scripts/verify-saas-resource-pack-crud.ts
 pnpm.cmd exec tsx scripts/verify-no-legacy-saiadmin-composable.ts
 pnpm.cmd exec tsx scripts/verify-saas-public-brand-surfaces.ts
+pnpm.cmd exec tsx scripts/verify-saas-public-origin.ts
 pnpm.cmd exec tsx scripts/verify-saas-readiness-command.ts
 pnpm.cmd build
 pnpm.cmd run verify:saas-preview-smoke
