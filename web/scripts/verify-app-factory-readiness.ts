@@ -27,6 +27,8 @@ const expectedFiles = [
   'web/src/views/app-platform/factory/index.vue',
   'server/src/module/app/app-factory.controller.ts',
   'server/src/module/app/services/app-factory.service.ts',
+  'server/src/module/app/services/app-factory-template.service.ts',
+  'server/src/migrations/1760000000033-SeedAppFactoryTemplates.ts',
   'server/src/migrations/1760000000031-SeedAppFactoryMenus.ts'
 ]
 
@@ -39,11 +41,15 @@ for (const token of [
   '/api/app-platform/factory/modules',
   '/api/app-platform/factory/modules/${code}',
   '/api/app-platform/factory/modules/${code}/publish',
+  '/api/app-platform/factory/templates',
+  '/api/app-platform/factory/templates/${code}',
   'fetchAppFactoryModules',
   'fetchAppFactoryModule',
   'createAppFactoryModule',
   'updateAppFactoryModule',
   'publishAppFactoryModule',
+  'fetchAppFactoryTemplates',
+  'fetchAppFactoryTemplate',
   'html_content',
   'css_content'
 ]) {
@@ -64,7 +70,11 @@ for (const token of [
   'ElDialog',
   'ElTable',
   'ElMessageBox',
-  'Factory page rejects scripts'
+  'Factory page rejects scripts',
+  'templateDrawerVisible',
+  'applyTemplate',
+  'Use Template',
+  'fetchAppFactoryTemplates'
 ]) {
   assertIncludes(pageSource, token, 'app factory page')
 }
@@ -79,6 +89,17 @@ for (const token of [
   'app:factory:publish'
 ]) {
   assertIncludes(menuMigration, token, 'app factory menu migration')
+}
+
+const templateSeedMigration = readFile('server/src/migrations/1760000000033-SeedAppFactoryTemplates.ts')
+for (const token of [
+  'landing_page',
+  'job_board',
+  'classifieds',
+  'team_directory',
+  'app:factory:template:list'
+]) {
+  assertIncludes(templateSeedMigration, token, 'app factory template seed migration')
 }
 
 const packageJson = JSON.parse(readFile('web/package.json'))

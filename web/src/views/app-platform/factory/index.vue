@@ -9,6 +9,7 @@
           </div>
           <div class="app-factory-page__actions">
             <ElButton :icon="Refresh" :loading="loading" @click="loadModules">Refresh</ElButton>
+            <ElButton :icon="Collection" @click="openTemplateDrawer">Use Template</ElButton>
             <ElButton type="primary" :icon="Plus" @click="openCreateDialog">Create Module</ElButton>
           </div>
         </div>
@@ -75,6 +76,47 @@
         </template>
       </ElTable>
     </ElCard>
+
+    <ElDrawer v-model="templateDrawerVisible" title="Factory Templates" size="720px">
+      <div class="app-factory-page__template-toolbar">
+        <ElInput
+          v-model="templateKeyword"
+          clearable
+          placeholder="Search templates"
+          @keyup.enter="loadTemplates"
+        />
+        <ElButton type="primary" :icon="Search" :loading="templateLoading" @click="loadTemplates">Search</ElButton>
+      </div>
+      <ElTable v-loading="templateLoading" :data="templates" border>
+        <ElTableColumn label="Template" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }">
+            <div class="app-factory-page__module-name">{{ row.name || '-' }}</div>
+            <div class="app-factory-page__module-code">{{ row.code || '-' }}</div>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="Category" width="140">
+          <template #default="{ row }">{{ row.category || '-' }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="Summary" min-width="260" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.summary || '-' }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="Actions" fixed="right" width="120">
+          <template #default="{ row }">
+            <ElButton
+              link
+              type="primary"
+              :loading="applyingTemplateCode === row.code"
+              @click="applyTemplate(row)"
+            >
+              Apply
+            </ElButton>
+          </template>
+        </ElTableColumn>
+        <template #empty>
+          <ElEmpty description="No factory templates" />
+        </template>
+      </ElTable>
+    </ElDrawer>
 
     <ElDialog v-model="dialogVisible" :title="editingCode ? 'Edit Module' : 'Create Module'" width="880px" top="6vh">
       <ElAlert
@@ -172,16 +214,19 @@
 <script setup lang="ts">
   import { ElMessage, ElMessageBox } from 'element-plus'
   import type { FormInstance, FormRules } from 'element-plus'
-  import { Check, Edit, Plus, Promotion, Refresh, Search, View } from '@element-plus/icons-vue'
+  import { Check, Collection, Edit, Plus, Promotion, Refresh, Search, View } from '@element-plus/icons-vue'
   import {
     createAppFactoryModule,
     fetchAppFactoryModule,
     fetchAppFactoryModules,
+    fetchAppFactoryTemplate,
+    fetchAppFactoryTemplates,
     publishAppFactoryModule,
     updateAppFactoryModule,
     type AppFactoryModuleRecord,
     type AppFactoryModuleStatus,
     type AppFactoryModuleVisibility,
+    type AppFactoryTemplateRecord,
     type SaveAppFactoryModuleParams
   } from '@/api/app-factory'
   import { fetchPlatformModules, type SaasModuleRecord } from '@/api/saas'
@@ -194,13 +239,18 @@
   const saving = ref(false)
   const dialogVisible = ref(false)
   const previewVisible = ref(false)
+  const templateDrawerVisible = ref(false)
   const loadError = ref('')
   const editingCode = ref('')
   const editLoadingCode = ref('')
   const publishingCode = ref('')
   const previewCode = ref('')
+  const applyingTemplateCode = ref('')
   const previewHtml = ref('')
+  const templateKeyword = ref('')
+  const templateLoading = ref(false)
   const formRef = ref<FormInstance>()
+  const templates = ref<AppFactoryTemplateRecord[]>([])
   const saasModuleOptions = ref<SaasModuleRecord[]>([])
   const systemModuleOptions = ref<SystemModuleRecord[]>([])
   const statusOptions: AppFactoryModuleStatus[] = ['draft', 'published', 'disabled', 'archived']
@@ -311,6 +361,26 @@
     formRef.value?.clearValidate()
   }
 
+  function fillFormFromTemplate(template: AppFactoryTemplateRecord) {
+    Object.assign(form, {
+      code: template.code || '',
+      name: template.name || '',
+      kind: 'static_page',
+      category: template.category || '',
+      icon: template.icon || '',
+      summary: template.summary || '',
+      description: template.description || '',
+      html_content: template.html_content || '',
+      css_content: template.css_content || '',
+      visibility: template.default_visibility || 'marketplace',
+      saas_module_code: template.default_saas_module_code || '',
+      system_module_code: template.default_system_module_code || '',
+      sort: 100,
+      remark: ''
+    })
+    formRef.value?.clearValidate()
+  }
+
   function buildPayload(): SaveAppFactoryModuleParams {
     return {
       code: cleanText(form.code),
@@ -369,10 +439,31 @@
     }
   }
 
+  async function loadTemplates() {
+    templateLoading.value = true
+    try {
+      templates.value = await fetchAppFactoryTemplates({
+        keyword: cleanText(templateKeyword.value),
+        status: 1
+      })
+    } catch (error) {
+      console.error('[AppPlatformFactoryPage] load templates failed:', error)
+      templates.value = []
+      ElMessage.error('Factory templates failed to load')
+    } finally {
+      templateLoading.value = false
+    }
+  }
+
   function resetFilters() {
     filters.keyword = ''
     filters.status = ''
     loadModules()
+  }
+
+  async function openTemplateDrawer() {
+    templateDrawerVisible.value = true
+    if (!templates.value.length) await loadTemplates()
   }
 
   function openCreateDialog() {
@@ -408,6 +499,19 @@
       await loadModules()
     } finally {
       saving.value = false
+    }
+  }
+
+  async function applyTemplate(row: AppFactoryTemplateRecord) {
+    applyingTemplateCode.value = row.code
+    try {
+      const detail = await fetchAppFactoryTemplate(row.code)
+      editingCode.value = ''
+      fillFormFromTemplate(detail)
+      templateDrawerVisible.value = false
+      dialogVisible.value = true
+    } finally {
+      applyingTemplateCode.value = ''
     }
   }
 
@@ -510,6 +614,13 @@
     margin-bottom: 16px;
   }
 
+  .app-factory-page__template-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
   .app-factory-page__module-name {
     color: var(--el-text-color-primary);
     font-weight: 500;
@@ -550,8 +661,13 @@
 
     .app-factory-page__actions,
     .app-factory-page__filter-item,
-    .app-factory-page__select {
+    .app-factory-page__select,
+    .app-factory-page__template-toolbar {
       width: 100%;
+    }
+
+    .app-factory-page__template-toolbar {
+      grid-template-columns: 1fr;
     }
   }
 </style>
