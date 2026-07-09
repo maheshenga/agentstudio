@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://agentstudio.example.com/</loc>
+    <loc>https://studio.qingyouai.com/</loc>
   </url>
   <url>
-    <loc>https://agentstudio.example.com/auth/login</loc>
+    <loc>https://studio.qingyouai.com/auth/login</loc>
   </url>
   <url>
-    <loc>https://agentstudio.example.com/auth/register</loc>
+    <loc>https://studio.qingyouai.com/auth/register</loc>
   </url>
   <url>
-    <loc>https://agentstudio.example.com/privacy-policy</loc>
+    <loc>https://studio.qingyouai.com/privacy-policy</loc>
   </url>
   <url>
-    <loc>https://agentstudio.example.com/terms</loc>
+    <loc>https://studio.qingyouai.com/terms</loc>
   </url>
 </urlset>

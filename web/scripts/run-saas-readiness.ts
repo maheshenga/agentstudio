@@ -15,6 +15,7 @@ const checks = [
   'verify-saas-resource-pack-crud.ts',
   'verify-no-legacy-saiadmin-composable.ts',
   'verify-saas-public-brand-surfaces.ts',
+  'verify-saas-public-origin.ts',
   'verify-saas-readiness-command.ts'
 ]
 
