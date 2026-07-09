@@ -45,6 +45,7 @@ pnpm.cmd exec tsx scripts/verify-saas-public-brand-surfaces.ts
 pnpm.cmd exec tsx scripts/verify-saas-public-origin.ts
 pnpm.cmd exec tsx scripts/verify-saas-readiness-command.ts
 pnpm.cmd run verify:app-marketplace-readiness
+pnpm.cmd run verify:app-factory-readiness
 pnpm.cmd build
 pnpm.cmd run verify:saas-preview-smoke
 pnpm.cmd run verify:saas-browser-smoke
@@ -244,6 +245,7 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 9. Open `/#/saas-platform/payment-config` and confirm Alipay config status and edit form render.
 10. Open or call `GET /api/saas/platform/runtime-health` and confirm dependencies, required env keys, payment config, and operational switches render without exposing secret values.
 11. Open `/#/app-platform/apps` and confirm platform admins can create internal/iframe/static apps, upload static zip packages, review pending versions, publish approved versions, and disable apps.
+12. Open `/#/app-platform/factory` and confirm platform admins can create static HTML/CSS modules, bind optional SaaS/system modules, preview content, and publish a generated static marketplace app version.
 
 ## Manual App Center Flow
 
@@ -265,6 +267,7 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 - Tenant modules flow uses the system-module registry endpoint `GET /api/tenant/modules`.
 - App marketplace flow uses `GET /api/app-tenant/marketplace`, `POST /api/app-tenant/apps/:code/install`, and `GET /api/app-tenant/apps/:code/open`.
 - Static app packages are reviewed before publishing and served from `/apps-static/`.
+- Module factory flow uses `GET /api/app-platform/factory/modules`, creates static HTML/CSS modules only, and publishes generated apps through the existing marketplace runtime.
 - Uploaded apps are never executed as backend code in P0.
 - Resource-pack and plan payment paths show whether Alipay is configured before a user attempts payment.
 - Empty, loading, and error states are visible for tenant and platform pages.
