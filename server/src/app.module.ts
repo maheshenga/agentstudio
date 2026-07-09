@@ -24,6 +24,7 @@ import { UploadModule } from './module/upload/upload.module';
 import { MonitorModule } from './module/monitor/monitor.module';
 import { ArticleModule } from './module/article/article.module';
 import { AiModule } from './module/ai/ai.module';
+import { AppMarketplaceModule } from './module/app/app.module';
 import { SaasModule } from './module/saas/saas.module';
 import { TaixuModule } from './module/taixu/taixu.module';
 import { SystemModuleGuard } from './module/system-module/system-module.guard';
@@ -104,6 +105,7 @@ const nodeEnv = process.env.NODE_ENV ?? 'development';
     MonitorModule,
     ArticleModule,
     AiModule,
+    AppMarketplaceModule,
     SaasModule,
     TaixuModule,
   ],
