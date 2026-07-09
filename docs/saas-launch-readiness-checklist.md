@@ -246,6 +246,7 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 10. Open or call `GET /api/saas/platform/runtime-health` and confirm dependencies, required env keys, payment config, and operational switches render without exposing secret values.
 11. Open `/#/app-platform/apps` and confirm platform admins can create internal/iframe/static apps, upload static zip packages, review pending versions, publish approved versions, unpublish unsafe versions, rollback to a previous approved version, and disable apps.
 12. Open `/#/app-platform/factory` and confirm platform admins can use curated templates, create static HTML/CSS modules, bind optional SaaS/system modules, preview content, and publish a generated static marketplace app version.
+13. Open `/#/app-platform/reviews` and confirm reviewers can filter pending versions and perform approve/reject/publish/rollback/unpublish actions from one queue.
 
 ## Manual App Center Flow
 

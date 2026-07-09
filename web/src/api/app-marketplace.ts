@@ -76,6 +76,22 @@ export interface AppPlatformListParams {
   status?: AppPackageStatus | ''
 }
 
+export interface AppReviewQueueParams {
+  keyword?: string
+  type?: AppPackageType | ''
+  review_status?: AppPackageVersionRecord['review_status'] | ''
+  publish_status?: AppPackageVersionRecord['publish_status'] | ''
+}
+
+export interface AppReviewQueueRecord extends AppPackageVersionRecord {
+  app_code: string
+  app_name: string
+  app_type: AppPackageType
+  app_status: AppPackageStatus
+  category?: string
+  developer_name?: string
+}
+
 export interface SaveAppPackageParams {
   code?: string
   name: string
@@ -127,6 +143,10 @@ export function fetchPlatformApps(params: AppPlatformListParams = {}) {
 
 export function fetchPlatformApp(code: string) {
   return request.get<AppPackageDetailRecord>({ url: `/api/app-platform/apps/${code}` })
+}
+
+export function fetchPlatformAppReviews(params: AppReviewQueueParams = {}) {
+  return request.get<AppReviewQueueRecord[]>({ url: '/api/app-platform/reviews', params })
 }
 
 export function createPlatformApp(params: SaveAppPackageParams) {

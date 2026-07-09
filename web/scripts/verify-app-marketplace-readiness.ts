@@ -25,12 +25,15 @@ function assertIncludes(source: string, token: string, label: string) {
 const expectedFiles = [
   'web/src/api/app-marketplace.ts',
   'web/src/views/app-platform/apps/index.vue',
+  'web/src/views/app-platform/reviews/index.vue',
   'web/src/views/app-center/marketplace/index.vue',
   'web/src/views/app-center/installed/index.vue',
   'web/src/views/app-center/open/index.vue',
   'server/src/module/app/app-platform.controller.ts',
+  'server/src/module/app/app-platform-review.controller.ts',
   'server/src/module/app/app-tenant.controller.ts',
-  'server/src/migrations/1760000000029-SeedAppMarketplaceMenus.ts'
+  'server/src/migrations/1760000000029-SeedAppMarketplaceMenus.ts',
+  'server/src/migrations/1760000000034-SeedAppReviewCenterMenus.ts'
 ]
 
 for (const file of expectedFiles) {
@@ -40,6 +43,7 @@ for (const file of expectedFiles) {
 const apiSource = readFile('web/src/api/app-marketplace.ts')
 for (const token of [
   '/api/app-platform/apps',
+  '/api/app-platform/reviews',
   '/api/app-platform/apps/${code}/versions/upload',
   '/api/app-platform/apps/${code}/versions/${version}/approve',
   '/api/app-platform/apps/${code}/versions/${version}/publish',
@@ -57,6 +61,7 @@ for (const token of [
   'required_system_module_code',
   'unpublishPlatformAppVersion',
   'rollbackPlatformAppVersion',
+  'fetchPlatformAppReviews',
   'is_active',
   'entry_url'
 ]) {
@@ -87,6 +92,21 @@ for (const token of [
   'ElDrawer'
 ]) {
   assertIncludes(platformPage, token, 'platform apps page')
+}
+
+const reviewPage = readFile('web/src/views/app-platform/reviews/index.vue')
+for (const token of [
+  'Review Center',
+  'fetchPlatformAppReviews',
+  'approvePlatformAppVersion',
+  'rejectPlatformAppVersion',
+  'publishPlatformAppVersion',
+  'rollbackPlatformAppVersion',
+  'unpublishPlatformAppVersion',
+  'ElTable',
+  'ElMessageBox'
+]) {
+  assertIncludes(reviewPage, token, 'platform review center page')
 }
 
 const marketplacePage = readFile('web/src/views/app-center/marketplace/index.vue')
@@ -146,6 +166,15 @@ for (const token of [
   'app:tenant:open'
 ]) {
   assertIncludes(menuMigration, token, 'app marketplace menu migration')
+}
+
+const reviewMenuMigration = readFile('server/src/migrations/1760000000034-SeedAppReviewCenterMenus.ts')
+for (const token of [
+  'AppReviewCenter',
+  '/app-platform/reviews',
+  'app:platform:review'
+]) {
+  assertIncludes(reviewMenuMigration, token, 'app review center menu migration')
 }
 
 const mainSource = readFile('server/src/main.ts')
