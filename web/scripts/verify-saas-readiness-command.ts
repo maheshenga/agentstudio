@@ -72,6 +72,19 @@ assert(
     'tsx scripts/verify-saas-live-browser-e2e.ts',
   'package.json must define verify:saas-live-browser-e2e'
 )
+const platformLiveBrowserE2EPath = resolve(
+  process.cwd(),
+  'scripts/verify-saas-platform-live-browser-e2e.ts'
+)
+assert(
+  existsSync(platformLiveBrowserE2EPath),
+  'scripts/verify-saas-platform-live-browser-e2e.ts must exist'
+)
+assert(
+  packageJson.scripts?.['verify:saas-platform-live-browser-e2e'] ===
+    'tsx scripts/verify-saas-platform-live-browser-e2e.ts',
+  'package.json must define verify:saas-platform-live-browser-e2e'
+)
 
 const checklist = readFile('../docs/saas-launch-readiness-checklist.md')
 assertIncludes(checklist, 'pnpm.cmd run verify:saas-readiness', 'launch readiness checklist')
@@ -100,6 +113,16 @@ assertIncludes(
 assertIncludes(
   checklist,
   'SAAS_LIVE_E2E_WEB_URL',
+  'launch readiness checklist'
+)
+assertIncludes(
+  checklist,
+  'pnpm.cmd run verify:saas-platform-live-browser-e2e',
+  'launch readiness checklist'
+)
+assertIncludes(
+  checklist,
+  'SAAS_PLATFORM_LIVE_E2E_WEB_URL',
   'launch readiness checklist'
 )
 

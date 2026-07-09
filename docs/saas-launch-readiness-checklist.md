@@ -107,6 +107,24 @@ pnpm.cmd run verify:saas-platform-live-e2e
 
 This command is read-only. It verifies platform administrator access to runtime health, tenant, plan, module, usage, revenue, order risk, reconciliation, subscription, quota ledger, resource-pack, notify-log, and Alipay configuration APIs without printing passwords or bearer tokens.
 
+### Optional Platform Admin Live Browser E2E Gate
+
+Run this after `cd web` and `pnpm.cmd build` when a live backend with seeded platform administrator credentials is available:
+
+```powershell
+cd web
+$env:SAAS_PLATFORM_LIVE_E2E_BASE_URL = 'http://127.0.0.1:3000'
+$env:SAAS_PLATFORM_LIVE_E2E_USERNAME = '<seeded-platform-admin-username>'
+$env:SAAS_PLATFORM_LIVE_E2E_PASSWORD = '<seeded-platform-admin-password>'
+# Optional: force the tenant used only for the existing tenant-scoped login bootstrap
+$env:SAAS_PLATFORM_LIVE_E2E_TENANT_ID = '<tenant-id>'
+# Optional: use an already running frontend instead of Vite preview
+$env:SAAS_PLATFORM_LIVE_E2E_WEB_URL = 'http://127.0.0.1:5731'
+pnpm.cmd run verify:saas-platform-live-browser-e2e
+```
+
+This command is read-only. It verifies the platform administrator can open tenant, plan, module, subscription, usage, revenue, resource-pack, resource-pack order, and payment configuration pages against a live backend.
+
 ### Optional Live Browser E2E Gate
 
 Run this after `cd web` and `pnpm.cmd build` when a live backend with seeded SaaS data is available. The script opens the built tenant SaaS plan page in Chromium, proxies browser API calls to the live backend, creates an upgrade order through the UI, and verifies the order panel renders.
