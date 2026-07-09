@@ -6,6 +6,7 @@ import { CreateAppPackageDto, UpdateAppPackageDto } from '../dto/app-platform.dt
 import { AppPackageEntity, AppPackageStatus, AppPackageType } from '../entities/app-package.entity';
 import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
 import { AppReviewAction, AppReviewLogEntity } from '../entities/app-review-log.entity';
+import { AppPackageStorageService } from './app-package-storage.service';
 
 export interface AppPlatformListQuery {
   keyword?: string;
@@ -22,6 +23,7 @@ export class AppPlatformService {
     private readonly versionRepo: Repository<AppPackageVersionEntity>,
     @InjectRepository(AppReviewLogEntity)
     private readonly reviewLogRepo: Repository<AppReviewLogEntity>,
+    private readonly storage: AppPackageStorageService,
   ) {}
 
   async listApps(query: AppPlatformListQuery = {}) {
@@ -116,6 +118,83 @@ export class AppPlatformService {
     };
   }
 
+  async submitVersion(code: string, version: string, operatorId?: number) {
+    const app = await this.findApp(code);
+    const appVersion = await this.findVersion(app.id, version);
+    appVersion.reviewStatus = 'pending';
+    app.status = 'pending_review';
+    const savedVersion = await this.versionRepo.save(appVersion);
+    await this.appRepo.save(app);
+    await this.recordAppEvent(app.id, appVersion.id, 'submit', `Submitted version ${version} for review`, operatorId);
+    return this.toVersionResponse(savedVersion);
+  }
+
+  async approveVersion(code: string, version: string, message = '', operatorId?: number) {
+    const app = await this.findApp(code);
+    const appVersion = await this.findVersion(app.id, version);
+    if (appVersion.reviewStatus !== 'pending') {
+      throw new BadRequestException('Only pending versions can be approved');
+    }
+
+    appVersion.reviewStatus = 'approved';
+    appVersion.reviewMessage = message || '';
+    appVersion.reviewerId = operatorId ?? null;
+    appVersion.reviewTime = new Date();
+    app.status = 'approved';
+
+    const savedVersion = await this.versionRepo.save(appVersion);
+    await this.appRepo.save(app);
+    await this.recordAppEvent(app.id, appVersion.id, 'approve', message || `Approved version ${version}`, operatorId);
+    return this.toVersionResponse(savedVersion);
+  }
+
+  async rejectVersion(code: string, version: string, message = '', operatorId?: number) {
+    const app = await this.findApp(code);
+    const appVersion = await this.findVersion(app.id, version);
+    if (appVersion.reviewStatus !== 'pending') {
+      throw new BadRequestException('Only pending versions can be rejected');
+    }
+
+    appVersion.reviewStatus = 'rejected';
+    appVersion.reviewMessage = message || '';
+    appVersion.reviewerId = operatorId ?? null;
+    appVersion.reviewTime = new Date();
+    app.status = 'rejected';
+
+    const savedVersion = await this.versionRepo.save(appVersion);
+    await this.appRepo.save(app);
+    await this.recordAppEvent(app.id, appVersion.id, 'reject', message || `Rejected version ${version}`, operatorId);
+    return this.toVersionResponse(savedVersion);
+  }
+
+  async publishVersion(code: string, version: string, operatorId?: number) {
+    const app = await this.findApp(code);
+    const appVersion = await this.findVersion(app.id, version);
+    if (appVersion.reviewStatus !== 'approved') {
+      throw new BadRequestException('Only approved versions can be published');
+    }
+
+    const published = await this.storage.publishVersion({
+      appCode: code,
+      version,
+      sourceDir: appVersion.packagePath,
+      entryFile: appVersion.entryFile,
+    });
+
+    appVersion.publishStatus = 'published';
+    appVersion.publishPath = published.publishPath;
+    app.status = 'published';
+    app.entryUrl = published.entryUrl;
+    app.entryMode = 'static';
+
+    const savedVersion = await this.versionRepo.save(appVersion);
+    await this.appRepo.save(app);
+    await this.recordAppEvent(app.id, appVersion.id, 'publish', `Published version ${version}`, operatorId, {
+      entryUrl: published.entryUrl,
+    });
+    return this.toVersionResponse(savedVersion);
+  }
+
   private resolveEntryMode(type: AppPackageType) {
     if (type === 'internal') return 'internal_route';
     if (type === 'static') return 'static';
@@ -139,12 +218,21 @@ export class AppPlatformService {
     return app;
   }
 
+  private async findVersion(appId: number, version: string) {
+    const appVersion = await this.versionRepo.findOne({ where: { appId, version, deleteTime: IsNull() } });
+    if (!appVersion) {
+      throw new NotFoundException(`App version ${version} not found`);
+    }
+    return appVersion;
+  }
+
   private async recordAppEvent(
     appId: number,
     versionId: number | null,
     action: AppReviewAction,
     message: string,
     operatorId?: number,
+    metadata?: Record<string, unknown>,
   ) {
     return this.reviewLogRepo.save(
       this.reviewLogRepo.create({
@@ -153,8 +241,30 @@ export class AppPlatformService {
         action,
         message,
         operatorId,
+        metadata,
       }),
     );
+  }
+
+  private toVersionResponse(version: Partial<AppPackageVersionEntity>) {
+    return {
+      id: version.id,
+      app_id: version.appId,
+      version: version.version,
+      manifest: version.manifest || null,
+      package_path: version.packagePath || '',
+      publish_path: version.publishPath || '',
+      entry_file: version.entryFile || '',
+      file_hash: version.fileHash || '',
+      file_size: Number(version.fileSize) || 0,
+      review_status: version.reviewStatus,
+      publish_status: version.publishStatus,
+      review_message: version.reviewMessage || '',
+      reviewer_id: version.reviewerId ?? null,
+      review_time: version.reviewTime,
+      create_time: version.createTime,
+      update_time: version.updateTime,
+    };
   }
 
   private toResponse(app: Partial<AppPackageEntity>) {

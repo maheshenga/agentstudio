@@ -192,3 +192,11 @@ export class UpdateAppPackageStatusDto {
   @IsIn(APP_PACKAGE_STATUSES)
   status: AppPackageStatus;
 }
+
+export class ReviewAppPackageVersionDto {
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  message?: string;
+}

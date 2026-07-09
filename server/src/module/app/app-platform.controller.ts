@@ -6,7 +6,13 @@ import { TenantContext } from '../../common/tenant/tenant.context';
 import { ResultData } from '../../common/utils/result';
 import { User } from '../system/user/user.decorator';
 import type { UserDto } from '../system/user/user.decorator';
-import { AppPlatformListQueryDto, CreateAppPackageDto, UpdateAppPackageDto, UpdateAppPackageStatusDto } from './dto/app-platform.dto';
+import {
+  AppPlatformListQueryDto,
+  CreateAppPackageDto,
+  ReviewAppPackageVersionDto,
+  UpdateAppPackageDto,
+  UpdateAppPackageStatusDto,
+} from './dto/app-platform.dto';
 import { AppPlatformService } from './services/app-platform.service';
 
 @ApiTags('App Platform')
@@ -51,6 +57,52 @@ export class AppPlatformController {
   updateStatus(@Param('code') code: string, @Body() body: UpdateAppPackageStatusDto, @User() user: UserDto) {
     return this.runOutsideTenant(user, () =>
       this.appPlatformService.updateStatus(code, body.status, user?.userId).then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Post(':code/versions/:version/submit')
+  @ApiOperation({ summary: 'Submit app version for review' })
+  @RequirePermission('app:platform:upload')
+  submitVersion(@Param('code') code: string, @Param('version') version: string, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () =>
+      this.appPlatformService.submitVersion(code, version, user?.userId).then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Post(':code/versions/:version/approve')
+  @ApiOperation({ summary: 'Approve app version' })
+  @RequirePermission('app:platform:review')
+  approveVersion(
+    @Param('code') code: string,
+    @Param('version') version: string,
+    @Body() body: ReviewAppPackageVersionDto,
+    @User() user: UserDto,
+  ) {
+    return this.runOutsideTenant(user, () =>
+      this.appPlatformService.approveVersion(code, version, body.message || '', user?.userId).then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Post(':code/versions/:version/reject')
+  @ApiOperation({ summary: 'Reject app version' })
+  @RequirePermission('app:platform:review')
+  rejectVersion(
+    @Param('code') code: string,
+    @Param('version') version: string,
+    @Body() body: ReviewAppPackageVersionDto,
+    @User() user: UserDto,
+  ) {
+    return this.runOutsideTenant(user, () =>
+      this.appPlatformService.rejectVersion(code, version, body.message || '', user?.userId).then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Post(':code/versions/:version/publish')
+  @ApiOperation({ summary: 'Publish app version' })
+  @RequirePermission('app:platform:publish')
+  publishVersion(@Param('code') code: string, @Param('version') version: string, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () =>
+      this.appPlatformService.publishVersion(code, version, user?.userId).then((data) => ResultData.ok(data)),
     );
   }
 

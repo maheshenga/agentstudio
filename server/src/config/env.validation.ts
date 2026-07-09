@@ -60,6 +60,12 @@ export const envValidationSchema = Joi.object({
   FILE_MAX_SIZE: Joi.number().integer().min(1).default(10),
   FILE_ALLOWED_EXTENSIONS: Joi.string().default('jpg,jpeg,png,gif,webp,bmp'),
 
+  APP_PACKAGE_DIR: Joi.string().default('../upload/app-packages'),
+  APP_PUBLIC_DIR: Joi.string().default('../upload/app-public'),
+  APP_PUBLIC_PREFIX: Joi.string()
+    .pattern(/^\/[A-Za-z0-9/_-]*\/$/)
+    .default('/apps-static/'),
+
   LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug').default('info'),
   LOG_DIR: Joi.string().default('logs'),
   LOG_CONSOLE_ENABLED: Joi.boolean().truthy('true').falsy('false').default(true),

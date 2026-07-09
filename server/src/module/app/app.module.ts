@@ -8,6 +8,7 @@ import { AppPackageEntity } from './entities/app-package.entity';
 import { AppReviewLogEntity } from './entities/app-review-log.entity';
 import { TenantAppInstallEntity } from './entities/tenant-app-install.entity';
 import { AppManifestService } from './services/app-manifest.service';
+import { AppPackageStorageService } from './services/app-package-storage.service';
 import { AppPlatformService } from './services/app-platform.service';
 
 @Module({
@@ -21,7 +22,7 @@ import { AppPlatformService } from './services/app-platform.service';
     ]),
   ],
   controllers: [AppPlatformController],
-  providers: [AppManifestService, AppPlatformService],
-  exports: [AppManifestService, AppPlatformService],
+  providers: [AppManifestService, AppPackageStorageService, AppPlatformService],
+  exports: [AppManifestService, AppPackageStorageService, AppPlatformService],
 })
 export class AppMarketplaceModule {}

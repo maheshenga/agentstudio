@@ -128,6 +128,13 @@ async function bootstrap(): Promise<void> {
       prefix: '/api-test/',
       maxAge: 0,
     });
+    const appPublicDir = configService.get<string>('appMarketplace.publicDir', '../upload/app-public');
+    const appPublicPath = path.resolve(process.cwd(), appPublicDir);
+    const appPublicPrefix = configService.get<string>('appMarketplace.publicPrefix', '/apps-static/');
+    app.useStaticAssets(appPublicPath, {
+      prefix: appPublicPrefix,
+      maxAge: 86400000,
+    });
 
     // 前端 SPA 静态文件根目录（需先构建 web 项目）
     const webDistPath = path.resolve(process.cwd(), '../web/dist');
@@ -136,7 +143,13 @@ async function bootstrap(): Promise<void> {
     });
     // SPA 路由回退：非 API 路径且非带扩展名的静态文件 => 返回 index.html
     app.use((req, res, next) => {
-      if (req.path.startsWith('/api/') || req.path.startsWith('/profile/') || req.path.startsWith('/public/') || req.path.startsWith('/api-test/')) {
+      if (
+        req.path.startsWith('/api/') ||
+        req.path.startsWith('/profile/') ||
+        req.path.startsWith('/public/') ||
+        req.path.startsWith('/api-test/') ||
+        req.path.startsWith(appPublicPrefix)
+      ) {
         return next();
       }
       // 带文件扩展名的请求放行（静态文件已由上方 useStaticAssets 处理）

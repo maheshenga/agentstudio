@@ -93,6 +93,11 @@ export default () => ({
       .map((ext) => ext.trim().toLowerCase())
       .filter(Boolean),
   },
+  appMarketplace: {
+    packageDir: process.env.APP_PACKAGE_DIR ?? '../upload/app-packages',
+    publicDir: process.env.APP_PUBLIC_DIR ?? '../upload/app-public',
+    publicPrefix: process.env.APP_PUBLIC_PREFIX ?? '/apps-static/',
+  },
   log: {
     level: process.env.LOG_LEVEL ?? 'info',
     dir: process.env.LOG_DIR ?? 'logs',
