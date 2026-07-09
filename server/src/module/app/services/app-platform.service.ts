@@ -59,6 +59,14 @@ export class AppPlatformService {
       .map((app) => this.toResponse(app));
   }
 
+  async listDeveloperApps(developerId: number) {
+    const apps = await this.appRepo.find({
+      where: { developerId, deleteTime: IsNull() },
+      order: { sort: 'ASC', id: 'ASC' },
+    });
+    return apps.map((app) => this.toResponse(app));
+  }
+
   async listReviewQueue(query: AppReviewQueueQuery = {}) {
     const versions = await this.versionRepo.find({ where: { deleteTime: IsNull() }, order: { id: 'DESC' } });
     const appIds = [...new Set(versions.map((version) => Number(version.appId)).filter(Boolean))];
@@ -219,7 +227,7 @@ export class AppPlatformService {
     app.icon = manifest.icon || app.icon;
     app.summary = manifest.summary || app.summary;
     app.description = manifest.description || app.description;
-    app.status = 'pending_review';
+    this.updateAppReviewStatus(app, 'pending_review');
     app.entryMode = 'static';
     await this.appRepo.save(app);
     await this.recordAppEvent(app.id, savedVersion.id, 'submit', `Uploaded version ${manifest.version} for review`, operatorId, {
@@ -233,8 +241,14 @@ export class AppPlatformService {
   async submitVersion(code: string, version: string, operatorId?: number) {
     const app = await this.findApp(code);
     const appVersion = await this.findVersion(app.id, version);
+    if (appVersion.reviewStatus !== 'rejected') {
+      throw new BadRequestException('Only rejected versions can be resubmitted');
+    }
     appVersion.reviewStatus = 'pending';
-    app.status = 'pending_review';
+    appVersion.reviewMessage = '';
+    appVersion.reviewerId = null;
+    appVersion.reviewTime = null;
+    this.updateAppReviewStatus(app, 'pending_review');
     const savedVersion = await this.versionRepo.save(appVersion);
     await this.appRepo.save(app);
     await this.recordAppEvent(app.id, appVersion.id, 'submit', `Submitted version ${version} for review`, operatorId);
@@ -252,7 +266,7 @@ export class AppPlatformService {
     appVersion.reviewMessage = message || '';
     appVersion.reviewerId = operatorId ?? null;
     appVersion.reviewTime = new Date();
-    app.status = 'approved';
+    this.updateAppReviewStatus(app, 'approved');
 
     const savedVersion = await this.versionRepo.save(appVersion);
     await this.appRepo.save(app);
@@ -271,7 +285,7 @@ export class AppPlatformService {
     appVersion.reviewMessage = message || '';
     appVersion.reviewerId = operatorId ?? null;
     appVersion.reviewTime = new Date();
-    app.status = 'rejected';
+    this.updateAppReviewStatus(app, 'rejected');
 
     const savedVersion = await this.versionRepo.save(appVersion);
     await this.appRepo.save(app);
@@ -393,6 +407,12 @@ export class AppPlatformService {
       throw new BadRequestException('Internal app entry must be an absolute app route');
     }
     return route;
+  }
+
+  private updateAppReviewStatus(app: AppPackageEntity, status: AppPackageStatus) {
+    if (app.status !== 'published') {
+      app.status = status;
+    }
   }
 
   private statusToAction(status: AppPackageStatus): AppReviewAction {

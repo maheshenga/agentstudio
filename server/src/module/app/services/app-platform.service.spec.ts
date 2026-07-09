@@ -61,6 +61,31 @@ describe('AppPlatformService', () => {
     service = module.get(AppPlatformService);
   });
 
+  it('lists only apps owned by the authenticated developer', async () => {
+    appRepo.find.mockResolvedValue([
+      {
+        id: 5,
+        code: 'creator_portal',
+        name: 'Creator Portal',
+        type: 'static',
+        status: 'draft',
+        visibility: 'marketplace',
+        entryMode: 'static',
+        entryUrl: '',
+        developerId: 17,
+      },
+    ]);
+
+    await expect(service.listDeveloperApps(17)).resolves.toEqual([
+      expect.objectContaining({ code: 'creator_portal', developer_id: 17 }),
+    ]);
+    expect(appRepo.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ developerId: 17 }),
+      }),
+    );
+  });
+
   it('creates an iframe app as a published marketplace app', async () => {
     appRepo.findOne.mockResolvedValue(null);
 
@@ -239,6 +264,66 @@ describe('AppPlatformService', () => {
     );
   });
 
+  it('keeps an active published app available when a new version is approved', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 4,
+      code: 'job_board',
+      name: 'Job Board',
+      type: 'static',
+      status: 'published',
+      entryMode: 'static',
+      entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 9,
+      appId: 4,
+      version: '2.0.0',
+      reviewStatus: 'pending',
+      publishStatus: 'unpublished',
+      entryFile: 'dist/index.html',
+    });
+    versionRepo.save.mockImplementation(async (value) => value);
+
+    await service.approveVersion('job_board', '2.0.0', 'Approved', 1);
+
+    expect(appRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'published',
+        entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
+      }),
+    );
+  });
+
+  it('keeps an active published app available when a new version is rejected', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 4,
+      code: 'job_board',
+      name: 'Job Board',
+      type: 'static',
+      status: 'published',
+      entryMode: 'static',
+      entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 9,
+      appId: 4,
+      version: '2.0.0',
+      reviewStatus: 'pending',
+      publishStatus: 'unpublished',
+      entryFile: 'dist/index.html',
+    });
+    versionRepo.save.mockImplementation(async (value) => value);
+
+    await service.rejectVersion('job_board', '2.0.0', 'Needs changes', 1);
+
+    expect(appRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'published',
+        entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
+      }),
+    );
+  });
+
   it('uploads a static app package as a pending review version', async () => {
     const zip = new JSZip();
     zip.file(
@@ -328,6 +413,122 @@ describe('AppPlatformService', () => {
         versionId: 12,
         action: 'submit',
         operatorId: 66,
+      }),
+    );
+  });
+
+  it('keeps an active published app available while uploading a new version', async () => {
+    const zip = new JSZip();
+    zip.file(
+      'manifest.json',
+      JSON.stringify({
+        code: 'job_board',
+        name: 'Job Board',
+        version: '2.0.0',
+        type: 'static',
+        entry: 'dist/index.html',
+      }),
+    );
+    zip.file('dist/index.html', '<html>job board v2</html>');
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+    appRepo.findOne.mockResolvedValueOnce({
+      id: 4,
+      code: 'job_board',
+      name: 'Job Board',
+      type: 'static',
+      status: 'published',
+      entryMode: 'static',
+      entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
+    });
+    versionRepo.findOne.mockResolvedValue(null);
+    versionRepo.create.mockImplementation((value) => ({ ...value }));
+    versionRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 13, ...value }));
+    manifestService.validateStaticManifest.mockReturnValue({
+      code: 'job_board',
+      name: 'Job Board',
+      version: '2.0.0',
+      type: 'static',
+      entry: 'dist/index.html',
+      tenant_scoped: true,
+      permissions: [],
+    });
+    storageService.extractStaticPackage.mockResolvedValue({
+      packagePath: '/safe/packages/job_board/2.0.0',
+    });
+
+    await service.uploadStaticVersion(
+      'job_board',
+      {
+        originalname: 'job-board-v2.zip',
+        mimetype: 'application/zip',
+        size: buffer.length,
+        buffer,
+      } as Express.Multer.File,
+      17,
+    );
+
+    expect(appRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'published',
+        entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
+      }),
+    );
+  });
+
+  it('only allows rejected versions to be resubmitted', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 4,
+      code: 'job_board',
+      type: 'static',
+      status: 'published',
+      entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 8,
+      appId: 4,
+      version: '1.0.0',
+      reviewStatus: 'approved',
+      publishStatus: 'published',
+      entryFile: 'dist/index.html',
+    });
+
+    await expect(service.submitVersion('job_board', '1.0.0', 17)).rejects.toThrow(
+      'Only rejected versions can be resubmitted',
+    );
+    expect(versionRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('keeps an active published app available when a rejected version is resubmitted', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 4,
+      code: 'job_board',
+      type: 'static',
+      status: 'published',
+      entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 9,
+      appId: 4,
+      version: '2.0.0',
+      reviewStatus: 'rejected',
+      publishStatus: 'unpublished',
+      entryFile: 'dist/index.html',
+      reviewMessage: 'Needs changes',
+    });
+    versionRepo.save.mockImplementation(async (value) => value);
+
+    await expect(service.submitVersion('job_board', '2.0.0', 17)).resolves.toMatchObject({
+      review_status: 'pending',
+      review_message: '',
+      reviewer_id: null,
+      review_time: null,
+    });
+
+    expect(appRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'published',
+        entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
       }),
     );
   });
