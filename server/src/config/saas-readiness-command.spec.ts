@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 
 const REPO_ROOT = join(__dirname, '../../..');
@@ -106,5 +106,16 @@ describe('SaaS backend readiness command', () => {
     expect(jestCommand).not.toContain('--forceExit');
     expect(specPatternSegment).not.toContain('--runInBand');
     expect(specPatternSegment).not.toContain('--forceExit');
+
+    const liveE2eScript = join(REPO_ROOT, 'server/scripts/verify-saas-live-e2e.ts');
+    expect(existsSync(liveE2eScript)).toBe(true);
+    expect(packageJson.scripts?.['verify:saas-live-e2e']).toBe('tsx scripts/verify-saas-live-e2e.ts');
+
+    const checklist = readFileSync(join(REPO_ROOT, 'docs/saas-launch-readiness-checklist.md'), 'utf8');
+    expect(checklist).toContain('pnpm.cmd run verify:saas-live-e2e');
+    expect(checklist).toContain('SAAS_LIVE_E2E_BASE_URL');
+    expect(checklist).toContain('SAAS_LIVE_E2E_USERNAME');
+    expect(checklist).toContain('SAAS_LIVE_E2E_PASSWORD');
+    expect(checklist).toContain('SAAS_LIVE_E2E_RUN_PAYMENT=1');
   });
 });

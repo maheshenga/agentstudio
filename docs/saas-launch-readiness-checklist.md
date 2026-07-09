@@ -60,6 +60,37 @@ Backend readiness includes database initialization security, seed data integrity
 Backend readiness includes AI provider/admin flows, chat runtime, Taixu LLM/model runtime, upload safety, scheduler tasks, log username length, and SaaS provisioning coverage.
 Backend readiness guards Jest option ordering so serial execution cannot silently become a test-name pattern. Forced exit is intentionally not used, so leaked handles remain visible.
 
+### Optional Live Backend E2E Gate
+
+Run this against a running backend with seeded SaaS data before staging or production release:
+
+```powershell
+cd server
+$env:SAAS_LIVE_E2E_BASE_URL = 'http://127.0.0.1:3000'
+$env:SAAS_LIVE_E2E_USERNAME = '<seeded-tenant-owner-username>'
+$env:SAAS_LIVE_E2E_PASSWORD = '<seeded-tenant-owner-password>'
+# Optional: force a known tenant instead of using the first credential-matched tenant
+$env:SAAS_LIVE_E2E_TENANT_ID = '<tenant-id>'
+pnpm.cmd run verify:saas-live-e2e
+```
+
+The command validates credential-gated tenant lookup, tenant-scoped login, user profile, menu, usage, plan, subscription, module, and Alipay config-status APIs.
+
+To validate dev payment confirmation in a non-production seeded environment:
+
+```powershell
+cd server
+$env:SAAS_LIVE_E2E_BASE_URL = 'http://127.0.0.1:3000'
+$env:SAAS_LIVE_E2E_USERNAME = '<seeded-tenant-owner-username>'
+$env:SAAS_LIVE_E2E_PASSWORD = '<seeded-tenant-owner-password>'
+$env:SAAS_LIVE_E2E_PLAN_CODE = 'pro'
+$env:SAAS_LIVE_E2E_BILLING_CYCLE = 'monthly'
+$env:SAAS_LIVE_E2E_RUN_PAYMENT = '1'
+pnpm.cmd run verify:saas-live-e2e
+```
+
+Only enable `SAAS_LIVE_E2E_RUN_PAYMENT=1` against disposable or resettable data because it creates and confirms a real SaaS order through the development confirmation endpoint.
+
 ## Environment Contract
 
 Required local/demo backend keys:
@@ -116,4 +147,4 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 
 - Invoice functionality is intentionally excluded.
 - External payment settlement still depends on real Alipay credentials and callback reachability.
-- The automated browser smoke verifies public signup rendering and protected-route login redirects, but does not replace a full seeded-database login and payment E2E suite.
+- The automated browser smoke verifies public signup rendering and protected-route login redirects. The optional live backend E2E verifies seeded login and dev payment APIs, but a full seeded browser UI payment E2E remains outside the default repository gate.
