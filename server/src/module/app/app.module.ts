@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { SaasModule } from '../saas/saas.module';
 import { SystemModuleRegistryModule } from '../system-module/system-module.module';
+import { AppFactoryController } from './app-factory.controller';
 import { AppPlatformController } from './app-platform.controller';
 import { AppTenantController } from './app-tenant.controller';
 import { AppFactoryModuleEntity } from './entities/app-factory-module.entity';
@@ -32,7 +33,7 @@ import { AppTenantService } from './services/app-tenant.service';
       AppFactoryPublishLogEntity,
     ]),
   ],
-  controllers: [AppPlatformController, AppTenantController],
+  controllers: [AppPlatformController, AppTenantController, AppFactoryController],
   providers: [AppManifestService, AppPackageStorageService, AppPlatformService, AppTenantService, AppFactoryService],
   exports: [AppManifestService, AppPackageStorageService, AppPlatformService, AppTenantService, AppFactoryService],
 })
