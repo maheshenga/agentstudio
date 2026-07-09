@@ -95,6 +95,7 @@ export class AppTenantService {
 
   async installApp(tenantId: number, code: string, userId?: number) {
     const app = await this.findPublishedApp(code);
+    this.assertAvailability(await this.getAppAvailability(tenantId, app));
     const version = app.type === 'static' ? await this.findPublishedVersion(app.id) : null;
     const existing = await this.installRepo.findOne({
       where: { tenantId, appId: app.id },
@@ -144,6 +145,7 @@ export class AppTenantService {
     if (!install) {
       throw new BadRequestException('App is not installed');
     }
+    this.assertAvailability(await this.getAppAvailability(tenantId, app));
 
     const version = app.type === 'static'
       ? install.versionId
@@ -173,6 +175,12 @@ export class AppTenantService {
       sandbox: app.type === 'internal' ? '' : STATIC_APP_SANDBOX,
       version: version?.version || '',
     };
+  }
+
+  private assertAvailability(availability: AppAvailability) {
+    if (!availability.available) {
+      throw new BadRequestException(availability.availability_reason || 'App is not available for this tenant');
+    }
   }
 
   async getAppAvailability(tenantId: number, app: Partial<AppPackageEntity>): Promise<AppAvailability> {

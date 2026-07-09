@@ -270,6 +270,27 @@ describe('AppTenantService', () => {
     );
   });
 
+  it('rejects installing a published app when the current plan lacks the required SaaS module', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 7,
+      code: 'job_board',
+      type: 'iframe',
+      status: 'published',
+      visibility: 'marketplace',
+      entryMode: 'iframe',
+      entryUrl: 'https://jobs.example.com',
+      saasModuleCode: 'recruiting',
+    });
+    saasModuleService.assertTenantModuleEnabled.mockRejectedValue(
+      new BadRequestException('Current plan has not enabled this module'),
+    );
+
+    await expect(service.installApp(23, 'job_board', 7)).rejects.toThrow(
+      'Current plan has not enabled this module',
+    );
+    expect(installRepo.save).not.toHaveBeenCalled();
+  });
+
   it('rejects opening apps that are not installed by the tenant', async () => {
     appRepo.findOne.mockResolvedValue({
       id: 1,
@@ -326,6 +347,39 @@ describe('AppTenantService', () => {
         userAgent: 'jest',
       }),
     );
+  });
+
+  it('rejects opening an installed app when the mapped system module is unavailable', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 8,
+      code: 'crm_portal',
+      name: 'CRM Portal',
+      type: 'iframe',
+      status: 'published',
+      visibility: 'marketplace',
+      entryMode: 'iframe',
+      entryUrl: 'https://crm.example.com',
+      systemModuleCode: 'crm',
+    });
+    installRepo.findOne.mockResolvedValue({ id: 6, tenantId: 23, appId: 8, enabled: 1 });
+    systemModuleAccessService.diagnoseModuleAccess.mockResolvedValue({
+      allowed: false,
+      status: 'missing_tenant_module',
+      reason: 'Tenant has not enabled this module',
+      module_code: 'crm',
+      module_name: 'CRM',
+      required_saas_module_codes: [],
+      missing_saas_module_codes: [],
+      tenant_saas_module_codes: [],
+      tenant_enabled: false,
+      tenant_entitlement_source: null,
+      suggestions: [],
+    });
+
+    await expect(service.getOpenMetadata(23, 'crm_portal', 7)).rejects.toThrow(
+      'Tenant has not enabled this module',
+    );
+    expect(openLogRepo.save).not.toHaveBeenCalled();
   });
 
   it('returns internal route metadata for installed internal apps', async () => {
