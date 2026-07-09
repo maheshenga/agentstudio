@@ -1,0 +1,68 @@
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { IsNull, Repository } from 'typeorm';
+
+import { CreateDeveloperAppDto, UpdateDeveloperAppDto } from '../dto/app-developer.dto';
+import { AppPackageEntity } from '../entities/app-package.entity';
+import { AppPlatformService } from './app-platform.service';
+
+@Injectable()
+export class AppDeveloperService {
+  constructor(
+    @InjectRepository(AppPackageEntity)
+    private readonly appRepo: Repository<AppPackageEntity>,
+    private readonly appPlatformService: AppPlatformService,
+  ) {}
+
+  listApps(developerId: number) {
+    return this.appPlatformService.listDeveloperApps(developerId);
+  }
+
+  async getApp(code: string, developerId: number) {
+    await this.findOwnedApp(code, developerId);
+    return this.appPlatformService.getApp(code);
+  }
+
+  createApp(dto: CreateDeveloperAppDto, developerId: number, developerName: string) {
+    return this.appPlatformService.createApp(
+      {
+        ...dto,
+        type: 'static',
+        visibility: 'marketplace',
+        developer_name: String(developerName || `User ${developerId}`).slice(0, 100),
+      },
+      developerId,
+    );
+  }
+
+  async updateApp(code: string, dto: UpdateDeveloperAppDto, developerId: number) {
+    const app = await this.findOwnedApp(code, developerId);
+    if (app.status !== 'draft' && app.status !== 'rejected') {
+      throw new BadRequestException('Only draft or rejected apps can be edited');
+    }
+    return this.appPlatformService.updateApp(code, dto);
+  }
+
+  async uploadVersion(code: string, file: Express.Multer.File, developerId: number) {
+    const app = await this.findOwnedApp(code, developerId);
+    if (app.status === 'disabled' || app.status === 'archived') {
+      throw new BadRequestException('Disabled or archived apps cannot upload versions');
+    }
+    return this.appPlatformService.uploadStaticVersion(code, file, developerId);
+  }
+
+  async submitVersion(code: string, version: string, developerId: number) {
+    await this.findOwnedApp(code, developerId);
+    return this.appPlatformService.submitVersion(code, version, developerId);
+  }
+
+  private async findOwnedApp(code: string, developerId: number) {
+    const app = await this.appRepo.findOne({
+      where: { code, developerId, deleteTime: IsNull() },
+    });
+    if (!app) {
+      throw new NotFoundException(`App ${code} not found`);
+    }
+    return app;
+  }
+}
