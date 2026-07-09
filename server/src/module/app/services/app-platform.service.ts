@@ -5,6 +5,7 @@ import JSZip from 'jszip';
 import * as path from 'path';
 import { IsNull, Repository } from 'typeorm';
 
+import { normalizeExternalHttpUrl } from '../../../common/utils/safe-url.util';
 import { CreateAppPackageDto, UpdateAppPackageDto } from '../dto/app-platform.dto';
 import { AppPackageEntity, AppPackageStatus, AppPackageType } from '../entities/app-package.entity';
 import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
@@ -67,7 +68,7 @@ export class AppPlatformService {
       status: dto.type === 'static' ? 'draft' : 'published',
       visibility: dto.visibility || 'marketplace',
       entryMode: this.resolveEntryMode(dto.type),
-      entryUrl: dto.entry_url || '',
+      entryUrl: this.normalizeEntryUrl(dto.type, dto.entry_url || ''),
       systemModuleCode: dto.system_module_code || '',
       saasModuleCode: dto.saas_module_code || '',
       sort: dto.sort ?? 100,
@@ -85,7 +86,7 @@ export class AppPlatformService {
     if (dto.summary !== undefined) app.summary = dto.summary;
     if (dto.description !== undefined) app.description = dto.description;
     if (dto.visibility !== undefined) app.visibility = dto.visibility;
-    if (dto.entry_url !== undefined) app.entryUrl = dto.entry_url;
+    if (dto.entry_url !== undefined) app.entryUrl = this.normalizeEntryUrl(app.type, dto.entry_url);
     if (dto.developer_name !== undefined) app.developerName = dto.developer_name;
     if (dto.system_module_code !== undefined) app.systemModuleCode = dto.system_module_code;
     if (dto.saas_module_code !== undefined) app.saasModuleCode = dto.saas_module_code;
@@ -274,6 +275,31 @@ export class AppPlatformService {
     if (type === 'internal') return 'internal_route';
     if (type === 'static') return 'static';
     return 'iframe';
+  }
+
+  private normalizeEntryUrl(type: AppPackageType, value: string) {
+    if (type === 'static') {
+      return String(value || '').trim();
+    }
+    if (type === 'iframe') {
+      return normalizeExternalHttpUrl(value, { label: 'Iframe app entry' });
+    }
+    return this.normalizeInternalRoute(value);
+  }
+
+  private normalizeInternalRoute(value: string) {
+    const route = String(value || '').trim();
+    if (
+      !route ||
+      !route.startsWith('/') ||
+      route.startsWith('//') ||
+      route.includes('\\') ||
+      /^[a-z][a-z0-9+.-]*:/i.test(route) ||
+      route.startsWith('/api/')
+    ) {
+      throw new BadRequestException('Internal app entry must be an absolute app route');
+    }
+    return route;
   }
 
   private statusToAction(status: AppPackageStatus): AppReviewAction {

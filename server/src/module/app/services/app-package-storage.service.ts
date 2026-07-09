@@ -45,6 +45,16 @@ export class AppPackageStorageService {
     return withLeading.endsWith('/') ? withLeading : `${withLeading}/`;
   }
 
+  getMaxPackageSizeBytes() {
+    const maxMb = Number(this.config.get<number>('appMarketplace.maxPackageSizeMb') ?? 50);
+    return Math.max(1, maxMb) * 1024 * 1024;
+  }
+
+  getMaxPackageFiles() {
+    const maxFiles = Number(this.config.get<number>('appMarketplace.maxPackageFiles') ?? 500);
+    return Math.max(1, maxFiles);
+  }
+
   resolvePackagePath(...segments: string[]) {
     return this.resolveInside(this.getPackageRoot(), 'Invalid app package path', ...segments);
   }
@@ -59,6 +69,9 @@ export class AppPackageStorageService {
     if (!Buffer.isBuffer(input.zipBuffer) || input.zipBuffer.length === 0) {
       throw new BadRequestException('App package file is required');
     }
+    if (input.zipBuffer.length > this.getMaxPackageSizeBytes()) {
+      throw new BadRequestException('App package is too large');
+    }
 
     let zip: JSZip;
     try {
@@ -66,13 +79,16 @@ export class AppPackageStorageService {
     } catch {
       throw new BadRequestException('Invalid app package zip');
     }
+    const zipFiles = Object.values(zip.files).filter((zipFile) => !zipFile.dir);
+    if (zipFiles.length > this.getMaxPackageFiles()) {
+      throw new BadRequestException('App package contains too many files');
+    }
 
     const packagePath = this.resolvePackagePath(appCode, version);
     fs.rmSync(packagePath, { recursive: true, force: true });
     fs.mkdirSync(packagePath, { recursive: true });
 
-    for (const zipFile of Object.values(zip.files)) {
-      if (zipFile.dir) continue;
+    for (const zipFile of zipFiles) {
       const entryName = this.normalizeRelativeFile(this.getZipEntryName(zipFile));
       const targetPath = path.resolve(packagePath, ...entryName.split('/'));
       if (!this.isPathInside(targetPath, packagePath)) {

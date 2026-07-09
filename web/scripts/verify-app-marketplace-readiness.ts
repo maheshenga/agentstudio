@@ -118,6 +118,16 @@ assertIncludes(mainSource, 'req.path.startsWith(appPublicPrefix)', 'server main'
 const configurationSource = readFile('server/src/config/configuration.ts')
 assertIncludes(configurationSource, 'appMarketplace', 'server configuration')
 assertIncludes(configurationSource, '/apps-static/', 'server configuration')
+assertIncludes(configurationSource, 'maxPackageSizeMb', 'server configuration')
+assertIncludes(configurationSource, 'maxPackageFiles', 'server configuration')
+
+const platformService = readFile('server/src/module/app/services/app-platform.service.ts')
+assertIncludes(platformService, 'normalizeExternalHttpUrl', 'app platform service')
+assertIncludes(platformService, 'normalizeInternalRoute', 'app platform service')
+
+const storageService = readFile('server/src/module/app/services/app-package-storage.service.ts')
+assertIncludes(storageService, 'getMaxPackageSizeBytes', 'app package storage service')
+assertIncludes(storageService, 'getMaxPackageFiles', 'app package storage service')
 
 const packageJson = JSON.parse(readFile('web/package.json'))
 assert(

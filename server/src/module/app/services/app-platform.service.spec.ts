@@ -80,7 +80,7 @@ describe('AppPlatformService', () => {
       status: 'published',
       visibility: 'marketplace',
       entry_mode: 'iframe',
-      entry_url: 'https://supplier.example.com',
+      entry_url: 'https://supplier.example.com/',
     });
 
     expect(appRepo.create).toHaveBeenCalledWith(
@@ -89,10 +89,23 @@ describe('AppPlatformService', () => {
         type: 'iframe',
         status: 'published',
         entryMode: 'iframe',
-        entryUrl: 'https://supplier.example.com',
+        entryUrl: 'https://supplier.example.com/',
         developerId: 88,
       }),
     );
+  });
+
+  it('rejects unsafe iframe app entry urls', async () => {
+    appRepo.findOne.mockResolvedValue(null);
+
+    await expect(
+      service.createApp({
+        code: 'unsafe_iframe',
+        name: 'Unsafe Iframe',
+        type: 'iframe',
+        entry_url: 'javascript:alert(1)',
+      }),
+    ).rejects.toThrow('Iframe app entry must use http or https');
   });
 
   it('creates an internal app that opens an existing route', async () => {
@@ -112,6 +125,19 @@ describe('AppPlatformService', () => {
       entry_mode: 'internal_route',
       entry_url: '/tenant-saas/members',
     });
+  });
+
+  it('rejects internal apps that point outside the admin route space', async () => {
+    appRepo.findOne.mockResolvedValue(null);
+
+    await expect(
+      service.createApp({
+        code: 'external_internal',
+        name: 'External Internal',
+        type: 'internal',
+        entry_url: 'https://example.com/app',
+      }),
+    ).rejects.toThrow('Internal app entry must be an absolute app route');
   });
 
   it('rejects duplicate app codes even when the existing row is soft-deleted', async () => {

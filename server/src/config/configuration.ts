@@ -97,6 +97,8 @@ export default () => ({
     packageDir: process.env.APP_PACKAGE_DIR ?? '../upload/app-packages',
     publicDir: process.env.APP_PUBLIC_DIR ?? '../upload/app-public',
     publicPrefix: process.env.APP_PUBLIC_PREFIX ?? '/apps-static/',
+    maxPackageSizeMb: Number(process.env.APP_PACKAGE_MAX_SIZE_MB ?? 50),
+    maxPackageFiles: Number(process.env.APP_PACKAGE_MAX_FILES ?? 500),
   },
   log: {
     level: process.env.LOG_LEVEL ?? 'info',

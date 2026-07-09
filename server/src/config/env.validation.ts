@@ -65,6 +65,8 @@ export const envValidationSchema = Joi.object({
   APP_PUBLIC_PREFIX: Joi.string()
     .pattern(/^\/[A-Za-z0-9/_-]*\/$/)
     .default('/apps-static/'),
+  APP_PACKAGE_MAX_SIZE_MB: Joi.number().integer().min(1).default(50),
+  APP_PACKAGE_MAX_FILES: Joi.number().integer().min(1).default(500),
 
   LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug').default('info'),
   LOG_DIR: Joi.string().default('logs'),

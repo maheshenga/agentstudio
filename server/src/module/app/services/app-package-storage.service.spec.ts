@@ -24,6 +24,8 @@ describe('AppPackageStorageService', () => {
         if (key === 'appMarketplace.packageDir') return packageRoot;
         if (key === 'appMarketplace.publicDir') return publicRoot;
         if (key === 'appMarketplace.publicPrefix') return '/apps-static/';
+        if (key === 'appMarketplace.maxPackageFiles') return 500;
+        if (key === 'appMarketplace.maxPackageSizeMb') return 50;
         return fallback;
       }),
     } as any);
@@ -88,6 +90,32 @@ describe('AppPackageStorageService', () => {
     expect(fs.readFileSync(path.join(packageRoot, 'job_board', '1.0.0', 'dist', 'index.html'), 'utf8')).toBe(
       '<html>job board</html>',
     );
+  });
+
+  it('rejects static app packages with too many files', async () => {
+    service = new AppPackageStorageService({
+      get: jest.fn((key: string, fallback?: unknown) => {
+        if (key === 'appMarketplace.packageDir') return packageRoot;
+        if (key === 'appMarketplace.publicDir') return publicRoot;
+        if (key === 'appMarketplace.publicPrefix') return '/apps-static/';
+        if (key === 'appMarketplace.maxPackageFiles') return 2;
+        if (key === 'appMarketplace.maxPackageSizeMb') return 50;
+        return fallback;
+      }),
+    } as any);
+    const zip = new JSZip();
+    zip.file('manifest.json', '{}');
+    zip.file('dist/index.html', '<html>ok</html>');
+    zip.file('dist/assets/app.js', 'console.log("ok")');
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+    await expect(
+      service.extractStaticPackage({
+        appCode: 'job_board',
+        version: '1.0.0',
+        zipBuffer: buffer,
+      }),
+    ).rejects.toThrow('App package contains too many files');
   });
 
   it('rejects publishing from outside the package root', async () => {
