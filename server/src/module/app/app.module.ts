@@ -3,6 +3,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { SaasModule } from '../saas/saas.module';
 import { SystemModuleRegistryModule } from '../system-module/system-module.module';
+import { TenantEntity } from '../system/tenant/entities/tenant.entity';
+import { SysUserTenantEntity } from '../system/user/entities/user-tenant.entity';
+import { UserEntity } from '../system/user/entities/sys-user.entity';
 import { AppAnalyticsController } from './app-analytics.controller';
 import { AppDeveloperController } from './app-developer.controller';
 import { AppFactoryController } from './app-factory.controller';
@@ -24,6 +27,7 @@ import { AppFactoryTemplateService } from './services/app-factory-template.servi
 import { AppFactoryService } from './services/app-factory.service';
 import { AppPackageStorageService } from './services/app-package-storage.service';
 import { AppPlatformService } from './services/app-platform.service';
+import { AppRuntimeContextService } from './services/app-runtime-context.service';
 import { AppTenantService } from './services/app-tenant.service';
 
 @Module({
@@ -39,6 +43,9 @@ import { AppTenantService } from './services/app-tenant.service';
       AppFactoryModuleEntity,
       AppFactoryPublishLogEntity,
       AppFactoryTemplateEntity,
+      TenantEntity,
+      UserEntity,
+      SysUserTenantEntity,
     ]),
   ],
   controllers: [
@@ -55,6 +62,7 @@ import { AppTenantService } from './services/app-tenant.service';
     AppDeveloperService,
     AppPackageStorageService,
     AppPlatformService,
+    AppRuntimeContextService,
     AppTenantService,
     AppFactoryService,
     AppFactoryTemplateService,
@@ -64,6 +72,7 @@ import { AppTenantService } from './services/app-tenant.service';
     AppDeveloperService,
     AppPackageStorageService,
     AppPlatformService,
+    AppRuntimeContextService,
     AppTenantService,
     AppFactoryService,
     AppFactoryTemplateService,
