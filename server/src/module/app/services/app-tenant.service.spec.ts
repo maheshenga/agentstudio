@@ -303,6 +303,51 @@ describe('AppTenantService', () => {
     installRepo.findOne.mockResolvedValue(null);
 
     await expect(service.getOpenMetadata(23, 'job_board', 7)).rejects.toThrow('App is not installed');
+    expect(openLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 23,
+        userId: 7,
+        appCode: 'job_board',
+        appId: 1,
+        outcome: 'failed',
+        reasonCode: 'app_not_installed',
+        failureMessage: 'App is not installed',
+      }),
+    );
+  });
+
+  it('audits an unknown app code without requiring an app id', async () => {
+    appRepo.findOne.mockResolvedValue(null);
+
+    await expect(service.getOpenMetadata(23, 'missing_app', 7)).rejects.toBeInstanceOf(NotFoundException);
+
+    expect(openLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 23,
+        userId: 7,
+        appCode: 'missing_app',
+        appId: null,
+        outcome: 'failed',
+        reasonCode: 'app_not_found',
+        failureMessage: 'App was not found',
+      }),
+    );
+  });
+
+  it('audits unpublished apps with a fixed safe reason', async () => {
+    appRepo.findOne.mockResolvedValue({ id: 2, code: 'draft_app', type: 'iframe', status: 'draft' });
+
+    await expect(service.getOpenMetadata(23, 'draft_app', 7)).rejects.toThrow('App is not published');
+
+    expect(openLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appCode: 'draft_app',
+        appId: 2,
+        outcome: 'failed',
+        reasonCode: 'app_not_published',
+        failureMessage: 'App is not published',
+      }),
+    );
   });
 
   it('returns static iframe open metadata and writes an open log', async () => {
@@ -340,9 +385,13 @@ describe('AppTenantService', () => {
       expect.objectContaining({
         tenantId: 23,
         userId: 7,
+        appCode: 'job_board',
         appId: 1,
         versionId: 9,
         openMode: 'iframe',
+        outcome: 'success',
+        reasonCode: 'none',
+        failureMessage: '',
         ip: '127.0.0.1',
         userAgent: 'jest',
       }),
@@ -414,7 +463,163 @@ describe('AppTenantService', () => {
     await expect(service.getOpenMetadata(23, 'crm_portal', 7)).rejects.toThrow(
       'Tenant has not enabled this module',
     );
-    expect(openLogRepo.save).not.toHaveBeenCalled();
+    expect(openLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appCode: 'crm_portal',
+        appId: 8,
+        outcome: 'failed',
+        reasonCode: 'missing_system_module',
+        failureMessage: 'Required tenant module is not enabled',
+      }),
+    );
+  });
+
+  it('audits plan entitlement blockers without leaking the underlying exception', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 9,
+      code: 'recruiting_portal',
+      name: 'Recruiting Portal',
+      type: 'iframe',
+      status: 'published',
+      entryUrl: 'https://jobs.example.com',
+      saasModuleCode: 'recruiting',
+    });
+    installRepo.findOne.mockResolvedValue({ id: 7, tenantId: 23, appId: 9, enabled: 1 });
+    saasModuleService.assertTenantModuleEnabled.mockRejectedValue(
+      new BadRequestException('Current plan has not enabled recruiting because internal-product-key=secret'),
+    );
+
+    await expect(service.getOpenMetadata(23, 'recruiting_portal', 7)).rejects.toThrow(
+      'Current plan has not enabled recruiting',
+    );
+
+    expect(openLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appCode: 'recruiting_portal',
+        outcome: 'failed',
+        reasonCode: 'missing_plan_module',
+        failureMessage: 'Required plan module is not enabled',
+      }),
+    );
+  });
+
+  it('audits unavailable system modules with the platform-safe reason', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 11,
+      code: 'crm_reports',
+      name: 'CRM Reports',
+      type: 'iframe',
+      status: 'published',
+      entryUrl: 'https://crm.example.com/reports',
+      systemModuleCode: 'crm',
+    });
+    installRepo.findOne.mockResolvedValue({ id: 9, tenantId: 23, appId: 11, enabled: 1 });
+    systemModuleAccessService.diagnoseModuleAccess.mockResolvedValue({
+      allowed: false,
+      status: 'module_disabled',
+      reason: 'Module disabled because operator-note=do-not-log',
+      module_code: 'crm',
+      module_name: 'CRM',
+      required_saas_module_codes: [],
+      missing_saas_module_codes: [],
+      tenant_saas_module_codes: [],
+      tenant_enabled: true,
+      tenant_entitlement_source: 'platform',
+      suggestions: [],
+    });
+
+    await expect(service.getOpenMetadata(23, 'crm_reports', 7)).rejects.toThrow('Module disabled');
+
+    expect(openLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appCode: 'crm_reports',
+        outcome: 'failed',
+        reasonCode: 'system_module_unavailable',
+        failureMessage: 'Required system module is unavailable',
+      }),
+    );
+  });
+
+  it('audits a missing published version with a fixed safe reason', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 10,
+      code: 'static_portal',
+      name: 'Static Portal',
+      type: 'static',
+      status: 'published',
+      entryUrl: '/apps-static/static_portal/index.html',
+    });
+    installRepo.findOne.mockResolvedValue({ id: 8, tenantId: 23, appId: 10, enabled: 1 });
+    versionRepo.findOne.mockResolvedValue(null);
+
+    await expect(service.getOpenMetadata(23, 'static_portal', 7)).rejects.toThrow(
+      'App has no published version',
+    );
+
+    expect(openLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appCode: 'static_portal',
+        appId: 10,
+        outcome: 'failed',
+        reasonCode: 'published_version_missing',
+        failureMessage: 'App has no published version',
+      }),
+    );
+  });
+
+  it('audits unexpected open failures without persisting raw exception text', async () => {
+    appRepo.findOne.mockRejectedValue(new Error('database password=do-not-log'));
+
+    await expect(service.getOpenMetadata(23, 'job_board', 7)).rejects.toThrow('database password=do-not-log');
+
+    expect(openLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appCode: 'job_board',
+        appId: null,
+        outcome: 'failed',
+        reasonCode: 'open_metadata_error',
+        failureMessage: 'Unable to open app',
+      }),
+    );
+    expect(JSON.stringify(openLogRepo.create.mock.calls)).not.toContain('database password=do-not-log');
+  });
+
+  it('does not fail a successful open when audit persistence is unavailable', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 2,
+      code: 'tenant_members',
+      name: 'Tenant Members',
+      type: 'internal',
+      status: 'published',
+      entryUrl: '/tenant-saas/members',
+    });
+    installRepo.findOne.mockResolvedValue({ id: 5, tenantId: 23, appId: 2, enabled: 1 });
+    openLogRepo.save.mockRejectedValue(new Error('audit database unavailable'));
+
+    await expect(service.getOpenMetadata(23, 'tenant_members', 7)).resolves.toMatchObject({
+      code: 'tenant_members',
+      open_mode: 'internal_route',
+    });
+  });
+
+  it('does not replace the original business error when audit persistence is unavailable', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 1,
+      code: 'job_board',
+      type: 'static',
+      status: 'published',
+    });
+    installRepo.findOne.mockResolvedValue(null);
+    openLogRepo.save.mockRejectedValue(new Error('audit database unavailable'));
+
+    await expect(service.getOpenMetadata(23, 'job_board', 7)).rejects.toThrow('App is not installed');
+  });
+
+  it('does not replace an unexpected error when audit persistence is unavailable', async () => {
+    appRepo.findOne.mockRejectedValue(new Error('primary app lookup failed'));
+    openLogRepo.save.mockRejectedValue(new Error('audit database unavailable'));
+
+    await expect(service.getOpenMetadata(23, 'job_board', 7)).rejects.toThrow('primary app lookup failed');
   });
 
   it('returns internal route metadata for installed internal apps', async () => {

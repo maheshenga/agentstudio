@@ -30,6 +30,19 @@ export interface AppAvailability {
 
 const STATIC_APP_SANDBOX = 'allow-scripts allow-forms allow-popups allow-downloads';
 
+type AppOpenFailureReason = Exclude<AppOpenLogEntity['reasonCode'], 'none'>;
+
+const APP_OPEN_FAILURE_MESSAGES: Record<AppOpenFailureReason, string> = {
+  app_not_found: 'App was not found',
+  app_not_published: 'App is not published',
+  app_not_installed: 'App is not installed',
+  missing_plan_module: 'Required plan module is not enabled',
+  missing_system_module: 'Required tenant module is not enabled',
+  system_module_unavailable: 'Required system module is unavailable',
+  published_version_missing: 'App has no published version',
+  open_metadata_error: 'Unable to open app',
+};
+
 @Injectable()
 export class AppTenantService {
   constructor(
@@ -138,39 +151,142 @@ export class AppTenantService {
   }
 
   async getOpenMetadata(tenantId: number, code: string, userId?: number, clientInfo: AppOpenClientInfo = {}) {
-    const app = await this.findPublishedApp(code);
-    const install = await this.installRepo.findOne({
-      where: { tenantId, appId: app.id, enabled: 1, deleteTime: IsNull() },
-    });
-    if (!install) {
-      throw new BadRequestException('App is not installed');
-    }
-    this.assertAvailability(await this.getAppAvailability(tenantId, app));
+    const appCode = String(code || '')
+      .trim()
+      .toLowerCase()
+      .slice(0, 100);
+    let app: AppPackageEntity | null = null;
+    let version: AppPackageVersionEntity | null = null;
+    let openMode = 'unknown';
+    let failureAudited = false;
 
-    const version = app.type === 'static' ? await this.resolveOpenVersion(app, install) : null;
-
-    const openMode = app.type === 'internal' ? 'internal_route' : 'iframe';
-    await this.openLogRepo.save(
-      this.openLogRepo.create({
+    const fail = async (reasonCode: AppOpenFailureReason, error: Error): Promise<never> => {
+      failureAudited = true;
+      await this.recordOpenOutcome({
         tenantId,
-        userId: userId ?? null,
+        userId,
+        appCode,
+        appId: app?.id ?? null,
+        versionId: version?.id ?? null,
+        openMode,
+        outcome: 'failed',
+        reasonCode,
+        clientInfo,
+      });
+      throw error;
+    };
+
+    try {
+      app = await this.appRepo.findOne({ where: { code: appCode, deleteTime: IsNull() } });
+      if (!app) {
+        return await fail('app_not_found', new NotFoundException(`App ${appCode} not found`));
+      }
+      if (app.status !== 'published') {
+        return await fail('app_not_published', new BadRequestException('App is not published'));
+      }
+
+      const install = await this.installRepo.findOne({
+        where: { tenantId, appId: app.id, enabled: 1, deleteTime: IsNull() },
+      });
+      if (!install) {
+        return await fail('app_not_installed', new BadRequestException('App is not installed'));
+      }
+
+      const availability = await this.getAppAvailability(tenantId, app);
+      if (!availability.available) {
+        const reasonCode: AppOpenFailureReason =
+          availability.availability_status === 'missing_plan_module' ||
+          availability.availability_status === 'missing_system_module'
+            ? availability.availability_status
+            : 'system_module_unavailable';
+        return await fail(
+          reasonCode,
+          new BadRequestException(availability.availability_reason || 'App is not available for this tenant'),
+        );
+      }
+
+      if (app.type === 'static') {
+        try {
+          version = await this.resolveOpenVersion(app, install);
+        } catch (error) {
+          if (error instanceof BadRequestException && error.message === 'App has no published version') {
+            return await fail('published_version_missing', error);
+          }
+          throw error;
+        }
+      }
+
+      openMode = app.type === 'internal' ? 'internal_route' : 'iframe';
+      await this.recordOpenOutcome({
+        tenantId,
+        userId,
+        appCode: app.code,
         appId: app.id,
         versionId: version?.id ?? null,
         openMode,
-        ip: clientInfo.ip || '',
-        userAgent: clientInfo.userAgent || '',
-      }),
-    );
+        outcome: 'success',
+        reasonCode: 'none',
+        clientInfo,
+      });
 
-    return {
-      code: app.code,
-      name: app.name,
-      type: app.type,
-      open_mode: openMode,
-      entry_url: app.entryUrl,
-      sandbox: app.type === 'internal' ? '' : STATIC_APP_SANDBOX,
-      version: version?.version || '',
-    };
+      return {
+        code: app.code,
+        name: app.name,
+        type: app.type,
+        open_mode: openMode,
+        entry_url: app.entryUrl,
+        sandbox: app.type === 'internal' ? '' : STATIC_APP_SANDBOX,
+        version: version?.version || '',
+      };
+    } catch (error) {
+      if (!failureAudited) {
+        await this.recordOpenOutcome({
+          tenantId,
+          userId,
+          appCode,
+          appId: app?.id ?? null,
+          versionId: version?.id ?? null,
+          openMode,
+          outcome: 'failed',
+          reasonCode: 'open_metadata_error',
+          clientInfo,
+        });
+      }
+      throw error;
+    }
+  }
+
+  private async recordOpenOutcome(input: {
+    tenantId: number;
+    userId?: number;
+    appCode: string;
+    appId: number | null;
+    versionId: number | null;
+    openMode: string;
+    outcome: AppOpenLogEntity['outcome'];
+    reasonCode: AppOpenLogEntity['reasonCode'];
+    clientInfo: AppOpenClientInfo;
+  }): Promise<void> {
+    try {
+      await this.openLogRepo.save(
+        this.openLogRepo.create({
+          tenantId: input.tenantId,
+          userId: input.userId ?? null,
+          appCode: input.appCode,
+          appId: input.appId,
+          versionId: input.versionId,
+          openMode: input.openMode,
+          outcome: input.outcome,
+          reasonCode: input.reasonCode,
+          failureMessage:
+            input.reasonCode === 'none' ? '' : APP_OPEN_FAILURE_MESSAGES[input.reasonCode],
+          ip: input.clientInfo.ip || '',
+          userAgent: input.clientInfo.userAgent || '',
+        }),
+      );
+    } catch {
+      return;
+    }
   }
 
   private assertAvailability(availability: AppAvailability) {
