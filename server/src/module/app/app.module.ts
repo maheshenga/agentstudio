@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { SaasModule } from '../saas/saas.module';
 import { SystemModuleRegistryModule } from '../system-module/system-module.module';
+import { AppAnalyticsController } from './app-analytics.controller';
 import { AppDeveloperController } from './app-developer.controller';
 import { AppFactoryController } from './app-factory.controller';
 import { AppPlatformReviewController } from './app-platform-review.controller';
@@ -17,6 +18,7 @@ import { AppPackageEntity } from './entities/app-package.entity';
 import { AppReviewLogEntity } from './entities/app-review-log.entity';
 import { TenantAppInstallEntity } from './entities/tenant-app-install.entity';
 import { AppManifestService } from './services/app-manifest.service';
+import { AppAnalyticsService } from './services/app-analytics.service';
 import { AppDeveloperService } from './services/app-developer.service';
 import { AppFactoryTemplateService } from './services/app-factory-template.service';
 import { AppFactoryService } from './services/app-factory.service';
@@ -40,6 +42,7 @@ import { AppTenantService } from './services/app-tenant.service';
     ]),
   ],
   controllers: [
+    AppAnalyticsController,
     AppPlatformController,
     AppPlatformReviewController,
     AppTenantController,
@@ -47,6 +50,7 @@ import { AppTenantService } from './services/app-tenant.service';
     AppDeveloperController,
   ],
   providers: [
+    AppAnalyticsService,
     AppManifestService,
     AppDeveloperService,
     AppPackageStorageService,
