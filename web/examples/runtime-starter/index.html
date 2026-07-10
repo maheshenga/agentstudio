@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Runtime Starter</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="runtime-shell">
+      <header class="runtime-header">
+        <p class="runtime-kicker">AgentStudio application</p>
+        <h1>Runtime Starter</h1>
+        <p id="runtime-status" class="runtime-status" role="status" aria-live="polite">
+          Reading runtime context...
+        </p>
+      </header>
+
+      <section id="loading-state" class="runtime-state" aria-busy="true">
+        <span class="runtime-spinner" aria-hidden="true"></span>
+        <p>Connecting to the host...</p>
+      </section>
+
+      <section id="success-state" class="runtime-content" hidden>
+        <div class="runtime-section">
+          <h2>Tenant</h2>
+          <dl>
+            <div><dt>Name</dt><dd id="tenant-name"></dd></div>
+            <div><dt>ID</dt><dd id="tenant-id"></dd></div>
+          </dl>
+        </div>
+        <div class="runtime-section">
+          <h2>User</h2>
+          <dl>
+            <div><dt>Display name</dt><dd id="user-name"></dd></div>
+            <div><dt>ID</dt><dd id="user-id"></dd></div>
+          </dl>
+        </div>
+        <div class="runtime-section">
+          <h2>Application</h2>
+          <dl>
+            <div><dt>Name</dt><dd id="app-name"></dd></div>
+            <div><dt>Code</dt><dd id="app-code"></dd></div>
+            <div><dt>Version</dt><dd id="app-version"></dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section id="error-state" class="runtime-state runtime-error" hidden>
+        <h2>Context unavailable</h2>
+        <p id="error-message"></p>
+        <button id="retry" type="button">Retry</button>
+      </section>
+    </main>
+
+    <script src="./vendor/agentstudio-runtime.global.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

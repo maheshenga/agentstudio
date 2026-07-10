@@ -10,6 +10,7 @@ dist-ssr
 logs
 *.log
 .cursorrules
+.artifacts/
 
 # Auto-generated files
 src/types/import/auto-imports.d.ts

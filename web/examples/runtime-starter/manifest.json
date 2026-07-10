@@ -1,0 +1,9 @@
+{
+  "code": "runtime_starter",
+  "name": "Runtime Starter",
+  "version": "1.0.0",
+  "type": "static",
+  "entry": "index.html",
+  "tenant_scoped": true,
+  "permissions": ["runtime:context:read"]
+}
