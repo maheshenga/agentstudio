@@ -1,4 +1,5 @@
 import request from '@/utils/http'
+import type { AppRuntimeBootstrap } from '@/utils/app-runtime'
 
 export type AppPackageType = 'internal' | 'static' | 'iframe'
 export type AppPackageStatus =
@@ -135,6 +136,7 @@ export interface AppOpenMetadata {
   entry_url: string
   sandbox: string
   version?: string
+  runtime: AppRuntimeBootstrap | null
 }
 
 export function fetchPlatformApps(params: AppPlatformListParams = {}) {
@@ -158,7 +160,10 @@ export function updatePlatformApp(code: string, params: SaveAppPackageParams) {
 }
 
 export function updatePlatformAppStatus(code: string, status: AppPackageStatus) {
-  return request.put<AppPackageRecord>({ url: `/api/app-platform/apps/${code}/status`, data: { status } })
+  return request.put<AppPackageRecord>({
+    url: `/api/app-platform/apps/${code}/status`,
+    data: { status }
+  })
 }
 
 export function uploadPlatformStaticAppVersion(code: string, file: File) {
@@ -186,7 +191,9 @@ export function rejectPlatformAppVersion(code: string, version: string, message?
 }
 
 export function publishPlatformAppVersion(code: string, version: string) {
-  return request.post<AppPackageVersionRecord>({ url: `/api/app-platform/apps/${code}/versions/${version}/publish` })
+  return request.post<AppPackageVersionRecord>({
+    url: `/api/app-platform/apps/${code}/versions/${version}/publish`
+  })
 }
 
 export function unpublishPlatformAppVersion(code: string, version: string, message?: string) {
@@ -216,7 +223,9 @@ export function installTenantApp(code: string) {
 }
 
 export function uninstallTenantApp(code: string) {
-  return request.post<{ code: string; installed: boolean }>({ url: `/api/app-tenant/apps/${code}/uninstall` })
+  return request.post<{ code: string; installed: boolean }>({
+    url: `/api/app-tenant/apps/${code}/uninstall`
+  })
 }
 
 export function fetchTenantAppOpenMetadata(code: string) {

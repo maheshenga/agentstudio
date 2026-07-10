@@ -18,7 +18,10 @@
       <div class="app-runner-page__toolbar">
         <div>
           <h1>{{ metadata.name }}</h1>
-          <p>{{ metadata.code }} <span v-if="metadata.version">· {{ metadata.version }}</span></p>
+          <p>
+            {{ metadata.code }}
+            <span v-if="metadata.version">· {{ metadata.version }}</span>
+          </p>
         </div>
         <div class="app-runner-page__actions">
           <ElTag effect="light">{{ metadata.type }}</ElTag>
@@ -29,6 +32,7 @@
 
       <iframe
         v-if="metadata.open_mode === 'iframe'"
+        ref="appFrame"
         class="app-runner-page__iframe"
         :src="metadata.entry_url"
         :title="metadata.name"
@@ -38,7 +42,11 @@
     </template>
 
     <div v-else class="app-runner-page__state">
-      <ElResult icon="info" title="No app selected" sub-title="Open an app from Marketplace or Installed Apps.">
+      <ElResult
+        icon="info"
+        title="No app selected"
+        sub-title="Open an app from Marketplace or Installed Apps."
+      >
         <template #extra>
           <ElButton type="primary" @click="goMarketplace">Go to Marketplace</ElButton>
         </template>
@@ -51,6 +59,7 @@
   import { ElMessage } from 'element-plus'
   import { Back, Loading, Refresh } from '@element-plus/icons-vue'
   import { fetchTenantAppOpenMetadata, type AppOpenMetadata } from '@/api/app-marketplace'
+  import { resolveAppRuntimeRequest } from '@/utils/app-runtime'
 
   defineOptions({ name: 'AppCenterOpenPage' })
 
@@ -59,6 +68,8 @@
   const loading = ref(false)
   const loadError = ref('')
   const metadata = ref<AppOpenMetadata | null>(null)
+  const appFrame = ref<HTMLIFrameElement | null>(null)
+  let loadSequence = 0
   const safeSandbox = computed(() => {
     const raw = metadata.value?.sandbox || 'allow-scripts allow-forms allow-popups allow-downloads'
     return raw
@@ -73,26 +84,41 @@
   }
 
   async function loadOpenMetadata() {
+    const sequence = ++loadSequence
     const code = currentCode()
     metadata.value = null
     loadError.value = ''
-    if (!code) return
+    if (!code) {
+      loading.value = false
+      return
+    }
 
     loading.value = true
     try {
       const data = await fetchTenantAppOpenMetadata(code)
+      if (sequence !== loadSequence) return
       if (data.open_mode === 'internal_route') {
         router.replace(data.entry_url)
         return
       }
       metadata.value = data
     } catch (error: any) {
+      if (sequence !== loadSequence) return
       console.error('[AppCenterOpenPage] open app failed:', error)
       loadError.value = error?.message || 'The app is not installed, disabled, or not published.'
       ElMessage.error(loadError.value)
     } finally {
-      loading.value = false
+      if (sequence === loadSequence) loading.value = false
     }
+  }
+
+  function handleRuntimeMessage(event: MessageEvent<unknown>) {
+    const frameWindow = appFrame.value?.contentWindow
+    if (!frameWindow || event.source !== frameWindow || metadata.value?.type !== 'static') return
+
+    const response = resolveAppRuntimeRequest(event.data, metadata.value.runtime)
+    if (!response) return
+    frameWindow.postMessage(response, '*')
   }
 
   function goBack() {
@@ -111,7 +137,13 @@
   )
 
   onMounted(() => {
+    window.addEventListener('message', handleRuntimeMessage)
     loadOpenMetadata()
+  })
+
+  onBeforeUnmount(() => {
+    loadSequence += 1
+    window.removeEventListener('message', handleRuntimeMessage)
   })
 </script>
 

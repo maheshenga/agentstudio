@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 import {
   APP_RUNTIME_CHANNEL,
@@ -234,4 +236,30 @@ assert.doesNotMatch(
   /username|tenant_code|email|phone|password|token|authorization|cookie/i
 )
 
-console.log('App runtime protocol readiness verified.')
+const webRoot = process.cwd()
+const runnerSource = readFileSync(resolve(webRoot, 'src/views/app-center/open/index.vue'), 'utf8')
+const apiSource = readFileSync(resolve(webRoot, 'src/api/app-marketplace.ts'), 'utf8')
+
+for (const [source, token, label] of [
+  [runnerSource, 'ref="appFrame"', 'app runner iframe binding'],
+  [runnerSource, 'event.source !== frameWindow', 'runtime source validation'],
+  [runnerSource, "metadata.value?.type !== 'static'", 'static-only runtime bridge'],
+  [runnerSource, "frameWindow.postMessage(response, '*')", 'opaque-origin response'],
+  [
+    runnerSource,
+    "window.addEventListener('message', handleRuntimeMessage)",
+    'runtime listener setup'
+  ],
+  [
+    runnerSource,
+    "window.removeEventListener('message', handleRuntimeMessage)",
+    'runtime listener cleanup'
+  ],
+  [runnerSource, 'loadSequence', 'stale metadata response guard'],
+  [runnerSource, "item !== 'allow-same-origin'", 'same-origin sandbox rejection'],
+  [apiSource, 'runtime: AppRuntimeBootstrap | null', 'open metadata runtime contract']
+] as const) {
+  assert.ok(source.includes(token), `${label} must include ${token}`)
+}
+
+console.log('App runtime readiness verified.')
