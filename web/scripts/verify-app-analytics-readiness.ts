@@ -112,6 +112,15 @@ for (const reasonCode of [
   assertIncludes(tenantPage, reasonCode, 'tenant app usage failure labels')
 }
 
+assert(
+  /async function loadOverview\(\)[\s\S]*?catch \{\s*overview\.value = null/.test(platformPage),
+  'platform analytics page must clear stale overview data after a failed refresh'
+)
+assert(
+  /async function loadUsage\(\)[\s\S]*?catch \{\s*overview\.value = null/.test(tenantPage),
+  'tenant app usage page must clear stale overview data after a failed refresh'
+)
+
 const forbiddenSensitiveFields = [
   /\bip\b/i,
   /user[_-]?agent/i,

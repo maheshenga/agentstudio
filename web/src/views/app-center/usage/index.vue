@@ -325,6 +325,7 @@
     try {
       overview.value = await fetchTenantAppUsageOverview(days.value)
     } catch {
+      overview.value = null
       loadError.value = 'App usage failed to load'
     } finally {
       loading.value = false

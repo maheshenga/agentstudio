@@ -481,6 +481,7 @@
     try {
       overview.value = await fetchPlatformAppAnalyticsOverview(days.value)
     } catch {
+      overview.value = null
       loadError.value = 'App analytics failed to load'
     } finally {
       loading.value = false
