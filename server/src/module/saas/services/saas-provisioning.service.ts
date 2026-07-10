@@ -33,6 +33,21 @@ const TENANT_BASELINE_MENU_CODES = [
   'TenantMember',
   'TenantSystemModules',
 ] as const;
+const TENANT_OWNER_ADMIN_MENU_CODES = [
+  ...TENANT_BASELINE_MENU_CODES,
+  'AppCenter',
+  'AppMarketplace',
+  'AppInstalledApps',
+  'AppOpenRunner',
+  'AppTenantUsage',
+] as const;
+const TENANT_MEMBER_MENU_CODES = [
+  ...TENANT_BASELINE_MENU_CODES,
+  'AppCenter',
+  'AppMarketplace',
+  'AppInstalledApps',
+  'AppOpenRunner',
+] as const;
 const TENANT_OWNER_ADMIN_PERMISSION_SLUGS = [
   'tenant:billing:view',
   'tenant:billing:upgrade',
@@ -48,12 +63,18 @@ const TENANT_OWNER_ADMIN_PERMISSION_SLUGS = [
   'tenant:member:remove',
   'tenant:member:reset-password',
   'tenant:module:list',
+  'app:tenant:marketplace',
+  'app:tenant:install',
+  'app:tenant:open',
+  'app:analytics:tenant',
 ] as const;
 const TENANT_MEMBER_PERMISSION_SLUGS = [
   'tenant:billing:view',
   'tenant:quota:view',
   'tenant:member:index',
   'tenant:module:list',
+  'app:tenant:marketplace',
+  'app:tenant:open',
 ] as const;
 
 @Injectable()
@@ -287,17 +308,17 @@ export class SaasProvisioningService {
     await this.insertRoleMenus(
       manager,
       ownerRole.id,
-      this.collectMenuIds(menuMap, TENANT_BASELINE_MENU_CODES, TENANT_OWNER_ADMIN_PERMISSION_SLUGS),
+      this.collectMenuIds(menuMap, TENANT_OWNER_ADMIN_MENU_CODES, TENANT_OWNER_ADMIN_PERMISSION_SLUGS),
     );
     await this.insertRoleMenus(
       manager,
       adminRole.id,
-      this.collectMenuIds(menuMap, TENANT_BASELINE_MENU_CODES, TENANT_OWNER_ADMIN_PERMISSION_SLUGS),
+      this.collectMenuIds(menuMap, TENANT_OWNER_ADMIN_MENU_CODES, TENANT_OWNER_ADMIN_PERMISSION_SLUGS),
     );
     await this.insertRoleMenus(
       manager,
       memberRole.id,
-      this.collectMenuIds(menuMap, TENANT_BASELINE_MENU_CODES, TENANT_MEMBER_PERMISSION_SLUGS),
+      this.collectMenuIds(menuMap, TENANT_MEMBER_MENU_CODES, TENANT_MEMBER_PERMISSION_SLUGS),
     );
   }
 
@@ -305,7 +326,7 @@ export class SaasProvisioningService {
     const menus = await manager.find(SysMenuEntity, {
       where: [
         {
-          code: In([...TENANT_BASELINE_MENU_CODES]),
+          code: In([...TENANT_OWNER_ADMIN_MENU_CODES]),
           status: 1,
           deleteTime: IsNull(),
         },
@@ -327,7 +348,7 @@ export class SaasProvisioningService {
       }
     }
 
-    const expectedCount = TENANT_BASELINE_MENU_CODES.length + TENANT_OWNER_ADMIN_PERMISSION_SLUGS.length;
+    const expectedCount = TENANT_OWNER_ADMIN_MENU_CODES.length + TENANT_OWNER_ADMIN_PERMISSION_SLUGS.length;
     if (menuMap.size < expectedCount) {
       throw new Error('Tenant SaaS menus are not configured');
     }
