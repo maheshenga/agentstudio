@@ -110,7 +110,7 @@ export function resolveAppRuntimeRequest(
   if (request.type !== 'context.get') {
     return errorResponse(requestId, 'unsupported_request')
   }
-  if (!bootstrap) {
+  if (!bootstrap || bootstrap.protocol_version !== APP_RUNTIME_PROTOCOL_VERSION) {
     return errorResponse(requestId, 'context_unavailable')
   }
   if (!Array.isArray(bootstrap.scopes) || !bootstrap.scopes.includes(APP_RUNTIME_CONTEXT_SCOPE)) {

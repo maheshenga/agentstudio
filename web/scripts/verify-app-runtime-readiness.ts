@@ -112,6 +112,29 @@ assert.deepEqual(
     {
       channel: APP_RUNTIME_CHANNEL,
       version: 1,
+      type: 'context.get',
+      request_id: 'request-bootstrap-version'
+    },
+    { ...bootstrap, protocol_version: 2 } as unknown as AppRuntimeBootstrap
+  ),
+  {
+    channel: APP_RUNTIME_CHANNEL,
+    version: 1,
+    type: 'context.error',
+    request_id: 'request-bootstrap-version',
+    ok: false,
+    error: {
+      code: 'context_unavailable',
+      message: 'Runtime context is unavailable'
+    }
+  }
+)
+
+assert.deepEqual(
+  resolveAppRuntimeRequest(
+    {
+      channel: APP_RUNTIME_CHANNEL,
+      version: 1,
       type: 'storage.get',
       request_id: 'request-type'
     },
