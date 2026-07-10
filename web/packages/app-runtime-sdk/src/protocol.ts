@@ -60,6 +60,9 @@ export function parseRuntimeResponse(value: unknown, requestId: string): ParsedR
     return { kind: 'ignore' }
   }
   if (value.type !== 'context.result' && value.type !== 'context.error') {
+    if (typeof value.version === 'number' && value.version !== APP_RUNTIME_PROTOCOL_VERSION) {
+      return { kind: 'error', error: new AppRuntimeError('unsupported_protocol', requestId) }
+    }
     return { kind: 'ignore' }
   }
   if (value.version !== APP_RUNTIME_PROTOCOL_VERSION) {

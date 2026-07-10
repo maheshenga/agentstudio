@@ -1,6 +1,6 @@
 import type { AppRuntimeErrorCode } from './types'
 
-export const APP_RUNTIME_ERROR_CODES = [
+export const APP_RUNTIME_ERROR_CODES = Object.freeze([
   'unsupported_protocol',
   'unsupported_request',
   'scope_denied',
@@ -9,7 +9,7 @@ export const APP_RUNTIME_ERROR_CODES = [
   'aborted',
   'host_unavailable',
   'invalid_response'
-] as const satisfies readonly AppRuntimeErrorCode[]
+] as const satisfies readonly AppRuntimeErrorCode[])
 
 const HOST_RUNTIME_ERROR_CODES = new Set<AppRuntimeErrorCode>([
   'unsupported_protocol',
