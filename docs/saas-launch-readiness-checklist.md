@@ -51,6 +51,8 @@ pnpm.cmd run verify:app-factory-readiness
 pnpm.cmd run verify:app-developer-readiness
 pnpm.cmd run verify:app-analytics-readiness
 pnpm.cmd run verify:app-runtime-readiness
+pnpm.cmd run verify:app-runtime-sdk
+pnpm.cmd run verify:app-runtime-starter
 pnpm.cmd build
 pnpm.cmd run verify:saas-preview-smoke
 pnpm.cmd run verify:saas-browser-smoke
@@ -281,6 +283,34 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 7. Confirm a scoped static app with unavailable tenant, user, or membership identity receives the fixed `context_unavailable` response and still renders normally.
 8. Confirm external iframe apps and internal-route apps receive no runtime bridge response.
 9. Send the request from another window or a stale iframe and confirm the host ignores it because it is not the current iframe `WindowProxy`.
+
+### Manual App Runtime SDK Flow
+
+1. Build `@agentstudio/app-runtime-sdk` and confirm ESM `dist/index.js`, browser IIFE `dist/agentstudio-runtime.global.js`, and TypeScript declarations rooted at `dist/index.d.ts` exist.
+2. Import `getContext`, `AppRuntimeError`, `AppRuntimeContext`, and `GetContextOptions` from the package in a TypeScript consumer.
+3. Load the IIFE in a plain HTML app and confirm `window.AgentStudioRuntime.getContext()` exposes the same context and fixed errors.
+4. Publish and install the generated `Runtime Starter` ZIP, then confirm loading, success, fixed error, and Retry states are keyboard accessible and responsive.
+5. Confirm concurrent requests use different request IDs; timeout, abort, invalid response, and host errors remove their timer and listeners exactly once.
+6. Confirm the SDK and starter contain no HTTP client, storage facade, token accessor, write capability, management API reference, source map, or backend executable.
+7. Confirm the iframe still omits `allow-same-origin`, a reload creates one fresh request/result pair, and no username, contact field, role, permission, credential, or raw exception appears in the runtime payload or page.
+
+The disposable full-lifecycle gate is opt-in because it creates and drops a MySQL database and starts local backend/frontend processes. Provide these variable names through the local secret environment, never through committed scripts or documentation:
+
+```text
+APP_RUNTIME_E2E_DB_HOST
+APP_RUNTIME_E2E_DB_PORT
+APP_RUNTIME_E2E_DB_USERNAME
+APP_RUNTIME_E2E_DB_PASSWORD
+APP_RUNTIME_E2E_PLATFORM_USERNAME
+APP_RUNTIME_E2E_PLATFORM_PASSWORD
+```
+
+Then run:
+
+```powershell
+cd web
+pnpm.cmd run verify:app-runtime-live-e2e
+```
 10. Change the app route or click Reload while an earlier metadata request is still pending and confirm the older response cannot remount stale app metadata or runtime context.
 11. Inspect the open metadata and iframe response and confirm they contain no username, tenant code, email, phone, avatar, department, role, permission list, access token, refresh token, authorization value, cookie, IP address, user agent, request object, or raw exception.
 12. Confirm the static app never receives a platform token or direct authenticated backend API client.
@@ -383,10 +413,21 @@ Verified in the `saas-order-risk-ops` worktree:
 - Code review confirmed the frontend rebuilds context from the approved allowlist, validates both request and bootstrap protocol version `1`, returns only fixed error messages, and never forwards an API client, token, cookie, request object, or backend exception.
 - Code review confirmed the host accepts messages only from the current sandboxed static iframe, uses `targetOrigin: "*"` only for the opaque sandbox origin, removes the listener on unmount, and rejects stale metadata responses with `loadSequence`.
 
-Environment-dependent manual verification not executed in this pass:
-
-- No authenticated browser smoke was run with a newly reviewed, published, installed static package declaring `runtime:context:read`. Execute the Manual Static App Runtime Flow above against disposable or staging data before production release.
 - P8 adds no database migration, runtime bearer token, direct iframe backend API, write API, external iframe bridge, or backend-executable plugin path.
+
+## P9-A App Runtime SDK Verification - 2026-07-11
+
+Verified in the `saas-order-risk-ops` worktree:
+
+- `pnpm.cmd run verify:app-runtime-sdk` passed for source behavior, ESM/IIFE exports, declarations, zero runtime dependencies, fixed errors, timeout normalization, abort, concurrency, request isolation, malformed responses, allowlist reconstruction, exact cleanup, bundle denylist, and the `10KB` limit.
+- SDK outputs were ESM 4.48KB and IIFE 3.56KB before gzip; both are generated, source-map-free, and ignored by Git.
+- `pnpm.cmd run verify:app-runtime-starter` passed twice and proved deterministic ZIP bytes, exact manifest and five-file allowlist, SDK SHA-256 equality, no symlink/executable/environment/source-map entry, and no credential or browser-storage reference.
+- The full disposable browser E2E passed against MySQL 8.4 and an isolated Redis database. It built backend/frontend/SDK/starter, created a fresh database, authenticated a platform administrator, created/uploaded/approved/published `runtime_starter`, registered and authenticated a tenant owner, installed the app, and opened it through the real tenant runner.
+- Playwright proved the iframe sandbox contains `allow-scripts` but not `allow-same-origin`, all seven allowlisted context fields match disposable identities with string IDs, forbidden identity/credential fields are absent, and reload produces exactly one fresh result with a different request ID.
+- The E2E stopped backend/frontend processes, dropped the disposable database, and left no temporary MySQL process or data directory.
+- Focused ESLint and Stylelint passed for the SDK, starter, build/verifier scripts, and live E2E.
+- Review findings for future-protocol handling, runtime freezing of the public error catalog, exact timeout/abort cleanup assertions, and export metadata coverage were fixed and reverified.
+- P9-A still adds no runtime token, storage API, write API, capability gateway, backend plugin, external iframe bridge, npm publication, or CDN publication.
 
 ## Known Out-of-Scope Items
 
