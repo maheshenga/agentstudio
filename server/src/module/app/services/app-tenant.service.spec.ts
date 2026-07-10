@@ -6,6 +6,7 @@ import { AppOpenLogEntity } from '../entities/app-open-log.entity';
 import { AppPackageEntity } from '../entities/app-package.entity';
 import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
 import { TenantAppInstallEntity } from '../entities/tenant-app-install.entity';
+import { AppRuntimeContextService } from './app-runtime-context.service';
 import { AppTenantService } from './app-tenant.service';
 import { SaasModuleService } from '../../saas/services/saas-module.service';
 import { SystemModuleAccessService } from '../../system-module/services/system-module-access.service';
@@ -37,6 +38,9 @@ describe('AppTenantService', () => {
     diagnoseModuleAccess: jest.fn(),
     assertModuleAccess: jest.fn(),
   };
+  const appRuntimeContextService = {
+    buildBootstrap: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -59,6 +63,7 @@ describe('AppTenantService', () => {
       suggestions: [],
     });
     systemModuleAccessService.assertModuleAccess.mockResolvedValue(true);
+    appRuntimeContextService.buildBootstrap.mockResolvedValue(null);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -69,6 +74,7 @@ describe('AppTenantService', () => {
         { provide: getRepositoryToken(AppOpenLogEntity), useValue: openLogRepo },
         { provide: SaasModuleService, useValue: saasModuleService },
         { provide: SystemModuleAccessService, useValue: systemModuleAccessService },
+        { provide: AppRuntimeContextService, useValue: appRuntimeContextService },
       ],
     }).compile();
 
@@ -368,6 +374,15 @@ describe('AppTenantService', () => {
       publishStatus: 'published',
       reviewStatus: 'approved',
     });
+    appRuntimeContextService.buildBootstrap.mockResolvedValue({
+      protocol_version: 1,
+      scopes: ['runtime:context:read'],
+      context: {
+        tenant: { id: '23', name: 'Acme' },
+        user: { id: '7', display_name: 'Owner' },
+        app: { code: 'job_board', name: 'Job Board', version: '1.0.0' },
+      },
+    });
 
     await expect(
       service.getOpenMetadata(23, 'job_board', 7, { ip: '127.0.0.1', userAgent: 'jest' }),
@@ -379,6 +394,21 @@ describe('AppTenantService', () => {
       entry_url: '/apps-static/job_board/1.0.0/dist/index.html',
       sandbox: 'allow-scripts allow-forms allow-popups allow-downloads',
       version: '1.0.0',
+      runtime: {
+        protocol_version: 1,
+        scopes: ['runtime:context:read'],
+        context: {
+          tenant: { id: '23' },
+          user: { id: '7' },
+        },
+      },
+    });
+
+    expect(appRuntimeContextService.buildBootstrap).toHaveBeenCalledWith({
+      tenantId: 23,
+      userId: 7,
+      app: expect.objectContaining({ id: 1, code: 'job_board', type: 'static' }),
+      version: expect.objectContaining({ id: 9, version: '1.0.0' }),
     });
 
     expect(openLogRepo.create).toHaveBeenCalledWith(
@@ -395,6 +425,36 @@ describe('AppTenantService', () => {
         ip: '127.0.0.1',
         userAgent: 'jest',
       }),
+    );
+  });
+
+  it('keeps app opening successful when runtime context resolution fails', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 1,
+      code: 'job_board',
+      name: 'Job Board',
+      type: 'static',
+      status: 'published',
+      entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
+    });
+    installRepo.findOne.mockResolvedValue({ id: 4, tenantId: 23, appId: 1, versionId: 9, enabled: 1 });
+    versionRepo.findOne.mockResolvedValue({
+      id: 9,
+      appId: 1,
+      version: '1.0.0',
+      publishStatus: 'published',
+      reviewStatus: 'approved',
+    });
+    appRuntimeContextService.buildBootstrap.mockRejectedValue(new Error('identity database unavailable'));
+
+    await expect(service.getOpenMetadata(23, 'job_board', 7)).resolves.toMatchObject({
+      code: 'job_board',
+      open_mode: 'iframe',
+      runtime: null,
+    });
+    expect(openLogRepo.create).toHaveBeenCalledTimes(1);
+    expect(openLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'success', reasonCode: 'none' }),
     );
   });
 
@@ -640,6 +700,7 @@ describe('AppTenantService', () => {
       open_mode: 'internal_route',
       entry_url: '/tenant-saas/members',
       sandbox: '',
+      runtime: null,
     });
   });
 

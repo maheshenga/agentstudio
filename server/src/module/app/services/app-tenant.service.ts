@@ -8,6 +8,7 @@ import { AppOpenLogEntity } from '../entities/app-open-log.entity';
 import { AppPackageEntity } from '../entities/app-package.entity';
 import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
 import { TenantAppInstallEntity } from '../entities/tenant-app-install.entity';
+import { AppRuntimeContextService } from './app-runtime-context.service';
 
 export interface AppOpenClientInfo {
   ip?: string;
@@ -56,6 +57,7 @@ export class AppTenantService {
     private readonly openLogRepo: Repository<AppOpenLogEntity>,
     private readonly saasModuleService: SaasModuleService,
     private readonly systemModuleAccessService: SystemModuleAccessService,
+    private readonly appRuntimeContextService: AppRuntimeContextService,
   ) {}
 
   async listMarketplace(tenantId: number) {
@@ -217,6 +219,9 @@ export class AppTenantService {
       }
 
       openMode = app.type === 'internal' ? 'internal_route' : 'iframe';
+      const runtime = await this.appRuntimeContextService
+        .buildBootstrap({ tenantId, userId, app, version })
+        .catch(() => null);
       await this.recordOpenOutcome({
         tenantId,
         userId,
@@ -237,6 +242,7 @@ export class AppTenantService {
         entry_url: app.entryUrl,
         sandbox: app.type === 'internal' ? '' : STATIC_APP_SANDBOX,
         version: version?.version || '',
+        runtime,
       };
     } catch (error) {
       if (!failureAudited) {
