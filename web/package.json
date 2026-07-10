@@ -31,7 +31,8 @@
     "verify:app-runtime-readiness": "tsx scripts/verify-app-runtime-readiness.ts",
     "verify:app-runtime-sdk": "pnpm --filter @agentstudio/app-runtime-sdk verify",
     "build:app-runtime-starter": "pnpm --filter @agentstudio/app-runtime-sdk build && tsx scripts/build-runtime-starter.ts",
-    "verify:app-runtime-starter": "pnpm run build:app-runtime-starter && tsx scripts/verify-app-runtime-starter.ts"
+    "verify:app-runtime-starter": "pnpm run build:app-runtime-starter && tsx scripts/verify-app-runtime-starter.ts",
+    "verify:app-runtime-live-e2e": "tsx scripts/verify-app-runtime-live-e2e.ts"
   },
   "config": {
     "commitizen": {
