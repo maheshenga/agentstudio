@@ -1,6 +1,6 @@
 # P8 Safe App Runtime API Design
 
-**Status:** Approved conversational design, pending written-spec review
+**Status:** Approved
 
 **Goal:** Let reviewed static applications request a small sanitized tenant, user, and app context through a versioned `postMessage` contract without exposing platform credentials or weakening tenant entitlement checks.
 
@@ -83,9 +83,9 @@ The service performs defense-in-depth checks before returning context:
 - version manifest permissions contain the exact string `runtime:context:read`;
 - tenant exists, is active, and is not soft deleted;
 - user exists, is active, and is not soft deleted;
-- an active, non-deleted user-tenant membership exists for the same tenant and user.
+- a non-deleted user-tenant membership exists for the same tenant and user. The current membership table has no independent status column, so membership validity is existence plus `deleteTime IS NULL`.
 
-The service selects only the fields needed for the response. It does not serialize full entities.
+The service selects only the fields needed for the response. It does not serialize full entities. `display_name` is derived only from `realname`; it must never fall back to the login `username`.
 
 Supported runtime scopes are resolved from the published version manifest. Unknown manifest permissions remain stored for compatibility but are never surfaced as runtime scopes by P8.
 
@@ -198,7 +198,7 @@ The static iframe has an opaque origin because `allow-same-origin` remains forbi
 - External iframe apps cannot use the bridge.
 - Runtime scope comes from the reviewed, resolved version manifest rather than iframe-supplied input.
 - Tenant entitlement and installation are checked before the host receives runtime context.
-- User identity is bound to an active membership in the authenticated tenant.
+- User identity is bound to a non-deleted membership in the authenticated tenant.
 - Context fields are built from an explicit allowlist, not by serializing entities.
 - Fixed error messages prevent backend details from crossing into uploaded code.
 
@@ -206,7 +206,7 @@ The static iframe has an opaque origin because `allow-same-origin` remains forbi
 
 - A missing scope does not prevent the app from opening; `context.get` returns `scope_denied`.
 - Missing tenant/user/membership context does not expose partial identity; `context.get` returns `context_unavailable`.
-- A route change or retry clears the previous bootstrap before loading the next app.
+- A route change or retry clears the previous bootstrap before loading the next app. Request sequencing prevents an older metadata response from mounting after a newer route or reload request.
 - Messages received while loading, after unload, or from a stale iframe source are ignored.
 - Runtime bridge errors are not added to app-open failure analytics in P8 because the app itself opened successfully.
 
@@ -218,7 +218,8 @@ The static iframe has an opaque origin because `allow-same-origin` remains forbi
 - Static app context includes only the approved fields and string IDs.
 - Missing scope returns an empty scope list and null context.
 - External iframe/internal apps return `runtime: null`.
-- Missing or inactive tenant/user/membership returns null context without leaking raw errors.
+- Missing or inactive tenant/user, or a missing/soft-deleted membership, returns null context without leaking raw errors.
+- A user without `realname` receives an empty `display_name`; the login `username` is never used as a fallback.
 - Existing open audit success/failure behavior remains unchanged.
 - Response serialization contains no credential, contact, role, IP, or user-agent fields.
 
@@ -240,7 +241,7 @@ The static iframe has an opaque origin because `allow-same-origin` remains forbi
 - A static app without the scope receives `scope_denied` and no context.
 - External iframe and internal apps cannot receive runtime context.
 - The bridge accepts messages only from the currently rendered iframe window.
-- Tenant/user context is derived from authenticated server state and active tenant membership.
+- Tenant/user context is derived from authenticated server state and a non-deleted tenant membership.
 - No platform credential or disallowed identity field is present in backend metadata, frontend runtime types, or iframe responses.
 - Existing app install, entitlement, open, and P7 analytics behavior remains green.
 - Focused backend tests, runtime readiness checks, ESLint, backend build, frontend build, and `git diff --check` pass.
