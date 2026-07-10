@@ -28,7 +28,7 @@ describe('AppRuntimeContextService', () => {
   } as unknown as AppPackageVersionEntity;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
     service = new AppRuntimeContextService(
       tenantRepo as unknown as Repository<TenantEntity>,
       userRepo as unknown as Repository<UserEntity>,

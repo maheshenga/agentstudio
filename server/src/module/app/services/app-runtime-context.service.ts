@@ -44,7 +44,6 @@ export class AppRuntimeContextService {
   }): Promise<AppRuntimeBootstrap | null> {
     if (input.app.type !== 'static') return null;
 
-    const version = input.version as AppPackageVersionEntity;
     const scopes = this.resolveScopes(input.version?.manifest);
     const unavailable: AppRuntimeBootstrap = {
       protocol_version: APP_RUNTIME_PROTOCOL_VERSION,
@@ -52,8 +51,9 @@ export class AppRuntimeContextService {
       context: null,
     };
 
-    if (scopes.length === 0 || !input.userId) return unavailable;
+    if (scopes.length === 0 || !input.version || !input.userId) return unavailable;
 
+    const version = input.version;
     const userId = input.userId;
 
     try {
