@@ -293,12 +293,13 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 - Developer app flow uses authenticated ownership checks for every detail and mutation and exposes no platform governance action.
 - Platform app analytics require `app:analytics:platform` and run with tenant filtering explicitly disabled only inside the platform controller boundary.
 - Tenant app analytics require `app:analytics:tenant` and derive tenant identity only from authenticated context through `getTenantId()`.
+- New tenant provisioning grants app marketplace, install, open, and analytics access to owner/admin roles. Member roles retain marketplace/open access without install or analytics access.
 - App analytics accept only 7, 30, or 90 day windows, default to 30 days, and aggregate installs separately from opens to avoid inflated counts.
 - Platform overview and per-app detail include installs, open outcomes, entitlement blockers, tenant/user reach, trends, version adoption, and bounded sanitized failures.
 - Tenant usage includes enabled apps, open outcomes, entitlement blockers, trends, installed-app usage, and version adoption without tenant ids or user ids in the UI response.
 - Analytics responses and pages expose no authorization values, cookies, tokens, IP addresses, user agents, raw exception text, or request failure objects.
 - Recent failure lists are capped at 20 rows and per-app tenant adoption is capped at 100 rows.
-- The app analytics menu migration is insert-idempotent. Schema and menu rollback contracts are covered by migration specs and must be exercised on a disposable database before production.
+- The app analytics menu migration is insert-idempotent. Schema and menu rollback contracts are covered by migration specs and have been exercised on a disposable MySQL database.
 - Uploaded apps are never executed as backend code in P0.
 - Resource-pack and plan payment paths show whether Alipay is configured before a user attempts payment.
 - Empty, loading, and error states are visible for tenant and platform pages.
@@ -322,6 +323,20 @@ Environment-dependent checks not verified on 2026-07-10:
 - Local MySQL at `127.0.0.1:3306` was unavailable (`TcpTestSucceeded: False`), so the analytics migrations were not executed against a real database.
 - Authenticated platform and tenant endpoint smoke tests, failed-open audit-row persistence, and live cross-tenant isolation remain unverified until MySQL and seeded identities are available.
 - Before production, exercise both migration rollback paths on a disposable database. The menu rollback removes rows and grants matching the analytics codes and slugs, so it should not be tested first against shared production data.
+
+These environment-dependent gaps were closed on 2026-07-11 in the disposable verification environment below.
+
+### P7 Database And Authenticated Smoke Verification - 2026-07-11
+
+- A local MySQL 8.4 instance bound to `127.0.0.1:3306` and the existing local Redis instance were used only for disposable verification data; no credentials were printed or added to repository files.
+- `pnpm.cmd run db:verify-init` passed against `fssoa_net_verify_p7`: the base `database/init.sql` loaded, all 38 source migrations ran, P7 migrations `1760000000036` and `1760000000037` completed, bootstrap identity checks passed, and the verification database was retained for authenticated smoke testing.
+- The backend started from the production build on port `3100`; `/api/health` reported both MySQL and Redis as `up`.
+- Seeded platform administrator login and `GET /api/app-analytics/platform/overview?days=30` succeeded. The overview aggregated three failed opens across two tenants, kept recent failures within 20 rows, and exposed no credential fields.
+- Two disposable tenants completed public signup and authenticated login. Their owner roles received `app:tenant:open` and `app:analytics:tenant` through tenant provisioning.
+- Each tenant triggered an unknown-app open. Both calls returned business code `404`, two matching `app_not_found` audit rows were persisted, and each tenant analytics response contained only its own failure.
+- Supplying another tenant id through the tenant overview query did not change the authenticated tenant scope. Tenant responses contained no tenant id, user id, authorization, cookie, token, or user-agent field.
+- Both P7 migrations were reverted in reverse order on the disposable database. The analytics menu/grants and schema fields were removed, `app_id` returned to `NOT NULL`, and both migrations then reapplied successfully with columns, indexes, menus, grants, and migration records restored.
+- Focused backend regression passed after the provisioning fix: 6 suites and 37 tests. The backend production TypeScript build also passed.
 
 P2 performance follow-up:
 
