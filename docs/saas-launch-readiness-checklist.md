@@ -10,7 +10,9 @@ This checklist verifies the AgentStudio SaaS system is ready for local demo, QA 
 - Tenant owner: can log in, view subscription, usage, enabled modules, members, and resource packs.
 - Platform admin: can manage tenants, plans, modules, subscriptions, usage, revenue, resource packs, resource-pack orders, and Alipay settings.
 - Platform app admin: can create internal/iframe/static app records, upload static app zip packages, review versions, publish approved versions, and disable unsafe apps.
+- Platform analytics admin: can inspect cross-tenant app adoption, open reliability, entitlement blockers, version adoption, and sanitized failures.
 - Tenant app user: can browse approved marketplace apps, install tenant apps, view installed apps, and open installed apps through the sandboxed runner.
+- Tenant owner or admin: can inspect only the authenticated tenant's app usage and sanitized failure history.
 
 ## Automated Gates
 
@@ -47,6 +49,7 @@ pnpm.cmd exec tsx scripts/verify-saas-readiness-command.ts
 pnpm.cmd run verify:app-marketplace-readiness
 pnpm.cmd run verify:app-factory-readiness
 pnpm.cmd run verify:app-developer-readiness
+pnpm.cmd run verify:app-analytics-readiness
 pnpm.cmd build
 pnpm.cmd run verify:saas-preview-smoke
 pnpm.cmd run verify:saas-browser-smoke
@@ -248,6 +251,8 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 11. Open `/#/app-platform/apps` and confirm platform admins can create internal/iframe/static apps, upload static zip packages, review pending versions, publish approved versions, unpublish unsafe versions, rollback to a previous approved version, and disable apps.
 12. Open `/#/app-platform/factory` and confirm platform admins can use curated templates, create static HTML/CSS modules, bind optional SaaS/system modules, preview content, and publish a generated static marketplace app version.
 13. Open `/#/app-platform/reviews` and confirm reviewers can filter pending versions and perform approve/reject/publish/rollback/unpublish actions from one queue.
+14. Open `/#/app-platform/analytics` with `app:analytics:platform` and confirm 7/30/90-day overview metrics, app rows, sanitized failures, and per-app version and tenant adoption render.
+15. Remove `app:analytics:platform` and confirm the platform analytics menu and API are unavailable to the account.
 
 ## Manual App Center Flow
 
@@ -260,6 +265,9 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 7. Confirm an app bound to a missing SaaS module shows Requires upgrade and cannot be installed.
 8. Confirm an installed app bound to a disabled system module cannot be opened and shows Tenant has not enabled this module.
 9. Confirm a platform rollback makes the tenant app runner open the restored static version instead of a retired installed version.
+10. Open `/#/app-center/usage` as a tenant owner or tenant admin with `app:analytics:tenant` and confirm 7/30/90-day usage, installed-app metrics, version adoption, and sanitized failures render.
+11. Confirm a tenant member without `app:analytics:tenant` cannot open the usage page or call `GET /api/app-analytics/tenant/overview`.
+12. Sign in to two different tenants and confirm each usage response contains only the authenticated tenant's data; no tenant id can be supplied through query, path, or body.
 
 ## Manual Developer App Flow
 
@@ -283,10 +291,42 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 - Module factory flow uses `GET /api/app-platform/factory/modules`, creates static HTML/CSS modules only, and publishes generated apps through the existing marketplace runtime.
 - Module factory template flow uses `GET /api/app-platform/factory/templates`, applies curated static templates into drafts, and never executes template code on the backend.
 - Developer app flow uses authenticated ownership checks for every detail and mutation and exposes no platform governance action.
+- Platform app analytics require `app:analytics:platform` and run with tenant filtering explicitly disabled only inside the platform controller boundary.
+- Tenant app analytics require `app:analytics:tenant` and derive tenant identity only from authenticated context through `getTenantId()`.
+- App analytics accept only 7, 30, or 90 day windows, default to 30 days, and aggregate installs separately from opens to avoid inflated counts.
+- Platform overview and per-app detail include installs, open outcomes, entitlement blockers, tenant/user reach, trends, version adoption, and bounded sanitized failures.
+- Tenant usage includes enabled apps, open outcomes, entitlement blockers, trends, installed-app usage, and version adoption without tenant ids or user ids in the UI response.
+- Analytics responses and pages expose no authorization values, cookies, tokens, IP addresses, user agents, raw exception text, or request failure objects.
+- Recent failure lists are capped at 20 rows and per-app tenant adoption is capped at 100 rows.
+- The app analytics menu migration is insert-idempotent. Schema and menu rollback contracts are covered by migration specs and must be exercised on a disposable database before production.
 - Uploaded apps are never executed as backend code in P0.
 - Resource-pack and plan payment paths show whether Alipay is configured before a user attempts payment.
 - Empty, loading, and error states are visible for tenant and platform pages.
 - If PowerShell `Get-Content` displays Chinese as mojibake, verify with Node UTF-8 reads or run `verify-saas-visible-copy-encoding.ts` before editing source files. The browser/Vite path reads these source files as UTF-8.
+
+## P7 App Analytics Verification - 2026-07-10
+
+Verified in the `saas-order-risk-ops` worktree:
+
+- Backend focused Jest gate passed: 5 suites and 32 tests covering the analytics schema migration, app-open outcomes, analytics aggregation, controller permissions and tenant context, and analytics menu seeding.
+- Backend TypeScript production build passed with `pnpm.cmd run build`.
+- Frontend app analytics readiness gate passed, including API contracts, both dashboard states, failure-code labels, sensitive-field prohibitions, and stale-data clearing after failed window refreshes.
+- Focused ESLint passed for the app analytics API, both dashboards, and the readiness script.
+- Frontend type-check and production Vite build passed with `pnpm.cmd run build`.
+- `git diff --check` passed. The analytics security search matched only readiness-script assertion variables and forbidden-field regular expressions; no token, cookie, authorization, IP, or user-agent field is mapped by the analytics API client or dashboards.
+- Code review confirmed platform endpoints require `app:analytics:platform` and run outside tenant filtering, while the tenant endpoint requires `app:analytics:tenant` and derives its tenant only from authenticated `getTenantId()` context.
+- Code review confirmed installs and opens aggregate independently, recent failures are limited to 20 rows, per-app tenant adoption is limited to 100 rows, audit writes are best effort, and tenant analytics omit tenant and user identifiers.
+
+Environment-dependent checks not verified on 2026-07-10:
+
+- Local MySQL at `127.0.0.1:3306` was unavailable (`TcpTestSucceeded: False`), so the analytics migrations were not executed against a real database.
+- Authenticated platform and tenant endpoint smoke tests, failed-open audit-row persistence, and live cross-tenant isolation remain unverified until MySQL and seeded identities are available.
+- Before production, exercise both migration rollback paths on a disposable database. The menu rollback removes rows and grants matching the analytics codes and slugs, so it should not be tested first against shared production data.
+
+P2 performance follow-up:
+
+- Run MySQL `EXPLAIN` with representative `app_open_log` volume. Consider dedicated `create_time` and `(app_code, create_time)` indexes if platform window scans become expensive.
+- Add pagination or explicit result caps if the published-app list or tenant version-adoption result can grow beyond the current operational dashboard scale.
 
 ## Known Out-of-Scope Items
 
