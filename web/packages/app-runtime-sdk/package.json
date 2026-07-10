@@ -1,0 +1,24 @@
+{
+  "name": "@agentstudio/app-runtime-sdk",
+  "version": "0.1.0",
+  "description": "Read-only browser SDK for the AgentStudio app runtime bridge",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.json --emitDeclarationOnly",
+    "verify": "vite build && tsc -p tsconfig.json --emitDeclarationOnly && tsx scripts/verify-sdk.ts --built"
+  },
+  "dependencies": {}
+}
