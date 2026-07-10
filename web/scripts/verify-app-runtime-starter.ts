@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { lstatSync, readFileSync } from 'node:fs'
+import { lstatSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import JSZip from 'jszip'
 
+import { AppManifestService } from '../../server/src/module/app/services/app-manifest.service'
 import { buildRuntimeStarter } from './build-runtime-starter'
 
 const webRoot = process.cwd()
@@ -47,6 +48,17 @@ async function inspectZip(zipPath: string) {
   const manifest = JSON.parse(await zip.file('manifest.json')!.async('string'))
   assert.deepEqual(manifest, expectedManifest)
   assert.ok(zip.file(manifest.entry))
+  const productionManifest = new AppManifestService().validateStaticManifest({
+    manifest,
+    entries: names
+  })
+  assert.deepEqual(productionManifest, {
+    ...expectedManifest,
+    category: '',
+    summary: '',
+    description: '',
+    icon: ''
+  })
 
   const archivedSdk = await zip.file('vendor/agentstudio-runtime.global.js')!.async('nodebuffer')
   assert.equal(sha256(archivedSdk), sha256(readFileSync(sdkPath)))
@@ -87,6 +99,22 @@ async function main() {
   const second = await buildRuntimeStarter()
   const secondHash = await inspectZip(second.zipPath)
   assert.equal(secondHash, firstHash)
+
+  const unexpectedFile = resolve(sourceRoot, 'unexpected.txt')
+  writeFileSync(unexpectedFile, 'must not be packaged', 'utf8')
+  try {
+    await assert.rejects(buildRuntimeStarter(), /Unexpected Runtime Starter source files/)
+  } finally {
+    rmSync(unexpectedFile, { force: true })
+  }
+
+  const unexpectedLink = resolve(sourceRoot, 'unexpected-link')
+  symlinkSync(resolve(sourceRoot, 'app.js'), unexpectedLink, 'file')
+  try {
+    await assert.rejects(buildRuntimeStarter(), /cannot contain symbolic links/)
+  } finally {
+    rmSync(unexpectedLink, { force: true })
+  }
 
   console.log('App runtime starter verified.')
 }

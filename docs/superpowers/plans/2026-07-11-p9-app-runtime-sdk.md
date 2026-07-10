@@ -824,6 +824,8 @@ APP_RUNTIME_E2E_DB_USERNAME
 APP_RUNTIME_E2E_DB_PASSWORD
 APP_RUNTIME_E2E_PLATFORM_USERNAME
 APP_RUNTIME_E2E_PLATFORM_PASSWORD
+APP_RUNTIME_E2E_REDIS_DB
+APP_RUNTIME_E2E_REDIS_ISOLATED=1
 ```
 
 Optional safe controls:
@@ -836,6 +838,8 @@ APP_RUNTIME_E2E_SERVER_PORT=19110
 APP_RUNTIME_E2E_WEB_PORT=19111
 APP_RUNTIME_E2E_KEEP=0
 ```
+
+The Redis database must be an empty, dedicated logical DB from `1` to `15`. Use one Lua operation to atomically require an empty DB and claim it with an E2E ownership marker before the backend starts. After the backend has fully exited, use a second Lua operation to atomically compare the marker and execute `FLUSHDB` only on that selected DB. Any cleanup failure must fail the gate.
 
 Generate a database name `agentstudio_runtime_e2e_<UTC timestamp>_<pid>` and reject names that fail `/^[a-z0-9_]+$/`, lack `_e2e_`, or contain `prod|production|live`. Generate tenant username, strong password, tenant name, and phone in memory. Never print any password, token, cookie, authorization header, login response, or DB connection string.
 
@@ -865,7 +869,7 @@ async function dropDatabase(): Promise<void>
 
 Build a `sensitiveValues` set from the DB password, platform password, Redis password, generated tenant password, generated JWT secret, returned access/refresh tokens, and observed cookie values. `redact()` must replace every non-empty set member plus bearer tokens, cookies, and JSON fields matching `/password|token|secret|authorization|cookie/i`. Keep at most the final 80 lines and 20,000 characters per child-process buffer. Every failure artifact passes through `redact()` before writing.
 
-Wrap `main()` in `try/catch/finally`; `finally` closes Playwright, stops preview and backend, and drops the DB unless `APP_RUNTIME_E2E_KEEP=1`. If initialization fails, preserve the DB only when the keep flag is explicit.
+Wrap `main()` in `try/catch/finally`; `finally` closes Playwright, stops preview and backend, clears the owned isolated Redis DB, and drops the MySQL DB unless `APP_RUNTIME_E2E_KEEP=1`. Register `SIGINT` and `SIGTERM` handlers that invoke the same idempotent cleanup path. If initialization fails, preserve the MySQL DB only when the keep flag is explicit; never preserve authentication caches.
 
 - [ ] **Step 3: Initialize disposable data and start real builds**
 

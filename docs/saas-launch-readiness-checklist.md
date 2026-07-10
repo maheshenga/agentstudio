@@ -53,6 +53,7 @@ pnpm.cmd run verify:app-analytics-readiness
 pnpm.cmd run verify:app-runtime-readiness
 pnpm.cmd run verify:app-runtime-sdk
 pnpm.cmd run verify:app-runtime-starter
+pnpm.cmd run verify:app-runtime-live-e2e-contract
 pnpm.cmd build
 pnpm.cmd run verify:saas-preview-smoke
 pnpm.cmd run verify:saas-browser-smoke
@@ -303,7 +304,11 @@ APP_RUNTIME_E2E_DB_USERNAME
 APP_RUNTIME_E2E_DB_PASSWORD
 APP_RUNTIME_E2E_PLATFORM_USERNAME
 APP_RUNTIME_E2E_PLATFORM_PASSWORD
+APP_RUNTIME_E2E_REDIS_DB
+APP_RUNTIME_E2E_REDIS_ISOLATED=1
 ```
+
+`APP_RUNTIME_E2E_REDIS_DB` must identify an empty, dedicated Redis logical database from `1` to `15`. The gate atomically claims that database before starting the backend, then atomically compares ownership and runs `FLUSHDB` only on that selected database after the backend has fully exited. Any process, Redis, MySQL, or artifact cleanup failure fails the gate. Redis host, port, and password remain optional connection settings.
 
 Then run:
 
@@ -424,9 +429,9 @@ Verified in the `saas-order-risk-ops` worktree:
 - `pnpm.cmd run verify:app-runtime-starter` passed twice and proved deterministic ZIP bytes, exact manifest and five-file allowlist, SDK SHA-256 equality, no symlink/executable/environment/source-map entry, and no credential or browser-storage reference.
 - The full disposable browser E2E passed against MySQL 8.4 and an isolated Redis database. It built backend/frontend/SDK/starter, created a fresh database, authenticated a platform administrator, created/uploaded/approved/published `runtime_starter`, registered and authenticated a tenant owner, installed the app, and opened it through the real tenant runner.
 - Playwright proved the iframe sandbox contains `allow-scripts` but not `allow-same-origin`, all seven allowlisted context fields match disposable identities with string IDs, forbidden identity/credential fields are absent, and reload produces exactly one fresh result with a different request ID.
-- The E2E stopped backend/frontend processes, dropped the disposable database, and left no temporary MySQL process or data directory.
+- The E2E stopped backend/frontend processes, dropped the disposable database, atomically flushed its owned Redis DB, and left zero disposable MySQL databases and zero Redis test keys.
 - Focused ESLint and Stylelint passed for the SDK, starter, build/verifier scripts, and live E2E.
-- Review findings for future-protocol handling, runtime freezing of the public error catalog, exact timeout/abort cleanup assertions, and export metadata coverage were fixed and reverified.
+- Review findings for future-protocol handling, runtime freezing of the public error catalog, exact timeout/abort cleanup assertions, export metadata coverage, identity redaction, atomic Redis ownership/cleanup, forced-process exit waiting, signal cleanup, runner-only reload, repeated leak scans, production manifest validation, and Starter source allowlisting were fixed and reverified.
 - P9-A still adds no runtime token, storage API, write API, capability gateway, backend plugin, external iframe bridge, npm publication, or CDN publication.
 
 ## Known Out-of-Scope Items

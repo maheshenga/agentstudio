@@ -20,6 +20,7 @@ const ALLOWED_FILES = [
   'styles.css',
   'vendor/agentstudio-runtime.global.js'
 ] as const
+const SOURCE_FILES = ['app.js', 'index.html', 'manifest.json', 'styles.css'] as const
 const FIXED_DATE = new Date('2000-01-01T00:00:00.000Z')
 
 export interface RuntimeStarterBuildResult {
@@ -75,7 +76,12 @@ export async function buildRuntimeStarter(): Promise<RuntimeStarterBuildResult> 
   rmSync(assemblyRoot, { recursive: true, force: true })
   mkdirSync(assemblyRoot, { recursive: true })
   try {
-    for (const name of ['app.js', 'index.html', 'manifest.json', 'styles.css']) {
+    const sourceFiles = collectFiles(sourceRoot)
+    if (sourceFiles.join('\n') !== SOURCE_FILES.join('\n')) {
+      throw new Error(`Unexpected Runtime Starter source files: ${sourceFiles.join(', ')}`)
+    }
+
+    for (const name of SOURCE_FILES) {
       copyChecked(resolve(sourceRoot, name), resolve(assemblyRoot, name))
     }
     copyChecked(sdkPath, resolve(assemblyRoot, 'vendor/agentstudio-runtime.global.js'))

@@ -66,6 +66,7 @@ type E2EConfig = {
   redisPort: string
   redisPassword: string
   redisDb: string
+  redisIsolated: boolean
   keep: boolean
 }
 
@@ -94,7 +95,23 @@ let page: Page | undefined
 let artifactRoot = ''
 let databaseName = ''
 let config: E2EConfig
+let redisLeaseAcquired = false
+let cleanupPromise: Promise<void> | undefined
+let terminationStarted = false
+let receivedSignal: 'SIGINT' | 'SIGTERM' | undefined
 const browserConsole: string[] = []
+const redisOwnerKey = 'agentstudio:app-runtime-e2e:owner'
+const terminationController = new AbortController()
+const claimRedisScript = `
+  if redis.call('DBSIZE') ~= 0 then return 0 end
+  if redis.call('SET', KEYS[1], ARGV[1], 'NX') then return 1 end
+  return 0
+`
+const releaseRedisScript = `
+  if redis.call('GET', KEYS[1]) ~= ARGV[1] then return -1 end
+  redis.call('FLUSHDB')
+  return redis.call('DBSIZE')
+`
 
 function requiredEnv(name: string): string {
   return String(process.env[name] || '').trim()
@@ -107,7 +124,9 @@ function loadConfig(): E2EConfig {
     'APP_RUNTIME_E2E_DB_USERNAME',
     'APP_RUNTIME_E2E_DB_PASSWORD',
     'APP_RUNTIME_E2E_PLATFORM_USERNAME',
-    'APP_RUNTIME_E2E_PLATFORM_PASSWORD'
+    'APP_RUNTIME_E2E_PLATFORM_PASSWORD',
+    'APP_RUNTIME_E2E_REDIS_DB',
+    'APP_RUNTIME_E2E_REDIS_ISOLATED'
   ]
   const missing = required.filter((name) => !requiredEnv(name))
   if (missing.length) {
@@ -124,8 +143,15 @@ function loadConfig(): E2EConfig {
     redisHost: requiredEnv('APP_RUNTIME_E2E_REDIS_HOST') || '127.0.0.1',
     redisPort: requiredEnv('APP_RUNTIME_E2E_REDIS_PORT') || '6379',
     redisPassword: requiredEnv('APP_RUNTIME_E2E_REDIS_PASSWORD'),
-    redisDb: requiredEnv('APP_RUNTIME_E2E_REDIS_DB') || '15',
+    redisDb: requiredEnv('APP_RUNTIME_E2E_REDIS_DB'),
+    redisIsolated: requiredEnv('APP_RUNTIME_E2E_REDIS_ISOLATED') === '1',
     keep: requiredEnv('APP_RUNTIME_E2E_KEEP') === '1'
+  }
+  const redisDb = Number(result.redisDb)
+  if (!result.redisIsolated || !Number.isInteger(redisDb) || redisDb < 1 || redisDb > 15) {
+    throw new Error(
+      'App Runtime E2E requires an explicitly isolated Redis DB from 1 to 15 and APP_RUNTIME_E2E_REDIS_ISOLATED=1'
+    )
   }
   for (const value of [result.dbPassword, result.platformPassword, result.redisPassword]) {
     if (value) sensitiveValues.add(value)
@@ -145,6 +171,13 @@ function redact(value: string): string {
       '$1[REDACTED]$2'
     )
     .replace(/(set-cookie\s*:\s*)[^\r\n]+/gi, '$1[REDACTED]')
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof AggregateError) {
+    return [error.message, ...error.errors.map((item) => describeError(item))].join('\n')
+  }
+  return error instanceof Error ? error.message : String(error)
 }
 
 function tail(value: string, maxLines = 80, maxChars = 20_000) {
@@ -217,11 +250,31 @@ function startProcess(
 async function stopProcess(child: ChildProcess | undefined) {
   if (!child || child.exitCode !== null) return
   child.kill('SIGTERM')
-  await Promise.race([
-    new Promise<void>((resolveExit) => child.once('exit', () => resolveExit())),
-    new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 3000))
-  ])
-  if (child.exitCode === null) child.kill('SIGKILL')
+  if (await waitForChildExit(child, 3000)) return
+  child.kill('SIGKILL')
+  await waitForForcedExit(child)
+}
+
+async function waitForChildExit(child: ChildProcess, timeoutMs: number) {
+  if (child.exitCode !== null || child.signalCode !== null) return true
+  return new Promise<boolean>((resolveExit) => {
+    const onExit = () => {
+      clearTimeout(timeout)
+      resolveExit(true)
+    }
+    const timeout = setTimeout(() => {
+      child.off('exit', onExit)
+      resolveExit(child.exitCode !== null || child.signalCode !== null)
+    }, timeoutMs)
+    child.once('exit', onExit)
+  })
+}
+
+async function waitForForcedExit(child: ChildProcess) {
+  if (!(await waitForChildExit(child, 5000))) {
+    const label = processLogs.get(child)?.label || 'child process'
+    throw new Error(`${label} did not exit after SIGKILL`)
+  }
 }
 
 async function findFreePort(preferred?: number) {
@@ -245,10 +298,11 @@ async function waitForHttp(url: string, child: ChildProcess, timeoutMs = 60_000)
       throw new Error(`${logs?.label || 'process'} exited early\n${logs?.output || ''}`)
     }
     try {
-      const response = await fetch(url)
+      const response = await fetch(url, { signal: terminationController.signal })
       if (response.ok) return
       lastError = `HTTP ${response.status}`
     } catch (error) {
+      if (terminationController.signal.aborted) throw terminationController.signal.reason
       lastError = (error as Error).message
     }
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 400))
@@ -281,6 +335,64 @@ function databaseEnv() {
   }
 }
 
+function redisEnv() {
+  return {
+    ...process.env,
+    ...(config.redisPassword ? { REDISCLI_AUTH: config.redisPassword } : {})
+  }
+}
+
+function redisCommand(command: string, ...args: string[]) {
+  const result = spawnSync(
+    'redis-cli',
+    [
+      '--raw',
+      '-h',
+      config.redisHost,
+      '-p',
+      config.redisPort,
+      '-n',
+      config.redisDb,
+      command,
+      ...args
+    ],
+    {
+      cwd: webRoot,
+      env: redisEnv(),
+      encoding: 'utf8',
+      stdio: 'pipe'
+    }
+  )
+  if (result.error)
+    throw new Error(`Redis ${command} failed to start: ${redact(result.error.message)}`)
+  if (result.status !== 0) {
+    throw new Error(
+      `Redis ${command} failed with exit code ${result.status}: ${tail(result.stderr || '')}`
+    )
+  }
+  return String(result.stdout || '').trim()
+}
+
+function claimRedisDatabase() {
+  const claimed = Number(redisCommand('EVAL', claimRedisScript, '1', redisOwnerKey, databaseName))
+  if (claimed !== 1) {
+    throw new Error(`Isolated Redis DB ${config.redisDb} must be empty and unclaimed`)
+  }
+  redisLeaseAcquired = true
+}
+
+function releaseRedisDatabase() {
+  if (!redisLeaseAcquired) return
+  const remaining = Number(
+    redisCommand('EVAL', releaseRedisScript, '1', redisOwnerKey, databaseName)
+  )
+  if (remaining === -1) {
+    throw new Error('Refusing to clean Redis DB because its App Runtime E2E ownership changed')
+  }
+  if (remaining !== 0) throw new Error('Isolated Redis DB cleanup did not remove all keys')
+  redisLeaseAcquired = false
+}
+
 function dropDatabase() {
   if (!databaseName || config.keep) return
   runChecked(
@@ -299,7 +411,8 @@ async function requestJson<T>(baseUrl: string, path: string, options: RequestOpt
       ...(options.body ? { 'content-type': 'application/json' } : {}),
       ...(options.token ? { authorization: `Bearer ${options.token}` } : {})
     },
-    body: options.body ? JSON.stringify(options.body) : undefined
+    body: options.body ? JSON.stringify(options.body) : undefined,
+    signal: terminationController.signal
   })
   const raw = await response.text()
   let envelope: ApiEnvelope<T> | undefined
@@ -327,7 +440,8 @@ async function uploadZip<T>(baseUrl: string, path: string, token: string) {
   const response = await fetch(new URL(path, `${baseUrl}/`), {
     method: 'POST',
     headers: { authorization: `Bearer ${token}` },
-    body: form
+    body: form,
+    signal: terminationController.signal
   })
   const raw = await response.text()
   let envelope: ApiEnvelope<T> | undefined
@@ -429,7 +543,8 @@ async function proxyBackendRequest(
       method: request.method(),
       headers,
       body: ['GET', 'HEAD'].includes(request.method()) ? undefined : request.postDataBuffer(),
-      redirect: 'manual'
+      redirect: 'manual',
+      signal: terminationController.signal
     })
     const body = Buffer.from(await response.arrayBuffer())
     if (request.method() === 'GET' && pathname === '/api/app-tenant/apps/runtime_starter/open') {
@@ -463,19 +578,40 @@ async function configureBrowserContext(
   await context.route('**/api/**', proxy)
   await context.route('**/nest-api/**', proxy)
   await context.route('**/apps-static/**', proxy)
-  await context.addInitScript(
-    ({ version, accessToken, refreshToken, userInfo }) => {
-      const runtimeMessages: unknown[] = []
+  await context.addInitScript({
+    content: `
+      const runtimeMessages = [];
       Object.defineProperty(window, '__agentStudioRuntimeMessages', {
         value: runtimeMessages,
         configurable: false
-      })
-      window.addEventListener('message', (event) => {
-        const value = event.data
+      });
+      if (window.top === window) {
+        const messageListeners = new Set();
+        const originalAddEventListener = window.addEventListener.bind(window);
+        const originalRemoveEventListener = window.removeEventListener.bind(window);
+        window.addEventListener = function(type, listener, options) {
+          if (type === 'message') messageListeners.add(listener);
+          return originalAddEventListener(type, listener, options);
+        };
+        window.removeEventListener = function(type, listener, options) {
+          if (type === 'message') messageListeners.delete(listener);
+          return originalRemoveEventListener(type, listener, options);
+        };
+        Object.defineProperty(window, '__agentStudioMessageListenerCount', {
+          get: function() { return messageListeners.size; },
+          configurable: false
+        });
+      }
+      window.addEventListener('message', function(event) {
+        const value = event.data;
         if (value && typeof value === 'object' && value.channel === 'agentstudio:app-runtime') {
-          runtimeMessages.push(JSON.parse(JSON.stringify(value)))
+          runtimeMessages.push(JSON.parse(JSON.stringify(value)));
         }
-      })
+      });
+    `
+  })
+  await context.addInitScript(
+    ({ version, accessToken, refreshToken, userInfo }) => {
       try {
         if (window.top === window) {
           window.localStorage.setItem(
@@ -589,6 +725,12 @@ async function verifyBrowserFlow(input: {
   const firstResult = await readRuntimeResult(firstFrame)
   assert.deepEqual(firstResult.data, input.expectedContext)
   assert.equal(typeof firstResult.request_id, 'string')
+  const firstListenerCount = await page.evaluate(
+    () =>
+      (window as unknown as { __agentStudioMessageListenerCount?: number })
+        .__agentStudioMessageListenerCount || 0
+  )
+  assert.ok(firstListenerCount >= 2, 'host must register the runtime listener and the E2E observer')
 
   const firstIframeText = await firstFrame.locator('body').innerText()
   const firstHostText = await page.locator('body').innerText()
@@ -608,11 +750,44 @@ async function verifyBrowserFlow(input: {
     /username|email|phone|password|token|authorization|cookie|roles|permissions|ipaddr|user-agent/i
   )
 
-  await page.reload({ waitUntil: 'domcontentloaded' })
+  const reloadButton = page.getByRole('button', { name: 'Reload' })
+  await Promise.all([
+    page.waitForResponse((response) =>
+      response.url().includes('/api/app-tenant/apps/runtime_starter/open')
+    ),
+    reloadButton.click()
+  ])
   const secondFrame = await getRuntimeFrame(page)
   const secondResult = await readRuntimeResult(secondFrame)
   assert.deepEqual(secondResult.data, input.expectedContext)
   assert.notEqual(secondResult.request_id, firstResult.request_id)
+  const secondListenerCount = await page.evaluate(
+    () =>
+      (window as unknown as { __agentStudioMessageListenerCount?: number })
+        .__agentStudioMessageListenerCount || 0
+  )
+  assert.equal(
+    secondListenerCount,
+    firstListenerCount,
+    'runner reload must not duplicate host listeners'
+  )
+  const secondIframeText = await secondFrame.locator('body').innerText()
+  const secondHostText = await page.locator('body').innerText()
+  const secondMetadataText = JSON.stringify(observedOpenMetadata)
+  const secondRuntimeText = JSON.stringify(secondResult)
+  for (const [label, text] of [
+    ['reloaded iframe body', secondIframeText],
+    ['reloaded host page', secondHostText],
+    ['reloaded open metadata', secondMetadataText],
+    ['reloaded runtime result', secondRuntimeText],
+    ['reloaded browser console', browserConsole.join('\n')]
+  ] as const) {
+    assertNoSensitiveValue(label, text, input.forbiddenIdentityValues)
+  }
+  assert.doesNotMatch(
+    secondRuntimeText,
+    /username|email|phone|password|token|authorization|cookie|roles|permissions|ipaddr|user-agent/i
+  )
 
   await context.close()
 }
@@ -667,7 +842,11 @@ async function main() {
   const ownerPhone = `139${String(Date.now()).slice(-8)}`
   const ownerEmail = `${ownerUsername}@example.test`
   const jwtSecret = randomBytes(48).toString('base64url')
-  for (const value of [ownerPassword, jwtSecret]) sensitiveValues.add(value)
+  for (const value of [ownerUsername, ownerEmail, ownerPhone, ownerPassword, jwtSecret])
+    sensitiveValues.add(value)
+
+  addStep('claim isolated Redis database')
+  claimRedisDatabase()
 
   addStep('initialize disposable database')
   runChecked(
@@ -832,28 +1011,108 @@ async function main() {
     expectedContext,
     forbiddenIdentityValues: [ownerUsername, ownerEmail, ownerPhone]
   })
-
-  addStep('complete')
-  console.log('App runtime live E2E verified.')
 }
 
+async function cleanupResources() {
+  if (cleanupPromise) return cleanupPromise
+  cleanupPromise = (async () => {
+    const errors: unknown[] = []
+    let backendStopped = !backend || backend.exitCode !== null || backend.signalCode !== null
+    try {
+      await browser?.close()
+    } catch (error) {
+      errors.push(error)
+    }
+    try {
+      await stopProcess(preview)
+    } catch (error) {
+      errors.push(error)
+    }
+    try {
+      await stopProcess(backend)
+      backendStopped = !backend || backend.exitCode !== null || backend.signalCode !== null
+    } catch (error) {
+      errors.push(error)
+    }
+    if (backendStopped) {
+      try {
+        releaseRedisDatabase()
+      } catch (error) {
+        errors.push(error)
+      }
+      try {
+        dropDatabase()
+      } catch (error) {
+        errors.push(error)
+      }
+    } else {
+      errors.push(
+        new Error('Skipped Redis and MySQL cleanup because backend termination was not confirmed')
+      )
+    }
+    try {
+      if (!config?.keep && artifactRoot) {
+        rmSync(resolve(artifactRoot, 'packages'), { recursive: true, force: true })
+        rmSync(resolve(artifactRoot, 'public'), { recursive: true, force: true })
+        rmSync(resolve(artifactRoot, 'uploads'), { recursive: true, force: true })
+      }
+    } catch (error) {
+      errors.push(error)
+    }
+    if (errors.length) throw new AggregateError(errors, 'App Runtime E2E cleanup failed')
+  })()
+  return cleanupPromise
+}
+
+function handleTermination(signal: 'SIGINT' | 'SIGTERM') {
+  if (terminationStarted) return
+  terminationStarted = true
+  receivedSignal = signal
+  process.exitCode = signal === 'SIGINT' ? 130 : 143
+  process.stderr.write(`Received ${signal}; cleaning up App Runtime E2E resources.\n`)
+  terminationController.abort(new Error(`Received ${signal}`))
+}
+
+const handleSigint = () => handleTermination('SIGINT')
+const handleSigterm = () => handleTermination('SIGTERM')
+process.on('SIGINT', handleSigint)
+process.on('SIGTERM', handleSigterm)
+
+let mainFailure: unknown
+let cleanupFailure: unknown
 try {
   await main()
 } catch (error) {
-  await writeFailureEvidence(error)
-  throw new Error(redact(error instanceof Error ? error.message : String(error)))
-} finally {
-  await browser?.close().catch(() => undefined)
-  await stopProcess(preview)
-  await stopProcess(backend)
-  try {
-    dropDatabase()
-  } catch (error) {
-    process.stderr.write(`Database cleanup warning: ${redact((error as Error).message)}\n`)
+  mainFailure = error
+  if (!terminationStarted) {
+    try {
+      await writeFailureEvidence(error)
+    } catch (evidenceError) {
+      mainFailure = new AggregateError([error, evidenceError], 'Failure evidence collection failed')
+    }
   }
-  if (!config?.keep && artifactRoot) {
-    rmSync(resolve(artifactRoot, 'packages'), { recursive: true, force: true })
-    rmSync(resolve(artifactRoot, 'public'), { recursive: true, force: true })
-    rmSync(resolve(artifactRoot, 'uploads'), { recursive: true, force: true })
+}
+try {
+  await cleanupResources()
+} catch (error) {
+  cleanupFailure = error
+}
+process.off('SIGINT', handleSigint)
+process.off('SIGTERM', handleSigterm)
+
+if (cleanupFailure) {
+  const message = redact(describeError(cleanupFailure))
+  if (receivedSignal) {
+    process.stderr.write(`App Runtime E2E cleanup failed after ${receivedSignal}: ${message}\n`)
+    process.exitCode = 1
+  } else {
+    throw new Error(message)
   }
+} else if (receivedSignal) {
+  process.exitCode = receivedSignal === 'SIGINT' ? 130 : 143
+} else if (mainFailure) {
+  throw new Error(redact(describeError(mainFailure)))
+} else {
+  addStep('complete')
+  console.log('App runtime live E2E verified.')
 }
