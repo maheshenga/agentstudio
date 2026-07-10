@@ -303,9 +303,9 @@
       missing_system_module: 'Workspace module disabled',
       system_module_unavailable: 'System module unavailable',
       app_not_found: 'App not found',
-      app_unavailable: 'App unavailable',
-      install_required: 'Install required',
-      version_unavailable: 'Version unavailable',
+      app_not_published: 'App not published',
+      app_not_installed: 'App not installed',
+      published_version_missing: 'Published version missing',
       open_metadata_error: 'Open metadata error'
     }
     return labels[reason] || reason || 'Unknown failure'

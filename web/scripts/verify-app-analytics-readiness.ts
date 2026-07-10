@@ -98,6 +98,20 @@ for (const token of [
   assertIncludes(tenantPage, token, 'tenant app usage page')
 }
 
+for (const reasonCode of [
+  'app_not_found',
+  'app_not_published',
+  'app_not_installed',
+  'missing_plan_module',
+  'missing_system_module',
+  'system_module_unavailable',
+  'published_version_missing',
+  'open_metadata_error'
+]) {
+  assertIncludes(platformPage, reasonCode, 'platform analytics failure labels')
+  assertIncludes(tenantPage, reasonCode, 'tenant app usage failure labels')
+}
+
 const forbiddenSensitiveFields = [
   /\bip\b/i,
   /user[_-]?agent/i,
