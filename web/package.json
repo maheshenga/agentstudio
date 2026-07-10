@@ -27,7 +27,8 @@
     "verify:app-marketplace-readiness": "tsx scripts/verify-app-marketplace-readiness.ts",
     "verify:app-factory-readiness": "tsx scripts/verify-app-factory-readiness.ts",
     "verify:app-developer-readiness": "tsx scripts/verify-app-developer-readiness.ts",
-    "verify:app-analytics-readiness": "tsx scripts/verify-app-analytics-readiness.ts"
+    "verify:app-analytics-readiness": "tsx scripts/verify-app-analytics-readiness.ts",
+    "verify:app-runtime-readiness": "tsx scripts/verify-app-runtime-readiness.ts"
   },
   "config": {
     "commitizen": {
