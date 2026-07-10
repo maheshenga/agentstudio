@@ -1,6 +1,6 @@
 # P8 Safe App Runtime API Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking; completed steps are marked `[x]`.
 
 **Goal:** Let entitled static apps request a sanitized tenant, user, and app context through a versioned parent-page `postMessage` bridge without receiving platform credentials.
 
@@ -64,7 +64,7 @@ Frontend modify:
 - Consumes: `AppPackageEntity`, `AppPackageVersionEntity`, authenticated `tenantId` and `userId`.
 - Produces: `APP_RUNTIME_PROTOCOL_VERSION`, `APP_RUNTIME_CONTEXT_SCOPE`, `AppRuntimeContext`, `AppRuntimeBootstrap`, and `AppRuntimeContextService.buildBootstrap()`.
 
-- [ ] **Step 1: Write the failing runtime context service spec**
+- [x] **Step 1: Write the failing runtime context service spec**
 
 Create the spec with repository fakes for `TenantEntity`, `UserEntity`, and `SysUserTenantEntity`. Import `UserEntity` from `../../system/user/entities/sys-user.entity`. Follow one-test-at-a-time Red-Green-Refactor cycles while covering these exact behaviors:
 
@@ -166,7 +166,7 @@ it('never serializes credential or contact fields', async () => {
 
 Add a separate incremental test proving that `{ realname: '', username: 'owner-login' }` produces `display_name: ''`, never the username value. Membership validity is existence plus `deleteTime IS NULL`; `SysUserTenantEntity` has no `status` column.
 
-- [ ] **Step 2: Run the new spec to verify RED**
+- [x] **Step 2: Run the new spec to verify RED**
 
 ```powershell
 cd server
@@ -175,7 +175,7 @@ pnpm.cmd exec jest --runInBand -- app-runtime-context.service.spec.ts
 
 Expected: FAIL because `AppRuntimeContextService` and its exported contracts do not exist.
 
-- [ ] **Step 3: Implement the runtime context service**
+- [x] **Step 3: Implement the runtime context service**
 
 Create these exact contracts and behavior:
 
@@ -276,7 +276,7 @@ export class AppRuntimeContextService {
 
 Register `TenantEntity`, `UserEntity`, and `SysUserTenantEntity` in the app module `TypeOrmModule.forFeature()` list and register/export `AppRuntimeContextService`. Use the existing entity paths under `system/tenant/entities/tenant.entity`, `system/user/entities/sys-user.entity`, and `system/user/entities/user-tenant.entity`.
 
-- [ ] **Step 4: Run the runtime context spec and backend build**
+- [x] **Step 4: Run the runtime context spec and backend build**
 
 ```powershell
 cd server
@@ -286,7 +286,7 @@ pnpm.cmd run build
 
 Expected: the new suite passes and the backend build exits `0`.
 
-- [ ] **Step 5: Commit the context resolver**
+- [x] **Step 5: Commit the context resolver**
 
 ```powershell
 git add server/src/module/app/services/app-runtime-context.service.ts server/src/module/app/services/app-runtime-context.service.spec.ts server/src/module/app/app.module.ts
@@ -307,7 +307,7 @@ git commit -m "feat: resolve app runtime context"
 - Consumes: `AppRuntimeContextService.buildBootstrap()` from Task 1.
 - Produces: existing open metadata plus `runtime: AppRuntimeBootstrap | null`.
 
-- [ ] **Step 1: Add failing integration expectations**
+- [x] **Step 1: Add failing integration expectations**
 
 Add an `appRuntimeContextService` fake to the existing testing module:
 
@@ -353,7 +353,7 @@ expect(result.runtime).toBeNull();
 
 Keep existing open-log assertions unchanged.
 
-- [ ] **Step 2: Run the app tenant suite to verify RED**
+- [x] **Step 2: Run the app tenant suite to verify RED**
 
 ```powershell
 cd server
@@ -362,7 +362,7 @@ pnpm.cmd exec jest --runInBand -- app-tenant.service.spec.ts
 
 Expected: FAIL because open metadata does not include `runtime` and the service dependency is not injected.
 
-- [ ] **Step 3: Integrate the runtime context service**
+- [x] **Step 3: Integrate the runtime context service**
 
 Inject `AppRuntimeContextService` into `AppTenantService`. After version resolution and before the success audit, call it as a best-effort dependency. A runtime resolver failure must degrade to `runtime: null`, must not fail app opening, and must not create a failed open audit:
 
@@ -391,7 +391,7 @@ return {
 
 `buildBootstrap()` handles repository failures internally, while the integration catch provides a final containment boundary so app-open audit behavior remains unchanged.
 
-- [ ] **Step 4: Run backend integration and regression suites**
+- [x] **Step 4: Run backend integration and regression suites**
 
 ```powershell
 cd server
@@ -401,7 +401,7 @@ pnpm.cmd run build
 
 Expected: all suites and the backend build pass.
 
-- [ ] **Step 5: Commit the open metadata integration**
+- [x] **Step 5: Commit the open metadata integration**
 
 ```powershell
 git add server/src/module/app/services/app-tenant.service.ts server/src/module/app/services/app-tenant.service.spec.ts
@@ -423,7 +423,7 @@ git commit -m "feat: expose app runtime bootstrap"
 - Consumes: backend runtime bootstrap shape from Task 1.
 - Produces: `resolveAppRuntimeRequest(message, bootstrap)` returning a fixed response or `null`.
 
-- [ ] **Step 1: Create a failing executable protocol readiness script**
+- [x] **Step 1: Create a failing executable protocol readiness script**
 
 The script imports the not-yet-created protocol module and asserts:
 
@@ -484,7 +484,7 @@ Add this package script before the module exists:
 "verify:app-runtime-readiness": "tsx scripts/verify-app-runtime-readiness.ts"
 ```
 
-- [ ] **Step 2: Run the protocol script to verify RED**
+- [x] **Step 2: Run the protocol script to verify RED**
 
 ```powershell
 cd web
@@ -493,7 +493,7 @@ pnpm.cmd run verify:app-runtime-readiness
 
 Expected: FAIL because `src/utils/app-runtime.ts` does not exist.
 
-- [ ] **Step 3: Implement the pure protocol resolver**
+- [x] **Step 3: Implement the pure protocol resolver**
 
 Create these public types and constants:
 
@@ -564,7 +564,7 @@ export function resolveAppRuntimeRequest(
 
 Keep helpers private and do not reference `window`, Vue, the API client, cookies, or storage. `isPlainRecord()` must reject arrays, dates, class instances, and other non-plain objects.
 
-- [ ] **Step 4: Run protocol readiness and focused lint**
+- [x] **Step 4: Run protocol readiness and focused lint**
 
 ```powershell
 cd web
@@ -574,7 +574,7 @@ pnpm.cmd exec eslint src/utils/app-runtime.ts scripts/verify-app-runtime-readine
 
 Expected: protocol readiness and focused lint pass.
 
-- [ ] **Step 5: Commit the protocol module**
+- [x] **Step 5: Commit the protocol module**
 
 ```powershell
 git add web/src/utils/app-runtime.ts web/scripts/verify-app-runtime-readiness.ts web/package.json
@@ -596,7 +596,7 @@ git commit -m "feat: add app runtime message protocol"
 - Consumes: `AppRuntimeBootstrap` and `resolveAppRuntimeRequest()` from Task 3.
 - Produces: source-bound `postMessage` replies from the current static iframe only.
 
-- [ ] **Step 1: Extend readiness checks to require runner wiring**
+- [x] **Step 1: Extend readiness checks to require runner wiring**
 
 Before editing the runner, make the readiness script read `web/src/views/app-center/open/index.vue` and `web/src/api/app-marketplace.ts`, then require:
 
@@ -609,12 +609,12 @@ assertIncludes(runnerSource, "window.addEventListener('message', handleRuntimeMe
 assertIncludes(runnerSource, "window.removeEventListener('message', handleRuntimeMessage)", 'runtime listener cleanup')
 assertIncludes(runnerSource, 'loadSequence', 'stale metadata response guard')
 assertIncludes(apiSource, 'runtime: AppRuntimeBootstrap | null', 'open metadata runtime contract')
-assert(!runnerSource.includes('allow-same-origin'), 'app runner must not allow same origin')
+assertIncludes(runnerSource, "item !== 'allow-same-origin'", 'same-origin sandbox rejection')
 ```
 
 Reject source containing runtime payload fields matching username, tenant code, email, phone, role, token, authorization, cookie, IP, or user agent.
 
-- [ ] **Step 2: Run readiness to verify RED**
+- [x] **Step 2: Run readiness to verify RED**
 
 ```powershell
 cd web
@@ -623,7 +623,7 @@ pnpm.cmd run verify:app-runtime-readiness
 
 Expected: FAIL because the API type and runner bridge are not wired.
 
-- [ ] **Step 3: Type the runtime bootstrap in the API client**
+- [x] **Step 3: Type the runtime bootstrap in the API client**
 
 Import the type from `@/utils/app-runtime` and extend `AppOpenMetadata`:
 
@@ -642,7 +642,7 @@ export interface AppOpenMetadata {
 }
 ```
 
-- [ ] **Step 4: Implement source-bound runner messaging**
+- [x] **Step 4: Implement source-bound runner messaging**
 
 Add the iframe ref:
 
@@ -688,7 +688,7 @@ Keep `metadata.value = null` at the beginning of every load so route changes, re
 
 Add a monotonically increasing `loadSequence`. Capture the sequence at the start of each load and ignore any response, error, or `finally` update whose sequence is no longer current. Increment it during unmount as well. This prevents a slower earlier request from mounting stale app metadata or redirecting to an obsolete internal route after a newer route/reload request.
 
-- [ ] **Step 5: Run frontend readiness, lint, and build**
+- [x] **Step 5: Run frontend readiness, lint, and build**
 
 ```powershell
 cd web
@@ -699,7 +699,7 @@ pnpm.cmd run build
 
 Expected: readiness, focused lint, type-check, and Vite build pass.
 
-- [ ] **Step 6: Commit the runner bridge**
+- [x] **Step 6: Commit the runner bridge**
 
 ```powershell
 git add web/src/api/app-marketplace.ts web/src/views/app-center/open/index.vue web/scripts/verify-app-runtime-readiness.ts
@@ -719,7 +719,7 @@ git commit -m "feat: bridge static app runtime context"
 - Consumes: all P8 backend and frontend contracts.
 - Produces: final acceptance evidence and local commits with no push.
 
-- [ ] **Step 1: Add automated and manual acceptance checks**
+- [x] **Step 1: Add automated and manual acceptance checks**
 
 Document:
 
@@ -735,7 +735,7 @@ Document:
 - route/reload stale-context clearing;
 - no direct iframe backend token or API.
 
-- [ ] **Step 2: Run backend verification**
+- [x] **Step 2: Run backend verification**
 
 ```powershell
 cd server
@@ -743,7 +743,7 @@ pnpm.cmd exec jest --runInBand -- app-runtime-context.service.spec.ts app-tenant
 pnpm.cmd run build
 ```
 
-- [ ] **Step 3: Run frontend verification**
+- [x] **Step 3: Run frontend verification**
 
 ```powershell
 cd web
@@ -753,7 +753,7 @@ pnpm.cmd exec eslint src/utils/app-runtime.ts src/api/app-marketplace.ts src/vie
 pnpm.cmd run build
 ```
 
-- [ ] **Step 4: Run repository and security checks**
+- [x] **Step 4: Run repository and security checks**
 
 ```powershell
 git diff --check
@@ -763,7 +763,7 @@ git status --short
 
 Review every match. Allowed matches are only explicit negative assertions or existing backend audit client-info storage outside runtime responses.
 
-- [ ] **Step 5: Perform final code review**
+- [x] **Step 5: Perform final code review**
 
 Inspect the complete P8 diff for:
 
@@ -780,7 +780,7 @@ Inspect the complete P8 diff for:
 - stale asynchronous metadata responses mounting after a newer route or reload request;
 - unrelated direct data API or service-plugin scope.
 
-- [ ] **Step 6: Commit P8 verification**
+- [x] **Step 6: Commit P8 verification**
 
 ```powershell
 git add docs/saas-launch-readiness-checklist.md

@@ -50,6 +50,7 @@ pnpm.cmd run verify:app-marketplace-readiness
 pnpm.cmd run verify:app-factory-readiness
 pnpm.cmd run verify:app-developer-readiness
 pnpm.cmd run verify:app-analytics-readiness
+pnpm.cmd run verify:app-runtime-readiness
 pnpm.cmd build
 pnpm.cmd run verify:saas-preview-smoke
 pnpm.cmd run verify:saas-browser-smoke
@@ -269,6 +270,21 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 11. Confirm a tenant member without `app:analytics:tenant` cannot open the usage page or call `GET /api/app-analytics/tenant/overview`.
 12. Sign in to two different tenants and confirm each usage response contains only the authenticated tenant's data; no tenant id can be supplied through query, path, or body.
 
+### Manual Static App Runtime Flow
+
+1. Publish and install a reviewed static app whose resolved version manifest declares `"permissions": ["runtime:context:read"]`.
+2. Open the app through `/#/app-center/open?code=<app_code>` and confirm the iframe sandbox does not contain `allow-same-origin`.
+3. From the static app, send `{"channel":"agentstudio:app-runtime","version":1,"type":"context.get","request_id":"manual-1"}` to `window.parent` with `targetOrigin: "*"`.
+4. Confirm the current iframe receives one `context.result` response containing only tenant `{ id, name }`, user `{ id, display_name }`, and app `{ code, name, version }`, with tenant and user IDs serialized as strings.
+5. Confirm `display_name` never falls back to the login username. A user without a real name receives an empty display name.
+6. Publish a static version without `runtime:context:read`, open it, send the same request, and confirm the fixed `scope_denied` response contains no context.
+7. Confirm a scoped static app with unavailable tenant, user, or membership identity receives the fixed `context_unavailable` response and still renders normally.
+8. Confirm external iframe apps and internal-route apps receive no runtime bridge response.
+9. Send the request from another window or a stale iframe and confirm the host ignores it because it is not the current iframe `WindowProxy`.
+10. Change the app route or click Reload while an earlier metadata request is still pending and confirm the older response cannot remount stale app metadata or runtime context.
+11. Inspect the open metadata and iframe response and confirm they contain no username, tenant code, email, phone, avatar, department, role, permission list, access token, refresh token, authorization value, cookie, IP address, user agent, request object, or raw exception.
+12. Confirm the static app never receives a platform token or direct authenticated backend API client.
+
 ## Manual Developer App Flow
 
 1. Grant an approved creator the `AppDeveloperApps` menu and `app:developer:*` permissions through role management.
@@ -300,6 +316,12 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 - Analytics responses and pages expose no authorization values, cookies, tokens, IP addresses, user agents, raw exception text, or request failure objects.
 - Recent failure lists are capped at 20 rows and per-app tenant adoption is capped at 100 rows.
 - The app analytics menu migration is insert-idempotent. Schema and menu rollback contracts are covered by migration specs and have been exercised on a disposable MySQL database.
+- Only reviewed static app versions declaring the exact `runtime:context:read` scope receive a runtime context bootstrap.
+- Runtime context is derived from authenticated tenant/user state and a non-deleted tenant membership, then rebuilt from an explicit allowlist on both backend and frontend boundaries.
+- External iframe and internal-route apps cannot activate the runtime bridge, and messages from any window other than the currently rendered static iframe are ignored.
+- Missing scope returns `scope_denied`; missing or unusable context returns `context_unavailable`; neither condition prevents the static app from rendering.
+- Route changes, retries, reloads, and unmounts invalidate stale metadata requests and stale iframe sources.
+- The runtime bridge exposes no platform credential, contact field, login identity, role/permission list, network identity, request object, or raw exception.
 - Uploaded apps are never executed as backend code in P0.
 - Resource-pack and plan payment paths show whether Alipay is configured before a user attempts payment.
 - Empty, loading, and error states are visible for tenant and platform pages.
@@ -342,6 +364,29 @@ P2 performance follow-up:
 
 - Run MySQL `EXPLAIN` with representative `app_open_log` volume. Consider dedicated `create_time` and `(app_code, create_time)` indexes if platform window scans become expensive.
 - Add pagination or explicit result caps if the published-app list or tenant version-adoption result can grow beyond the current operational dashboard scale.
+
+## P8 Safe App Runtime API Verification - 2026-07-11
+
+Verified in the `saas-order-risk-ops` worktree:
+
+- Backend focused Jest gate passed: 4 suites and 39 tests covering sanitized runtime context resolution, exact static-version scope handling, tenant/user/membership failures, sensitive-field exclusion, open metadata integration, best-effort runtime failure containment, existing open audits, and P7 analytics regressions.
+- Backend production TypeScript build passed with `pnpm.cmd run build`.
+- `pnpm.cmd run verify:app-runtime-readiness` passed. It covers success and fixed-error responses, plain-object requests, bounded request IDs, request/bootstrap protocol versions, exact scope enforcement, unavailable context, frontend context allowlisting, current-iframe source binding, static-only bridge activation, listener cleanup, stale-load sequencing, and sandbox same-origin rejection.
+- `pnpm.cmd run verify:app-marketplace-readiness` passed, confirming the existing marketplace and runner readiness contract remains green.
+- Focused ESLint passed for the runtime protocol, marketplace API type, app runner, and runtime readiness script.
+- Frontend type-check and production Vite build passed with `pnpm.cmd run build`.
+- `git diff --check` passed. The runtime security search matched only the readiness script's hostile fixtures and forbidden-field assertions, the runner's explicit `allow-same-origin` removal, and the pre-existing app-open audit client-info fields. No sensitive field is mapped into runtime context or iframe responses.
+- TDD mutation verification proved the backend sensitive-field test fails if `display_name` falls back to `username`; the safe `realname`-only implementation was restored and the full focused suite passed.
+- Code review confirmed runtime scope is derived only from the resolved reviewed version manifest after installation, publication, and SaaS/system-module entitlement checks.
+- Code review confirmed tenant and user records must be active and non-deleted, membership must exist and be non-deleted, entity queries select only approved response fields, and all runtime IDs are serialized as strings.
+- Code review confirmed runtime resolution failures degrade to `runtime: null` without failing app opening or replacing the success audit outcome.
+- Code review confirmed the frontend rebuilds context from the approved allowlist, validates both request and bootstrap protocol version `1`, returns only fixed error messages, and never forwards an API client, token, cookie, request object, or backend exception.
+- Code review confirmed the host accepts messages only from the current sandboxed static iframe, uses `targetOrigin: "*"` only for the opaque sandbox origin, removes the listener on unmount, and rejects stale metadata responses with `loadSequence`.
+
+Environment-dependent manual verification not executed in this pass:
+
+- No authenticated browser smoke was run with a newly reviewed, published, installed static package declaring `runtime:context:read`. Execute the Manual Static App Runtime Flow above against disposable or staging data before production release.
+- P8 adds no database migration, runtime bearer token, direct iframe backend API, write API, external iframe bridge, or backend-executable plugin path.
 
 ## Known Out-of-Scope Items
 
