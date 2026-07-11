@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process'
 
 const checks = [
+  'verify-clean-build-contract.ts',
   'verify-saas-launch-flow-readiness.ts',
   'verify-saas-route-contract.ts',
   'verify-saas-doc-route-baseline.ts',
