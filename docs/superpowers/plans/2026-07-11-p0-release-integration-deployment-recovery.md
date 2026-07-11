@@ -123,7 +123,7 @@ $state = [ordered]@{
   lockLength = $lockLength
   lockHash = $lockHash
 }
-$state | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $backupRoot 'release-state.json') -Encoding utf8NoBOM
+$state | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $backupRoot 'release-state.json') -Encoding UTF8
 Write-Output "backup_verified=true state_file_created=true"
 ```
 
