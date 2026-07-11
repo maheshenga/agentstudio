@@ -415,9 +415,18 @@ git -C $state.main fetch maheshenga --prune
 $remoteMain = @(git -C $state.main ls-remote --heads maheshenga refs/heads/main)
 if ($remoteMain.Count -gt 0) {
   git -C $state.main merge-base --is-ancestor maheshenga/main main
-  if ($LASTEXITCODE -ne 0) { throw 'maheshenga/main is not an ancestor; push would not be fast-forward' }
+  if ($LASTEXITCODE -eq 0) {
+    Write-Output 'remote_main_exists=true push_fast_forward=true'
+  } else {
+    $base = git -C $state.main merge-base main maheshenga/main
+    if ($LASTEXITCODE -eq 0) { throw 'Unexpected non-ancestor state with a merge base' }
+    $localTree = (git -C $state.main rev-parse 'main^{tree}').Trim()
+    $remoteTree = (git -C $state.main rev-parse 'maheshenga/main^{tree}').Trim()
+    Write-Output "remote_history_unrelated=true local_tree=$localTree remote_tree=$remoteTree"
+  }
+} else {
+  Write-Output 'remote_main_exists=false create_remote_main=true'
 }
-Write-Output 'remote_push_preflight=verified'
 ```
 
 - [ ] **Step 3: Stop and obtain explicit user approval**
@@ -432,7 +441,24 @@ Report:
 
 Expected: user explicitly approves push and deployment. Without approval, P0 pauses here with no remote or server mutation.
 
-- [ ] **Step 4: Push the verified main after approval**
+- [ ] **Step 4: Reconcile an unrelated remote history without changing the verified tree**
+
+Run only when Step 2 reports `remote_history_unrelated=true` and the user has approved repository history reconciliation:
+
+```powershell
+$beforeTree = (git -C $state.main rev-parse 'main^{tree}').Trim()
+git -C $state.main merge --strategy=ours --allow-unrelated-histories --no-edit maheshenga/main
+if ($LASTEXITCODE -ne 0) { throw 'Unrelated-history ours merge failed' }
+$afterTree = (git -C $state.main rev-parse 'main^{tree}').Trim()
+if ($afterTree -ne $beforeTree) { throw 'Ours merge changed the verified working tree' }
+git -C $state.main diff --check
+if ($LASTEXITCODE -ne 0) { throw 'Post-reconciliation diff check failed' }
+Write-Output "remote_history_reconciled=true tree_unchanged=true commit=$((git -C $state.main rev-parse HEAD).Trim())"
+```
+
+This creates a merge commit with the verified local tree as the first-parent result and the pre-existing remote history as the second parent. It preserves remote history without importing its stale tree or force-pushing over it.
+
+- [ ] **Step 5: Push the verified main after approval**
 
 ```powershell
 git -C $state.main push maheshenga main:main
