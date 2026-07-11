@@ -20,6 +20,9 @@ export class AppPackageVersionEntity {
   @Column({ type: 'json', name: 'manifest', nullable: true })
   manifest?: Record<string, unknown> | null;
 
+  @Column({ type: 'json', name: 'approved_capabilities', nullable: true })
+  approvedCapabilities?: string[] | null;
+
   @Column({ type: 'varchar', name: 'package_path', length: 500, default: '' })
   packagePath: string;
 
