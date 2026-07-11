@@ -88,6 +88,26 @@ const REQUIRED_BACKEND_SAAS_READINESS_SPECS = [
 ] as const;
 
 describe('SaaS backend readiness command', () => {
+  it('places TypeORM commands before the data-source option', () => {
+    const packageJson = JSON.parse(readFileSync(join(REPO_ROOT, 'server/package.json'), 'utf8')) as {
+      scripts?: Record<string, string>;
+    };
+
+    expect(packageJson.scripts?.typeorm).toBe('typeorm-ts-node-commonjs');
+    expect(packageJson.scripts?.['migration:show']).toBe(
+      'typeorm-ts-node-commonjs migration:show -d ./src/data-source.ts',
+    );
+    expect(packageJson.scripts?.['migration:generate']).toBe(
+      'typeorm-ts-node-commonjs migration:generate -d ./src/data-source.ts',
+    );
+    expect(packageJson.scripts?.['migration:run']).toBe(
+      'typeorm-ts-node-commonjs migration:run -d ./src/data-source.ts',
+    );
+    expect(packageJson.scripts?.['migration:revert']).toBe(
+      'typeorm-ts-node-commonjs migration:revert -d ./src/data-source.ts',
+    );
+  });
+
   it('runs all high-value SaaS regression specs', () => {
     const packageJson = JSON.parse(readFileSync(join(REPO_ROOT, 'server/package.json'), 'utf8')) as {
       scripts?: Record<string, string>;
