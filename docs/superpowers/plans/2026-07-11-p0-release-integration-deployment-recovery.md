@@ -203,8 +203,8 @@ Copy-Item -LiteralPath $envBackup -Destination $envTarget -Force
 if ((Get-Item -LiteralPath $envTarget).Length -ne $state.envLength) { throw 'Restored environment length mismatch' }
 if ((Get-FileHash -Algorithm SHA256 -LiteralPath $envTarget).Hash -ne $state.envHash) { throw 'Restored environment hash mismatch' }
 
-git -C $state.main ls-files --error-unmatch -- server/.env 2>$null
-if ($LASTEXITCODE -eq 0) { throw 'server/.env is still tracked' }
+$trackedEnv = @(git -C $state.main ls-files -- server/.env)
+if ($trackedEnv.Count -gt 0) { throw 'server/.env is still tracked' }
 git -C $state.main check-ignore -q -- server/.env
 if ($LASTEXITCODE -ne 0) { throw 'server/.env is not ignored' }
 
