@@ -82,4 +82,48 @@ describe('AppManifestService', () => {
       }),
     ).toThrow('Static app packages must use type static');
   });
+
+  describe('Manifest V2 service packages', () => {
+    const serviceManifest = {
+      manifestVersion: 2,
+      code: 'admin_echo_service',
+      version: '1.0.0',
+      runtime: 'service',
+      entry: 'dist/index.js',
+      healthPath: '/health',
+      capabilities: ['context.read', 'kv.read'],
+      allowedOrigins: [],
+    };
+
+    it('normalizes the fixed P10 service contract', () => {
+      expect(service.validateServiceManifest(serviceManifest)).toEqual({
+        manifestVersion: 2,
+        code: 'admin_echo_service',
+        version: '1.0.0',
+        runtime: 'service',
+        entry: 'dist/index.js',
+        healthPath: '/health',
+        capabilities: ['context.read', 'kv.read'],
+        allowedOrigins: [],
+        runtimeConfig: {},
+      });
+    });
+
+    it.each([
+      [{ ...serviceManifest, manifestVersion: 1 }, 'Service manifestVersion must be 2'],
+      [{ ...serviceManifest, runtime: 'static' }, 'Service manifest runtime must be service'],
+      [{ ...serviceManifest, entry: '../index.js' }, 'Invalid service entry'],
+      [{ ...serviceManifest, entry: 'server.js' }, 'Service entry must be dist/index.js'],
+      [{ ...serviceManifest, healthPath: 'health' }, 'Invalid service health path'],
+      [{ ...serviceManifest, healthPath: '/health?secret=1' }, 'Invalid service health path'],
+      [{ ...serviceManifest, capabilities: ['unknown.capability'] }, 'Unsupported app capability'],
+      [
+        { ...serviceManifest, allowedOrigins: ['https://api.example.com'] },
+        'Direct service origins are not available in P10',
+      ],
+      [{ ...serviceManifest, runtimeConfig: { command: 'node server.js' } }, 'Invalid runtime config'],
+    ])('rejects invalid service manifests', (manifest, message) => {
+      expect(() => service.validateServiceManifest(manifest)).toThrow(message);
+    });
+  });
 });

@@ -20,6 +20,7 @@ import { AppManifestService, type StaticAppManifest } from './app-manifest.servi
 import { AppCapabilityPolicyService } from './app-capability-policy.service';
 import { AppPackageStorageService } from './app-package-storage.service';
 import { AppRuntimeSessionService } from './app-runtime-session.service';
+import { AppServicePackageService } from './app-service-package.service';
 
 export interface AppPlatformListQuery {
   keyword?: string;
@@ -45,6 +46,7 @@ export class AppPlatformService {
     private readonly reviewLogRepo: Repository<AppReviewLogEntity>,
     private readonly storage: AppPackageStorageService,
     private readonly manifestService: AppManifestService,
+    private readonly servicePackageService: AppServicePackageService,
     private readonly capabilityPolicy: AppCapabilityPolicyService,
     private readonly dataSource: DataSource,
     private readonly runtimeSessionService: AppRuntimeSessionService,
@@ -424,6 +426,73 @@ export class AppPlatformService {
     return this.toVersionResponse(savedVersion);
   }
 
+  async uploadServiceVersion(code: string, file: Express.Multer.File, operatorId?: number) {
+    const app = await this.findApp(code);
+    if (app.type !== 'service') {
+      throw new BadRequestException('Only service apps can upload service packages');
+    }
+    if (!file?.buffer || !Buffer.isBuffer(file.buffer)) {
+      throw new BadRequestException('Service package file is required');
+    }
+
+    const installed = await this.servicePackageService.scanAndInstall({
+      appCode: code,
+      zipBuffer: file.buffer,
+    });
+    const existingVersion = await this.versionRepo.findOne({
+      where: { appId: app.id, version: installed.manifest.version },
+      withDeleted: true,
+    });
+    if (existingVersion) {
+      throw new BadRequestException(`App version ${installed.manifest.version} already exists`);
+    }
+
+    const versionEntity = this.versionRepo.create({
+      appId: app.id,
+      version: installed.manifest.version,
+      manifest: installed.manifest as unknown as Record<string, unknown>,
+      approvedCapabilities: [],
+      manifestVersion: installed.manifest.manifestVersion,
+      packageFormat: 'service_zip',
+      scanResult: installed.scanResult as unknown as Record<string, unknown>,
+      candidateHealthStatus: 'unknown',
+      submittedBy: operatorId ?? null,
+      packagePath: installed.releaseDir,
+      publishPath: '',
+      entryFile: installed.entryFile,
+      fileHash: installed.packageSha256,
+      fileSize: installed.fileSize,
+      reviewStatus: 'pending',
+      publishStatus: 'unpublished',
+      reviewMessage: '',
+      reviewerId: null,
+      reviewTime: null,
+    } as Partial<AppPackageVersionEntity>) as AppPackageVersionEntity;
+    const savedVersion = await this.versionRepo.save(versionEntity);
+
+    this.updateAppReviewStatus(app, 'pending_review');
+    app.entryMode = 'service';
+    app.runtimeType = 'service';
+    app.trustLevel = 'platform_trusted';
+    app.serviceHealthPath = installed.manifest.healthPath;
+    app.runtimeConfig = installed.manifest.runtimeConfig;
+    await this.appRepo.save(app);
+    await this.recordAppEvent(
+      app.id,
+      savedVersion.id,
+      'submit',
+      `Uploaded service version ${installed.manifest.version} for review`,
+      operatorId,
+      {
+        fileHash: installed.packageSha256,
+        fileSize: installed.fileSize,
+        scanResult: installed.scanResult,
+      },
+    );
+
+    return this.toVersionResponse(savedVersion);
+  }
+
   async submitVersion(code: string, version: string, operatorId?: number) {
     const app = await this.findApp(code);
     const appVersion = await this.findVersion(app.id, version);
@@ -458,6 +527,20 @@ export class AppPlatformService {
     const appVersion = await this.findVersion(app.id, version);
     if (appVersion.reviewStatus !== 'pending') {
       throw new BadRequestException('Only pending versions can be approved');
+    }
+    if (
+      app.type === 'service' &&
+      (operatorId === undefined ||
+        appVersion.submittedBy === null ||
+        appVersion.submittedBy === undefined ||
+        Number(appVersion.submittedBy) === Number(operatorId))
+    ) {
+      throw new BadRequestException(
+        'Service version requires review by a different platform operator',
+      );
+    }
+    if (app.type === 'service' && appVersion.scanResult?.passed !== true) {
+      throw new BadRequestException('Service version requires a passing package scan');
     }
 
     const requestedCapabilities = normalizeAppCapabilities(appVersion.manifest);

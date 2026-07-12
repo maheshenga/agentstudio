@@ -38,6 +38,14 @@ export class AppPackageStorageService {
     return path.resolve(process.cwd(), this.config.get<string>('appMarketplace.publicDir') || '../upload/app-public');
   }
 
+  getServiceRuntimeRoot() {
+    return path.resolve(
+      process.cwd(),
+      this.config.get<string>('appMarketplace.serviceRuntime.rootDir') ||
+        '../upload/app-service-runtime',
+    );
+  }
+
   getPublicPrefix() {
     const raw = this.config.get<string>('appMarketplace.publicPrefix') || '/apps-static/';
     const trimmed = raw.trim() || '/apps-static/';
@@ -61,6 +69,17 @@ export class AppPackageStorageService {
 
   resolvePublicPath(...segments: string[]) {
     return this.resolveInside(this.getPublicRoot(), 'Invalid app public path', ...segments);
+  }
+
+  resolveServiceReleasePath(appCode: string, version: string) {
+    const safeCode = this.safeSegment(appCode, 'Invalid service release path');
+    const safeVersion = this.safeVersion(version);
+    return this.resolveInside(
+      this.getServiceRuntimeRoot(),
+      'Invalid service release path',
+      safeCode,
+      safeVersion,
+    );
   }
 
   async extractStaticPackage(input: ExtractStaticPackageInput): Promise<ExtractStaticPackageResult> {

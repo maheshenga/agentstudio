@@ -12,6 +12,7 @@ import { AppManifestService } from './app-manifest.service';
 import { AppCapabilityPolicyService } from './app-capability-policy.service';
 import { AppPackageStorageService } from './app-package-storage.service';
 import { AppRuntimeSessionService } from './app-runtime-session.service';
+import { AppServicePackageService } from './app-service-package.service';
 import { AppPlatformService } from './app-platform.service';
 
 describe('AppPlatformService', () => {
@@ -40,6 +41,9 @@ describe('AppPlatformService', () => {
   };
   const manifestService = {
     validateStaticManifest: jest.fn(),
+  };
+  const servicePackageService = {
+    scanAndInstall: jest.fn(),
   };
   const capabilityPolicy = {
     approvePlatformCapabilities: jest.fn(),
@@ -81,6 +85,7 @@ describe('AppPlatformService', () => {
         { provide: AppManifestService, useValue: manifestService },
         { provide: AppCapabilityPolicyService, useValue: capabilityPolicy },
         { provide: AppRuntimeSessionService, useValue: runtimeSessionService },
+        { provide: AppServicePackageService, useValue: servicePackageService },
         { provide: DataSource, useValue: dataSource },
       ],
     }).compile();
@@ -238,6 +243,122 @@ describe('AppPlatformService', () => {
       }),
     );
     expect(versionRepo.create).not.toHaveBeenCalled();
+  });
+
+  it('uploads a scanned service version without starting or publishing it', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 9,
+      code: 'admin_echo_service',
+      name: 'Admin Echo Service',
+      type: 'service',
+      status: 'draft',
+      entryMode: 'service',
+      entryUrl: '',
+      runtimeType: 'service',
+      trustLevel: 'platform_trusted',
+    });
+    versionRepo.findOne.mockResolvedValue(null);
+    servicePackageService.scanAndInstall.mockResolvedValue({
+      manifest: {
+        manifestVersion: 2,
+        code: 'admin_echo_service',
+        version: '1.0.0',
+        runtime: 'service',
+        entry: 'dist/index.js',
+        healthPath: '/health',
+        capabilities: ['context.read'],
+        allowedOrigins: [],
+        runtimeConfig: {},
+      },
+      releaseDir: '/runtime/admin_echo_service/1.0.0',
+      entryFile: 'dist/index.js',
+      fileSize: 1024,
+      packageSha256: 'a'.repeat(64),
+      scanResult: {
+        passed: true,
+        findings: [],
+        scannedFiles: 1,
+        entrySha256: 'b'.repeat(64),
+      },
+    });
+
+    await expect(
+      service.uploadServiceVersion(
+        'admin_echo_service',
+        { buffer: Buffer.from('zip'), size: 3 } as Express.Multer.File,
+        88,
+      ),
+    ).resolves.toMatchObject({
+      version: '1.0.0',
+      manifest_version: 2,
+      package_format: 'service_zip',
+      review_status: 'pending',
+      publish_status: 'unpublished',
+      submitted_by: 88,
+      scan_result: expect.objectContaining({ passed: true }),
+    });
+    expect(versionRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 9,
+        version: '1.0.0',
+        manifestVersion: 2,
+        packageFormat: 'service_zip',
+        packagePath: '/runtime/admin_echo_service/1.0.0',
+        entryFile: 'dist/index.js',
+        reviewStatus: 'pending',
+        publishStatus: 'unpublished',
+        submittedBy: 88,
+      }),
+    );
+    expect(appRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'pending_review', serviceHealthPath: '/health' }),
+    );
+  });
+
+  it('prevents a service submitter from approving the same version', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 9,
+      code: 'admin_echo_service',
+      type: 'service',
+      status: 'pending_review',
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 12,
+      appId: 9,
+      version: '1.0.0',
+      manifest: { capabilities: [] },
+      scanResult: { passed: true, findings: [] },
+      submittedBy: 88,
+      reviewStatus: 'pending',
+      publishStatus: 'unpublished',
+    });
+
+    await expect(service.approveVersion('admin_echo_service', '1.0.0', '', 88, [])).rejects.toThrow(
+      'Service version requires review by a different platform operator',
+    );
+  });
+
+  it('fails closed when a service review has no authenticated operator identity', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 9,
+      code: 'admin_echo_service',
+      type: 'service',
+      status: 'pending_review',
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 12,
+      appId: 9,
+      version: '1.0.0',
+      manifest: { capabilities: [] },
+      scanResult: { passed: true, findings: [] },
+      submittedBy: 88,
+      reviewStatus: 'pending',
+      publishStatus: 'unpublished',
+    });
+
+    await expect(
+      service.approveVersion('admin_echo_service', '1.0.0', '', undefined, []),
+    ).rejects.toThrow('Service version requires review by a different platform operator');
   });
 
   it('creates a new immutable iframe version when runtime settings change', async () => {

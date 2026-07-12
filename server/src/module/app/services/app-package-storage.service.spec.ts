@@ -10,12 +10,14 @@ describe('AppPackageStorageService', () => {
   let tempRoot: string;
   let packageRoot: string;
   let publicRoot: string;
+  let serviceRuntimeRoot: string;
   let service: AppPackageStorageService;
 
   beforeEach(() => {
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'app-package-storage-'));
     packageRoot = path.join(tempRoot, 'packages');
     publicRoot = path.join(tempRoot, 'public');
+    serviceRuntimeRoot = path.join(tempRoot, 'service-runtime');
     fs.mkdirSync(packageRoot, { recursive: true });
     fs.mkdirSync(publicRoot, { recursive: true });
 
@@ -24,6 +26,7 @@ describe('AppPackageStorageService', () => {
         if (key === 'appMarketplace.packageDir') return packageRoot;
         if (key === 'appMarketplace.publicDir') return publicRoot;
         if (key === 'appMarketplace.publicPrefix') return '/apps-static/';
+        if (key === 'appMarketplace.serviceRuntime.rootDir') return serviceRuntimeRoot;
         if (key === 'appMarketplace.maxPackageFiles') return 500;
         if (key === 'appMarketplace.maxPackageSizeMb') return 50;
         return fallback;
@@ -39,6 +42,10 @@ describe('AppPackageStorageService', () => {
     expect(service.getPackageRoot()).toBe(path.resolve(packageRoot));
     expect(service.getPublicRoot()).toBe(path.resolve(publicRoot));
     expect(service.getPublicPrefix()).toBe('/apps-static/');
+    expect(service.getServiceRuntimeRoot()).toBe(path.resolve(serviceRuntimeRoot));
+    expect(service.resolveServiceReleasePath('admin_echo_service', '1.0.0')).toBe(
+      path.join(serviceRuntimeRoot, 'admin_echo_service', '1.0.0'),
+    );
   });
 
   it('rejects package paths that escape the package root', () => {
@@ -47,6 +54,12 @@ describe('AppPackageStorageService', () => {
 
   it('rejects public paths that escape the public root', () => {
     expect(() => service.resolvePublicPath('..', 'escape')).toThrow('Invalid app public path');
+  });
+
+  it('rejects service release paths that escape the runtime root', () => {
+    expect(() => service.resolveServiceReleasePath('..', '1.0.0')).toThrow(
+      'Invalid service release path',
+    );
   });
 
   it('publishes a version under the public root and returns the static entry url', async () => {

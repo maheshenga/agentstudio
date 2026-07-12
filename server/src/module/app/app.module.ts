@@ -45,6 +45,7 @@ import {
   UndiciAppRuntimeHttpTransport,
 } from './services/app-runtime-http.service';
 import { AppRuntimeSessionService } from './services/app-runtime-session.service';
+import { AppServicePackageService } from './services/app-service-package.service';
 import { AppTenantService } from './services/app-tenant.service';
 
 @Module({
@@ -87,6 +88,7 @@ import { AppTenantService } from './services/app-tenant.service';
     AppCapabilityPolicyService,
     AppDeveloperService,
     AppPackageStorageService,
+    AppServicePackageService,
     AppPlatformService,
     AppRuntimeContextService,
     AppIframeLaunchService,
@@ -103,6 +105,7 @@ import { AppTenantService } from './services/app-tenant.service';
     AppManifestService,
     AppDeveloperService,
     AppPackageStorageService,
+    AppServicePackageService,
     AppPlatformService,
     AppRuntimeContextService,
     AppTenantService,

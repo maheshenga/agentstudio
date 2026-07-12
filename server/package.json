@@ -84,6 +84,8 @@
     "@nestjs/typeorm": "^11.0.2",
     "@nestjs/websockets": "^11.1.27",
     "@qdrant/js-client-rest": "^1.18.0",
+    "acorn": "^8.17.0",
+    "acorn-walk": "^8.3.5",
     "archiver": "^7.0.1",
     "axios": "^1.18.0",
     "bcryptjs": "^3.0.3",
