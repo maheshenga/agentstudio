@@ -10,6 +10,7 @@ import { AppPackageVersionEntity } from '../entities/app-package-version.entity'
 import { TenantAppInstallEntity } from '../entities/tenant-app-install.entity';
 import { AppRuntimeContextService } from './app-runtime-context.service';
 import { AppRuntimeSessionService } from './app-runtime-session.service';
+import { AppIframeLaunchService } from './app-iframe-launch.service';
 import { AppCapabilityPolicyService } from './app-capability-policy.service';
 import { AppTenantService } from './app-tenant.service';
 import { SaasModuleService } from '../../saas/services/saas-module.service';
@@ -50,6 +51,11 @@ describe('AppTenantService', () => {
     isEnabled: jest.fn(),
     issue: jest.fn(),
     revokeInstall: jest.fn(),
+  };
+  const appIframeLaunchService = {
+    isEnabled: jest.fn(),
+    create: jest.fn(),
+    exchange: jest.fn(),
   };
   const capabilityPolicy = {
     getCapabilityState: jest.fn(),
@@ -98,6 +104,13 @@ describe('AppTenantService', () => {
       capabilities: ['context.read'],
     });
     appRuntimeSessionService.revokeInstall.mockResolvedValue(1);
+    appIframeLaunchService.isEnabled.mockReturnValue(false);
+    appIframeLaunchService.create.mockResolvedValue(null);
+    appIframeLaunchService.exchange.mockResolvedValue({
+      token: 'host-only-runtime-token',
+      expires_at: '2026-07-12T08:00:00.000Z',
+      capabilities: ['context.read'],
+    });
     capabilityPolicy.getCapabilityState.mockResolvedValue({
       requested: [],
       platform_approved: [],
@@ -117,6 +130,7 @@ describe('AppTenantService', () => {
         { provide: SystemModuleAccessService, useValue: systemModuleAccessService },
         { provide: AppRuntimeContextService, useValue: appRuntimeContextService },
         { provide: AppRuntimeSessionService, useValue: appRuntimeSessionService },
+        { provide: AppIframeLaunchService, useValue: appIframeLaunchService },
         { provide: AppCapabilityPolicyService, useValue: capabilityPolicy },
         { provide: DataSource, useValue: dataSource },
       ],
@@ -277,7 +291,9 @@ describe('AppTenantService', () => {
       entryUrl: 'https://draft.example.com',
     });
 
-    await expect(service.installApp(23, 'draft_app', 7)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.installApp(23, 'draft_app', 7)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
     expect(installRepo.save).not.toHaveBeenCalled();
   });
 
@@ -528,7 +544,9 @@ describe('AppTenantService', () => {
     });
     installRepo.findOne.mockResolvedValue(null);
 
-    await expect(service.getOpenMetadata(23, 'job_board', 7)).rejects.toThrow('App is not installed');
+    await expect(service.getOpenMetadata(23, 'job_board', 7)).rejects.toThrow(
+      'App is not installed',
+    );
     expect(openLogRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
         tenantId: 23,
@@ -545,7 +563,9 @@ describe('AppTenantService', () => {
   it('audits an unknown app code without requiring an app id', async () => {
     appRepo.findOne.mockResolvedValue(null);
 
-    await expect(service.getOpenMetadata(23, 'missing_app', 7)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.getOpenMetadata(23, 'missing_app', 7)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
 
     expect(openLogRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -561,9 +581,16 @@ describe('AppTenantService', () => {
   });
 
   it('audits unpublished apps with a fixed safe reason', async () => {
-    appRepo.findOne.mockResolvedValue({ id: 2, code: 'draft_app', type: 'iframe', status: 'draft' });
+    appRepo.findOne.mockResolvedValue({
+      id: 2,
+      code: 'draft_app',
+      type: 'iframe',
+      status: 'draft',
+    });
 
-    await expect(service.getOpenMetadata(23, 'draft_app', 7)).rejects.toThrow('App is not published');
+    await expect(service.getOpenMetadata(23, 'draft_app', 7)).rejects.toThrow(
+      'App is not published',
+    );
 
     expect(openLogRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -586,7 +613,13 @@ describe('AppTenantService', () => {
       entryMode: 'static',
       entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
     });
-    installRepo.findOne.mockResolvedValue({ id: 4, tenantId: 23, appId: 1, versionId: 9, enabled: 1 });
+    installRepo.findOne.mockResolvedValue({
+      id: 4,
+      tenantId: 23,
+      appId: 1,
+      versionId: 9,
+      enabled: 1,
+    });
     versionRepo.findOne.mockResolvedValue({
       id: 9,
       appId: 1,
@@ -648,6 +681,118 @@ describe('AppTenantService', () => {
     );
   });
 
+  it('returns a one-time signed external iframe launch without a runtime bearer token', async () => {
+    appIframeLaunchService.isEnabled.mockReturnValue(true);
+    appIframeLaunchService.create.mockResolvedValue({
+      fragment: '#agentstudio_launch=signed-launch-token',
+      expires_at: '2026-07-12T07:00:30.000Z',
+      origin: 'https://supplier.example.com',
+    });
+    appRepo.findOne.mockResolvedValue({
+      id: 2,
+      code: 'supplier_portal',
+      name: 'Supplier Portal',
+      type: 'iframe',
+      status: 'published',
+      entryUrl: 'https://supplier.example.com/catalog-v2',
+    });
+    installRepo.findOne.mockResolvedValue({
+      id: 5,
+      tenantId: 23,
+      appId: 2,
+      versionId: 12,
+      enabled: 1,
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 12,
+      appId: 2,
+      version: '1.0.0',
+      publishStatus: 'published',
+      reviewStatus: 'approved',
+      manifest: {
+        permissions: ['runtime:context:read'],
+        entry: 'https://supplier.example.com/installed-v1',
+        allowedOrigins: ['https://supplier.example.com'],
+      },
+    });
+    capabilityPolicy.getCapabilityState.mockResolvedValue({
+      requested: ['context.read'],
+      platform_approved: ['context.read'],
+      tenant_approved: ['context.read'],
+      effective: ['context.read'],
+    });
+
+    const result = await service.getOpenMetadata(23, 'supplier_portal', 7);
+
+    expect(result).toMatchObject({
+      entry_url: 'https://supplier.example.com/installed-v1',
+      sandbox: expect.stringContaining('allow-same-origin'),
+      version: '1.0.0',
+      runtime: null,
+      launch: {
+        fragment: '#agentstudio_launch=signed-launch-token',
+        origin: 'https://supplier.example.com',
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain('host-only-runtime-token');
+    expect(appIframeLaunchService.create).toHaveBeenCalledWith({
+      tenantId: 23,
+      userId: 7,
+      appId: 2,
+      versionId: 12,
+      installId: 5,
+      entryUrl: 'https://supplier.example.com/installed-v1',
+      allowedOrigins: ['https://supplier.example.com'],
+      capabilities: ['context.read'],
+    });
+    expect(appRuntimeSessionService.issue).not.toHaveBeenCalled();
+  });
+
+  it('exchanges an iframe launch using only current JWT tenant and user identity', async () => {
+    await expect(service.exchangeIframeLaunch(23, 7, 'signed-launch-token')).resolves.toMatchObject(
+      { token: 'host-only-runtime-token' },
+    );
+    expect(appIframeLaunchService.exchange).toHaveBeenCalledWith({
+      tenantId: 23,
+      userId: 7,
+      launchToken: 'signed-launch-token',
+    });
+  });
+
+  it('rejects an iframe version whose entry origin is not in its approved manifest', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 2,
+      code: 'supplier_portal',
+      name: 'Supplier Portal',
+      type: 'iframe',
+      status: 'published',
+      entryUrl: 'https://supplier.example.com/app',
+    });
+    installRepo.findOne.mockResolvedValue({
+      id: 5,
+      tenantId: 23,
+      appId: 2,
+      versionId: 12,
+      enabled: 1,
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 12,
+      appId: 2,
+      version: '1.0.0',
+      publishStatus: 'published',
+      reviewStatus: 'approved',
+      manifest: {
+        entry: 'https://unapproved.example.com/app',
+        allowedOrigins: ['https://supplier.example.com'],
+      },
+    });
+
+    await expect(service.getOpenMetadata(23, 'supplier_portal', 7)).rejects.toThrow(
+      'Iframe version origin is invalid',
+    );
+    expect(appIframeLaunchService.create).not.toHaveBeenCalled();
+  });
+
   it('issues a short-lived runtime session instead of inline context when enabled', async () => {
     appRuntimeSessionService.isEnabled.mockReturnValue(true);
     appRepo.findOne.mockResolvedValue({
@@ -658,7 +803,13 @@ describe('AppTenantService', () => {
       status: 'published',
       entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
     });
-    installRepo.findOne.mockResolvedValue({ id: 4, tenantId: 23, appId: 1, versionId: 9, enabled: 1 });
+    installRepo.findOne.mockResolvedValue({
+      id: 4,
+      tenantId: 23,
+      appId: 1,
+      versionId: 9,
+      enabled: 1,
+    });
     versionRepo.findOne.mockResolvedValue({
       id: 9,
       appId: 1,
@@ -699,8 +850,20 @@ describe('AppTenantService', () => {
 
   it('omits a session when enabled but no capability is effectively granted', async () => {
     appRuntimeSessionService.isEnabled.mockReturnValue(true);
-    appRepo.findOne.mockResolvedValue({ id: 1, code: 'job_board', name: 'Job Board', type: 'static', status: 'published' });
-    installRepo.findOne.mockResolvedValue({ id: 4, tenantId: 23, appId: 1, versionId: 9, enabled: 1 });
+    appRepo.findOne.mockResolvedValue({
+      id: 1,
+      code: 'job_board',
+      name: 'Job Board',
+      type: 'static',
+      status: 'published',
+    });
+    installRepo.findOne.mockResolvedValue({
+      id: 4,
+      tenantId: 23,
+      appId: 1,
+      versionId: 9,
+      enabled: 1,
+    });
     versionRepo.findOne.mockResolvedValue({
       id: 9,
       appId: 1,
@@ -722,7 +885,11 @@ describe('AppTenantService', () => {
     });
 
     const result = await service.getOpenMetadata(23, 'job_board', 7);
-    expect(result.runtime).toEqual({ protocol_version: 1, scopes: ['runtime:context:read'], context: null });
+    expect(result.runtime).toEqual({
+      protocol_version: 1,
+      scopes: ['runtime:context:read'],
+      context: null,
+    });
     expect(appRuntimeSessionService.issue).not.toHaveBeenCalled();
   });
 
@@ -747,7 +914,13 @@ describe('AppTenantService', () => {
       status: 'published',
       entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
     });
-    installRepo.findOne.mockResolvedValue({ id: 4, tenantId: 23, appId: 1, versionId: 9, enabled: 1 });
+    installRepo.findOne.mockResolvedValue({
+      id: 4,
+      tenantId: 23,
+      appId: 1,
+      versionId: 9,
+      enabled: 1,
+    });
     versionRepo.findOne.mockResolvedValue({
       id: 9,
       appId: 1,
@@ -755,7 +928,9 @@ describe('AppTenantService', () => {
       publishStatus: 'published',
       reviewStatus: 'approved',
     });
-    appRuntimeContextService.buildBootstrap.mockRejectedValue(new Error('identity database unavailable'));
+    appRuntimeContextService.buildBootstrap.mockRejectedValue(
+      new Error('identity database unavailable'),
+    );
 
     await expect(service.getOpenMetadata(23, 'job_board', 7)).resolves.toMatchObject({
       code: 'job_board',
@@ -778,16 +953,20 @@ describe('AppTenantService', () => {
       entryMode: 'static',
       entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
     });
-    installRepo.findOne.mockResolvedValue({ id: 4, tenantId: 23, appId: 1, versionId: 10, enabled: 1 });
-    versionRepo.findOne
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({
-        id: 9,
-        appId: 1,
-        version: '1.0.0',
-        publishStatus: 'published',
-        reviewStatus: 'approved',
-      });
+    installRepo.findOne.mockResolvedValue({
+      id: 4,
+      tenantId: 23,
+      appId: 1,
+      versionId: 10,
+      enabled: 1,
+    });
+    versionRepo.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: 9,
+      appId: 1,
+      version: '1.0.0',
+      publishStatus: 'published',
+      reviewStatus: 'approved',
+    });
 
     await expect(service.getOpenMetadata(23, 'job_board', 7)).resolves.toMatchObject({
       code: 'job_board',
@@ -815,16 +994,14 @@ describe('AppTenantService', () => {
     });
     const install = { id: 4, tenantId: 23, appId: 1, versionId: 10, enabled: 1 };
     installRepo.findOne.mockResolvedValue(install);
-    versionRepo.findOne
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({
-        id: 11,
-        appId: 1,
-        version: '2.0.0',
-        publishStatus: 'published',
-        reviewStatus: 'approved',
-        manifest: { permissions: ['runtime:context:read'] },
-      });
+    versionRepo.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: 11,
+      appId: 1,
+      version: '2.0.0',
+      publishStatus: 'published',
+      reviewStatus: 'approved',
+      manifest: { permissions: ['runtime:context:read'] },
+    });
     capabilityPolicy.getCapabilityState.mockResolvedValue({
       requested: ['context.read'],
       platform_approved: ['context.read'],
@@ -839,7 +1016,9 @@ describe('AppTenantService', () => {
 
     await service.getOpenMetadata(23, 'job_board', 7);
 
-    expect(installRepo.save).toHaveBeenCalledWith(expect.objectContaining({ id: 4, versionId: 11 }));
+    expect(installRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 4, versionId: 11 }),
+    );
     expect(appRuntimeSessionService.issue).toHaveBeenCalledWith(
       expect.objectContaining({ installId: 4, versionId: 11 }),
     );
@@ -901,7 +1080,9 @@ describe('AppTenantService', () => {
     });
     installRepo.findOne.mockResolvedValue({ id: 7, tenantId: 23, appId: 9, enabled: 1 });
     saasModuleService.assertTenantModuleEnabled.mockRejectedValue(
-      new BadRequestException('Current plan has not enabled recruiting because internal-product-key=secret'),
+      new BadRequestException(
+        'Current plan has not enabled recruiting because internal-product-key=secret',
+      ),
     );
 
     await expect(service.getOpenMetadata(23, 'recruiting_portal', 7)).rejects.toThrow(
@@ -985,7 +1166,9 @@ describe('AppTenantService', () => {
   it('audits unexpected open failures without persisting raw exception text', async () => {
     appRepo.findOne.mockRejectedValue(new Error('database password=do-not-log'));
 
-    await expect(service.getOpenMetadata(23, 'job_board', 7)).rejects.toThrow('database password=do-not-log');
+    await expect(service.getOpenMetadata(23, 'job_board', 7)).rejects.toThrow(
+      'database password=do-not-log',
+    );
 
     expect(openLogRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -996,7 +1179,9 @@ describe('AppTenantService', () => {
         failureMessage: 'Unable to open app',
       }),
     );
-    expect(JSON.stringify(openLogRepo.create.mock.calls)).not.toContain('database password=do-not-log');
+    expect(JSON.stringify(openLogRepo.create.mock.calls)).not.toContain(
+      'database password=do-not-log',
+    );
   });
 
   it('does not fail a successful open when audit persistence is unavailable', async () => {
@@ -1027,14 +1212,18 @@ describe('AppTenantService', () => {
     installRepo.findOne.mockResolvedValue(null);
     openLogRepo.save.mockRejectedValue(new Error('audit database unavailable'));
 
-    await expect(service.getOpenMetadata(23, 'job_board', 7)).rejects.toThrow('App is not installed');
+    await expect(service.getOpenMetadata(23, 'job_board', 7)).rejects.toThrow(
+      'App is not installed',
+    );
   });
 
   it('does not replace an unexpected error when audit persistence is unavailable', async () => {
     appRepo.findOne.mockRejectedValue(new Error('primary app lookup failed'));
     openLogRepo.save.mockRejectedValue(new Error('audit database unavailable'));
 
-    await expect(service.getOpenMetadata(23, 'job_board', 7)).rejects.toThrow('primary app lookup failed');
+    await expect(service.getOpenMetadata(23, 'job_board', 7)).rejects.toThrow(
+      'primary app lookup failed',
+    );
   });
 
   it('returns internal route metadata for installed internal apps', async () => {

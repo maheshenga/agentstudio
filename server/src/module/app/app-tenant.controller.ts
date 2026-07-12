@@ -8,6 +8,7 @@ import { ResultData } from '../../common/utils/result';
 import { User } from '../system/user/user.decorator';
 import type { UserDto } from '../system/user/user.decorator';
 import { InstallTenantAppDto, UpdateTenantAppCapabilitiesDto } from './dto/app-tenant.dto';
+import { ExchangeIframeLaunchDto } from './dto/app-platform.dto';
 import { AppTenantService } from './services/app-tenant.service';
 
 @ApiTags('App Tenant')
@@ -37,11 +38,20 @@ export class AppTenantController {
   @Post('apps/:code/install')
   @ApiOperation({ summary: 'Install tenant app' })
   @RequirePermission('app:tenant:install')
-  async install(@Param('code') code: string, @Body() body: InstallTenantAppDto, @User() user: UserDto) {
+  async install(
+    @Param('code') code: string,
+    @Body() body: InstallTenantAppDto,
+    @User() user: UserDto,
+  ) {
     const tenantId = getTenantId();
     if (!tenantId) return ResultData.fail(401, 'Tenant context is required');
     return ResultData.ok(
-      await this.appTenantService.installApp(tenantId, code, user?.userId, body?.capabilities || []),
+      await this.appTenantService.installApp(
+        tenantId,
+        code,
+        user?.userId,
+        body?.capabilities || [],
+      ),
     );
   }
 
@@ -65,7 +75,12 @@ export class AppTenantController {
     const tenantId = getTenantId();
     if (!tenantId) return ResultData.fail(401, 'Tenant context is required');
     return ResultData.ok(
-      await this.appTenantService.updateCapabilities(tenantId, code, body.capabilities, user?.userId),
+      await this.appTenantService.updateCapabilities(
+        tenantId,
+        code,
+        body.capabilities,
+        user?.userId,
+      ),
     );
   }
 
@@ -86,9 +101,21 @@ export class AppTenantController {
     if (!tenantId) return ResultData.fail(401, 'Tenant context is required');
     return ResultData.ok(
       await this.appTenantService.getOpenMetadata(tenantId, code, user?.userId, {
-        ip: String((req as any).ip || req.ip || ''),
+        ip: String(req.ip || ''),
         userAgent: String(req.headers['user-agent'] || ''),
       }),
+    );
+  }
+
+  @Post('runtime/iframe/exchange')
+  @ApiOperation({ summary: 'Exchange a one-time iframe launch for a host runtime session' })
+  @RequirePermission('app:tenant:open')
+  async exchangeIframeLaunch(@Body() body: ExchangeIframeLaunchDto, @User() user: UserDto) {
+    const tenantId = getTenantId();
+    const userId = Number(user?.userId || 0);
+    if (!tenantId || !userId) return ResultData.fail(401, 'Tenant and user context are required');
+    return ResultData.ok(
+      await this.appTenantService.exchangeIframeLaunch(tenantId, userId, body.launch_token),
     );
   }
 }

@@ -37,6 +37,8 @@ const CONFIGURATION_ENV_KEYS_REQUIRING_SCHEMA = [
   'APP_RUNTIME_STORAGE_MAX_FILE_MB',
   'APP_RUNTIME_STORAGE_QUOTA_MB',
   'APP_RUNTIME_STORAGE_ALLOWED_MIME_TYPES',
+  'APP_RUNTIME_IFRAME_LAUNCH_ENABLED',
+  'APP_RUNTIME_LAUNCH_SECRET',
 ] as const;
 
 const UNSAFE_EXAMPLE_VALUES = new Map([
@@ -82,6 +84,17 @@ describe('SaaS environment contract readiness', () => {
     expect(example.JWT_SECRET).toContain('change_me');
     expect(example.JWT_SECRET.length).toBeGreaterThanOrEqual(32);
     expect(example.ADMIN_PASSWORD).toContain('change_me');
+  });
+
+  it('keeps iframe launch disabled by default and requires 32-byte signing material', () => {
+    const schema = readProjectFile('server/src/config/env.validation.ts');
+
+    expect(schema).toMatch(
+      /APP_RUNTIME_IFRAME_LAUNCH_ENABLED:\s*Joi\.boolean\(\).*default\(false\)/s,
+    );
+    expect(schema).toMatch(
+      /APP_RUNTIME_LAUNCH_SECRET:\s*Joi\.when\([\s\S]*then:\s*Joi\.string\(\)\.min\(32\)\.required\(\)/,
+    );
   });
 });
 

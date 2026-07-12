@@ -51,7 +51,10 @@ export class AppPlatformService {
   ) {}
 
   async listApps(query: AppPlatformListQuery = {}) {
-    const apps = await this.appRepo.find({ where: { deleteTime: IsNull() }, order: { sort: 'ASC', id: 'ASC' } });
+    const apps = await this.appRepo.find({
+      where: { deleteTime: IsNull() },
+      order: { sort: 'ASC', id: 'ASC' },
+    });
     const keyword = query.keyword?.trim().toLowerCase();
 
     return apps
@@ -60,7 +63,9 @@ export class AppPlatformService {
         if (query.status && app.status !== query.status) return false;
         if (!keyword) return true;
         return [app.code, app.name, app.category, app.summary].some((value) =>
-          String(value || '').toLowerCase().includes(keyword),
+          String(value || '')
+            .toLowerCase()
+            .includes(keyword),
         );
       })
       .map((app) => this.toResponse(app));
@@ -99,13 +104,20 @@ export class AppPlatformService {
   }
 
   async listReviewQueue(query: AppReviewQueueQuery = {}) {
-    const versions = await this.versionRepo.find({ where: { deleteTime: IsNull() }, order: { id: 'DESC' } });
+    const versions = await this.versionRepo.find({
+      where: { deleteTime: IsNull() },
+      order: { id: 'DESC' },
+    });
     const appIds = [...new Set(versions.map((version) => Number(version.appId)).filter(Boolean))];
     if (!appIds.length) return [];
 
-    const apps = await this.appRepo.find({ where: { id: In(appIds), deleteTime: IsNull() } as any });
+    const apps = await this.appRepo.find({
+      where: { id: In(appIds), deleteTime: IsNull() } as any,
+    });
     const appById = new Map(apps.map((app) => [Number(app.id), app]));
-    const keyword = String(query.keyword || '').trim().toLowerCase();
+    const keyword = String(query.keyword || '')
+      .trim()
+      .toLowerCase();
 
     return versions
       .map((version) => {
@@ -126,7 +138,11 @@ export class AppPlatformService {
           record.developer_name,
           record.version,
           record.review_message,
-        ].some((value) => String(value || '').toLowerCase().includes(keyword));
+        ].some((value) =>
+          String(value || '')
+            .toLowerCase()
+            .includes(keyword),
+        );
       });
   }
 
@@ -137,6 +153,20 @@ export class AppPlatformService {
       throw new BadRequestException(`App ${code} already exists`);
     }
 
+    const iframeRuntime =
+      dto.type === 'iframe'
+        ? this.normalizeIframeRuntime(dto.entry_url || '', dto.allowed_origins)
+        : null;
+    const iframeCapabilities =
+      dto.type === 'iframe' ? normalizeApprovedCapabilities(dto.requested_capabilities) : [];
+    if (
+      dto.type !== 'iframe' &&
+      (dto.allowed_origins !== undefined ||
+        dto.version !== undefined ||
+        dto.requested_capabilities !== undefined)
+    ) {
+      throw new BadRequestException('Iframe version settings require an iframe app');
+    }
     const app = this.appRepo.create({
       code,
       name: dto.name,
@@ -150,32 +180,137 @@ export class AppPlatformService {
       status: dto.type === 'static' ? 'draft' : 'published',
       visibility: dto.visibility || 'marketplace',
       entryMode: this.resolveEntryMode(dto.type),
-      entryUrl: this.normalizeEntryUrl(dto.type, dto.entry_url || ''),
+      entryUrl: iframeRuntime?.entryUrl || this.normalizeEntryUrl(dto.type, dto.entry_url || ''),
       systemModuleCode: dto.system_module_code || '',
       saasModuleCode: dto.saas_module_code || '',
       sort: dto.sort ?? 100,
       remark: dto.remark || '',
     });
 
-    return this.toResponse(await this.appRepo.save(app));
+    if (!iframeRuntime) return this.toResponse(await this.appRepo.save(app));
+
+    return this.dataSource.transaction(async (manager) => {
+      const savedApp = await manager.getRepository(AppPackageEntity).save(app);
+      const versionRepo = manager.getRepository(AppPackageVersionEntity);
+      const version = versionRepo.create(
+        this.createIframeVersion({
+          app: savedApp,
+          version: dto.version || '1.0.0',
+          entryUrl: iframeRuntime.entryUrl,
+          allowedOrigins: iframeRuntime.allowedOrigins,
+          capabilities: iframeCapabilities,
+          operatorId,
+        }),
+      );
+      const savedVersion = await versionRepo.save(version);
+      await this.capabilityPolicy.approvePlatformCapabilities(
+        {
+          appId: savedApp.id,
+          versionId: savedVersion.id,
+          requestedCapabilities: iframeCapabilities,
+          approvedCapabilities: iframeCapabilities,
+          operatorId,
+        },
+        manager.getRepository(AppCapabilityGrantEntity),
+      );
+      return this.toResponse(savedApp);
+    });
   }
 
   async updateApp(code: string, dto: UpdateAppPackageDto) {
     const app = await this.findApp(code);
+    const iframeRuntimeChanged =
+      app.type === 'iframe' &&
+      (dto.entry_url !== undefined ||
+        dto.allowed_origins !== undefined ||
+        dto.version !== undefined ||
+        dto.requested_capabilities !== undefined);
+    if (
+      app.type !== 'iframe' &&
+      (dto.allowed_origins !== undefined ||
+        dto.version !== undefined ||
+        dto.requested_capabilities !== undefined)
+    ) {
+      throw new BadRequestException('Iframe version settings require an iframe app');
+    }
+    if (iframeRuntimeChanged && !dto.version) {
+      throw new BadRequestException('Iframe runtime updates require a new version');
+    }
+    const latestIframeVersion = iframeRuntimeChanged
+      ? await this.versionRepo.findOne({
+          where: {
+            appId: app.id,
+            reviewStatus: 'approved',
+            publishStatus: 'published',
+            deleteTime: IsNull(),
+          },
+          order: { id: 'DESC' },
+        })
+      : null;
+    const previousOrigins = Array.isArray(latestIframeVersion?.manifest?.allowedOrigins)
+      ? latestIframeVersion.manifest.allowedOrigins.filter(
+          (value): value is string => typeof value === 'string',
+        )
+      : undefined;
+    const iframeRuntime = iframeRuntimeChanged
+      ? this.normalizeIframeRuntime(
+          dto.entry_url ?? app.entryUrl,
+          dto.allowed_origins ?? previousOrigins,
+        )
+      : null;
+    const iframeCapabilities = iframeRuntimeChanged
+      ? dto.requested_capabilities !== undefined
+        ? normalizeApprovedCapabilities(dto.requested_capabilities)
+        : normalizeAppCapabilities(latestIframeVersion?.manifest)
+      : [];
+    if (iframeRuntime && dto.version) {
+      const existingVersion = await this.versionRepo.findOne({
+        where: { appId: app.id, version: dto.version },
+      });
+      if (existingVersion)
+        throw new BadRequestException(`App version ${dto.version} already exists`);
+    }
     if (dto.name !== undefined) app.name = dto.name;
     if (dto.category !== undefined) app.category = dto.category;
     if (dto.icon !== undefined) app.icon = dto.icon;
     if (dto.summary !== undefined) app.summary = dto.summary;
     if (dto.description !== undefined) app.description = dto.description;
     if (dto.visibility !== undefined) app.visibility = dto.visibility;
-    if (dto.entry_url !== undefined) app.entryUrl = this.normalizeEntryUrl(app.type, dto.entry_url);
+    if (dto.entry_url !== undefined) {
+      app.entryUrl = iframeRuntime?.entryUrl || this.normalizeEntryUrl(app.type, dto.entry_url);
+    }
     if (dto.developer_name !== undefined) app.developerName = dto.developer_name;
     if (dto.system_module_code !== undefined) app.systemModuleCode = dto.system_module_code;
     if (dto.saas_module_code !== undefined) app.saasModuleCode = dto.saas_module_code;
     if (dto.sort !== undefined) app.sort = Number(dto.sort);
     if (dto.remark !== undefined) app.remark = dto.remark;
 
-    return this.toResponse(await this.appRepo.save(app));
+    if (!iframeRuntime || !dto.version) return this.toResponse(await this.appRepo.save(app));
+
+    return this.dataSource.transaction(async (manager) => {
+      const savedApp = await manager.getRepository(AppPackageEntity).save(app);
+      const versionRepo = manager.getRepository(AppPackageVersionEntity);
+      const version = versionRepo.create(
+        this.createIframeVersion({
+          app: savedApp,
+          version: dto.version,
+          entryUrl: iframeRuntime.entryUrl,
+          allowedOrigins: iframeRuntime.allowedOrigins,
+          capabilities: iframeCapabilities,
+        }),
+      );
+      const savedVersion = await versionRepo.save(version);
+      await this.capabilityPolicy.approvePlatformCapabilities(
+        {
+          appId: savedApp.id,
+          versionId: savedVersion.id,
+          requestedCapabilities: iframeCapabilities,
+          approvedCapabilities: iframeCapabilities,
+        },
+        manager.getRepository(AppCapabilityGrantEntity),
+      );
+      return this.toResponse(savedApp);
+    });
   }
 
   async updateStatus(code: string, status: AppPackageStatus, operatorId?: number) {
@@ -186,13 +321,22 @@ export class AppPlatformService {
 
     app.status = status;
     const saved = await this.appRepo.save(app);
-    await this.recordAppEvent(saved.id, null, this.statusToAction(status), `App ${code} status changed to ${status}`, operatorId);
+    await this.recordAppEvent(
+      saved.id,
+      null,
+      this.statusToAction(status),
+      `App ${code} status changed to ${status}`,
+      operatorId,
+    );
     return this.toResponse(saved);
   }
 
   async getApp(code: string) {
     const app = await this.findApp(code);
-    const versions = await this.versionRepo.find({ where: { appId: app.id, deleteTime: IsNull() }, order: { id: 'DESC' } });
+    const versions = await this.versionRepo.find({
+      where: { appId: app.id, deleteTime: IsNull() },
+      order: { id: 'DESC' },
+    });
     return {
       ...this.toResponse(app),
       versions: versions.map((version) => this.toVersionResponse(version, app.code, app.entryUrl)),
@@ -211,7 +355,9 @@ export class AppPlatformService {
     const zip = await this.loadZip(file.buffer);
     const zipFiles = Object.values(zip.files).filter((zipFile) => !zipFile.dir);
     const entries = zipFiles.map((zipFile) => this.getZipEntryName(zipFile));
-    const manifestFile = zipFiles.find((zipFile) => this.normalizeZipEntryName(this.getZipEntryName(zipFile)) === 'manifest.json');
+    const manifestFile = zipFiles.find(
+      (zipFile) => this.normalizeZipEntryName(this.getZipEntryName(zipFile)) === 'manifest.json',
+    );
     if (!manifestFile) {
       throw new BadRequestException('App manifest not found');
     }
@@ -259,10 +405,17 @@ export class AppPlatformService {
     this.updateAppReviewStatus(app, 'pending_review');
     app.entryMode = 'static';
     await this.appRepo.save(app);
-    await this.recordAppEvent(app.id, savedVersion.id, 'submit', `Uploaded version ${manifest.version} for review`, operatorId, {
-      fileHash: savedVersion.fileHash,
-      fileSize: savedVersion.fileSize,
-    });
+    await this.recordAppEvent(
+      app.id,
+      savedVersion.id,
+      'submit',
+      `Uploaded version ${manifest.version} for review`,
+      operatorId,
+      {
+        fileHash: savedVersion.fileHash,
+        fileSize: savedVersion.fileSize,
+      },
+    );
 
     return this.toVersionResponse(savedVersion);
   }
@@ -280,7 +433,13 @@ export class AppPlatformService {
     this.updateAppReviewStatus(app, 'pending_review');
     const savedVersion = await this.versionRepo.save(appVersion);
     await this.appRepo.save(app);
-    await this.recordAppEvent(app.id, appVersion.id, 'submit', `Submitted version ${version} for review`, operatorId);
+    await this.recordAppEvent(
+      app.id,
+      appVersion.id,
+      'submit',
+      `Submitted version ${version} for review`,
+      operatorId,
+    );
     return this.toVersionResponse(savedVersion);
   }
 
@@ -298,7 +457,9 @@ export class AppPlatformService {
     }
 
     const requestedCapabilities = normalizeAppCapabilities(appVersion.manifest);
-    const effectiveApproval = normalizeApprovedCapabilities(approvedCapabilities ?? requestedCapabilities);
+    const effectiveApproval = normalizeApprovedCapabilities(
+      approvedCapabilities ?? requestedCapabilities,
+    );
     const savedVersion = await this.dataSource.transaction(async (manager) => {
       appVersion.reviewStatus = 'approved';
       appVersion.reviewMessage = message || '';
@@ -321,7 +482,13 @@ export class AppPlatformService {
       await manager.getRepository(AppPackageEntity).save(app);
       return saved;
     });
-    await this.recordAppEvent(app.id, appVersion.id, 'approve', message || `Approved version ${version}`, operatorId);
+    await this.recordAppEvent(
+      app.id,
+      appVersion.id,
+      'approve',
+      message || `Approved version ${version}`,
+      operatorId,
+    );
     return this.toVersionResponse(savedVersion);
   }
 
@@ -340,7 +507,13 @@ export class AppPlatformService {
 
     const savedVersion = await this.versionRepo.save(appVersion);
     await this.appRepo.save(app);
-    await this.recordAppEvent(app.id, appVersion.id, 'reject', message || `Rejected version ${version}`, operatorId);
+    await this.recordAppEvent(
+      app.id,
+      appVersion.id,
+      'reject',
+      message || `Rejected version ${version}`,
+      operatorId,
+    );
     return this.toVersionResponse(savedVersion);
   }
 
@@ -371,9 +544,16 @@ export class AppPlatformService {
 
     const savedVersion = await this.versionRepo.save(appVersion);
     await this.appRepo.save(app);
-    await this.recordAppEvent(app.id, appVersion.id, 'publish', `Published version ${version}`, operatorId, {
-      entryUrl: published.entryUrl,
-    });
+    await this.recordAppEvent(
+      app.id,
+      appVersion.id,
+      'publish',
+      `Published version ${version}`,
+      operatorId,
+      {
+        entryUrl: published.entryUrl,
+      },
+    );
     return this.toVersionResponse(savedVersion, app.code, app.entryUrl);
   }
 
@@ -385,14 +565,20 @@ export class AppPlatformService {
       throw new BadRequestException('Only published versions can be unpublished');
     }
 
-    const targetEntryUrl = this.createStaticEntryUrl(app.code, appVersion.version, appVersion.entryFile);
+    const targetEntryUrl = this.createStaticEntryUrl(
+      app.code,
+      appVersion.version,
+      appVersion.entryFile,
+    );
     const wasActiveVersion = app.entryUrl === targetEntryUrl || !app.entryUrl;
     appVersion.publishStatus = 'unpublished_retired';
     await this.runtimeSessionService.revokeVersion(appVersion.id, 'unpublished');
     const savedVersion = await this.versionRepo.save(appVersion);
 
     if (wasActiveVersion) {
-      const fallback = (await this.findPublishedVersions(app.id)).find((item) => Number(item.id) !== Number(appVersion.id));
+      const fallback = (await this.findPublishedVersions(app.id)).find(
+        (item) => Number(item.id) !== Number(appVersion.id),
+      );
       if (fallback) {
         app.status = 'published';
         app.entryMode = 'static';
@@ -404,7 +590,13 @@ export class AppPlatformService {
       await this.appRepo.save(app);
     }
 
-    await this.recordAppEvent(app.id, appVersion.id, 'unpublish', message || `Unpublished version ${version}`, operatorId);
+    await this.recordAppEvent(
+      app.id,
+      appVersion.id,
+      'unpublish',
+      message || `Unpublished version ${version}`,
+      operatorId,
+    );
     return this.toVersionResponse(savedVersion, app.code, app.entryUrl);
   }
 
@@ -432,9 +624,16 @@ export class AppPlatformService {
     }
     await this.appRepo.save(app);
 
-    await this.recordAppEvent(app.id, appVersion.id, 'rollback', message || `Rolled back to version ${version}`, operatorId, {
-      entryUrl,
-    });
+    await this.recordAppEvent(
+      app.id,
+      appVersion.id,
+      'rollback',
+      message || `Rolled back to version ${version}`,
+      operatorId,
+      {
+        entryUrl,
+      },
+    );
     return this.toVersionResponse(savedVersion, app.code, app.entryUrl);
   }
 
@@ -449,9 +648,78 @@ export class AppPlatformService {
       return String(value || '').trim();
     }
     if (type === 'iframe') {
-      return normalizeExternalHttpUrl(value, { label: 'Iframe app entry' });
+      return normalizeExternalHttpUrl(value, { label: 'Iframe app entry', httpsOnly: true });
     }
     return this.normalizeInternalRoute(value);
+  }
+
+  private normalizeIframeRuntime(entryValue: string, originValues?: string[]) {
+    const entryUrl = normalizeExternalHttpUrl(entryValue, {
+      label: 'Iframe app entry',
+      httpsOnly: true,
+    });
+    const entryOrigin = new URL(entryUrl).origin;
+    const values = originValues?.length ? originValues : [entryOrigin];
+    const allowedOrigins = [...new Set(values.map((value) => this.normalizeIframeOrigin(value)))];
+    if (!allowedOrigins.includes(entryOrigin)) {
+      throw new BadRequestException('Iframe entry origin must be approved');
+    }
+    return { entryUrl, allowedOrigins };
+  }
+
+  private normalizeIframeOrigin(value: string) {
+    let parsed: URL;
+    try {
+      parsed = new URL(String(value || '').trim());
+    } catch {
+      throw new BadRequestException('Iframe allowed origins must be exact HTTPS origins');
+    }
+    if (
+      parsed.protocol !== 'https:' ||
+      parsed.username ||
+      parsed.password ||
+      parsed.pathname !== '/' ||
+      parsed.search ||
+      parsed.hash
+    ) {
+      throw new BadRequestException('Iframe allowed origins must be exact HTTPS origins');
+    }
+    return parsed.origin;
+  }
+
+  private createIframeVersion(input: {
+    app: AppPackageEntity;
+    version: string;
+    entryUrl: string;
+    allowedOrigins: string[];
+    capabilities: ReturnType<typeof normalizeApprovedCapabilities>;
+    operatorId?: number;
+  }): Partial<AppPackageVersionEntity> {
+    return {
+      appId: input.app.id,
+      version: input.version,
+      manifest: {
+        code: input.app.code,
+        name: input.app.name,
+        version: input.version,
+        type: 'iframe',
+        entry: input.entryUrl,
+        permissions: [],
+        capabilities: [...input.capabilities],
+        allowedOrigins: [...input.allowedOrigins],
+      },
+      approvedCapabilities: [...input.capabilities],
+      packagePath: '',
+      publishPath: '',
+      entryFile: '',
+      fileHash: '',
+      fileSize: 0,
+      reviewStatus: 'approved',
+      publishStatus: 'published',
+      reviewMessage: '',
+      reviewerId: input.operatorId ?? null,
+      reviewTime: new Date(),
+    };
   }
 
   private normalizeInternalRoute(value: string) {
@@ -501,7 +769,9 @@ export class AppPlatformService {
   }
 
   private async findVersion(appId: number, version: string) {
-    const appVersion = await this.versionRepo.findOne({ where: { appId, version, deleteTime: IsNull() } });
+    const appVersion = await this.versionRepo.findOne({
+      where: { appId, version, deleteTime: IsNull() },
+    });
     if (!appVersion) {
       throw new NotFoundException(`App version ${version} not found`);
     }
@@ -534,7 +804,9 @@ export class AppPlatformService {
   }
 
   private createStaticEntryUrl(appCode: string, version: string, entryFile: string) {
-    const normalizedEntry = String(entryFile || '').replace(/\\/g, '/').replace(/^\/+/, '');
+    const normalizedEntry = String(entryFile || '')
+      .replace(/\\/g, '/')
+      .replace(/^\/+/, '');
     return `${this.storage.getPublicPrefix()}${appCode}/${version}/${normalizedEntry}`;
   }
 
@@ -555,9 +827,17 @@ export class AppPlatformService {
   }
 
   private normalizeZipEntryName(value: string) {
-    const normalized = String(value || '').replace(/\\/g, '/').replace(/^\/+/, '');
+    const normalized = String(value || '')
+      .replace(/\\/g, '/')
+      .replace(/^\/+/, '');
     const resolved = path.posix.normalize(normalized);
-    if (!resolved || resolved === '.' || resolved.startsWith('../') || resolved.includes('/../') || path.posix.isAbsolute(resolved)) {
+    if (
+      !resolved ||
+      resolved === '.' ||
+      resolved.startsWith('../') ||
+      resolved.includes('/../') ||
+      path.posix.isAbsolute(resolved)
+    ) {
       throw new BadRequestException('Invalid app entry');
     }
     return resolved;
@@ -587,10 +867,15 @@ export class AppPlatformService {
     );
   }
 
-  private toVersionResponse(version: Partial<AppPackageVersionEntity>, appCode?: string, activeEntryUrl?: string) {
-    const entryUrl = appCode && version.version && version.entryFile
-      ? this.createStaticEntryUrl(appCode, version.version, version.entryFile)
-      : '';
+  private toVersionResponse(
+    version: Partial<AppPackageVersionEntity>,
+    appCode?: string,
+    activeEntryUrl?: string,
+  ) {
+    const entryUrl =
+      appCode && version.version && version.entryFile
+        ? this.createStaticEntryUrl(appCode, version.version, version.entryFile)
+        : '';
     return {
       id: version.id,
       app_id: version.appId,
@@ -606,7 +891,9 @@ export class AppPlatformService {
       review_status: version.reviewStatus,
       publish_status: version.publishStatus,
       entry_url: entryUrl,
-      is_active: Boolean(entryUrl && activeEntryUrl === entryUrl && version.publishStatus === 'published'),
+      is_active: Boolean(
+        entryUrl && activeEntryUrl === entryUrl && version.publishStatus === 'published',
+      ),
       review_message: version.reviewMessage || '',
       reviewer_id: version.reviewerId ?? null,
       review_time: version.reviewTime,

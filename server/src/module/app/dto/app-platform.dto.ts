@@ -1,8 +1,27 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { ArrayUnique, IsArray, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayUnique,
+  IsArray,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
-import type { AppPackageStatus, AppPackageType, AppPackageVisibility } from '../entities/app-package.entity';
-import type { AppVersionPublishStatus, AppVersionReviewStatus } from '../entities/app-package-version.entity';
+import type {
+  AppPackageStatus,
+  AppPackageType,
+  AppPackageVisibility,
+} from '../entities/app-package.entity';
+import type {
+  AppVersionPublishStatus,
+  AppVersionReviewStatus,
+} from '../entities/app-package-version.entity';
 
 export const APP_PACKAGE_TYPES: AppPackageType[] = ['internal', 'static', 'iframe'];
 export const APP_PACKAGE_STATUSES: AppPackageStatus[] = [
@@ -14,8 +33,17 @@ export const APP_PACKAGE_STATUSES: AppPackageStatus[] = [
   'disabled',
   'archived',
 ];
-export const APP_PACKAGE_VISIBILITIES: AppPackageVisibility[] = ['platform', 'tenant', 'marketplace', 'private'];
-export const APP_VERSION_REVIEW_STATUSES: AppVersionReviewStatus[] = ['pending', 'approved', 'rejected'];
+export const APP_PACKAGE_VISIBILITIES: AppPackageVisibility[] = [
+  'platform',
+  'tenant',
+  'marketplace',
+  'private',
+];
+export const APP_VERSION_REVIEW_STATUSES: AppVersionReviewStatus[] = [
+  'pending',
+  'approved',
+  'rejected',
+];
 export const APP_VERSION_PUBLISH_STATUSES: AppVersionPublishStatus[] = [
   'unpublished',
   'published',
@@ -113,6 +141,31 @@ export class CreateAppPackageDto {
   @MaxLength(500)
   entry_url?: string;
 
+  @ApiProperty({ required: false, example: '1.0.0' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  @Matches(/^\d+\.\d+\.\d+$/)
+  version?: string;
+
+  @ApiProperty({ required: false, type: [String], maxItems: 20 })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(255, { each: true })
+  allowed_origins?: string[];
+
+  @ApiProperty({ required: false, type: [String], maxItems: 20 })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(80, { each: true })
+  requested_capabilities?: string[];
+
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
@@ -186,6 +239,31 @@ export class UpdateAppPackageDto {
   @MaxLength(500)
   entry_url?: string;
 
+  @ApiProperty({ required: false, example: '1.1.0' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  @Matches(/^\d+\.\d+\.\d+$/)
+  version?: string;
+
+  @ApiProperty({ required: false, type: [String], maxItems: 20 })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(255, { each: true })
+  allowed_origins?: string[];
+
+  @ApiProperty({ required: false, type: [String], maxItems: 20 })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(80, { each: true })
+  requested_capabilities?: string[];
+
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
@@ -236,4 +314,13 @@ export class ReviewAppPackageVersionDto {
   @ArrayUnique()
   @IsString({ each: true })
   approved_capabilities?: string[];
+}
+
+export class ExchangeIframeLaunchDto {
+  @ApiProperty({ maxLength: 4096 })
+  @IsString()
+  @MinLength(20)
+  @MaxLength(4096)
+  @Matches(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
+  launch_token: string;
 }

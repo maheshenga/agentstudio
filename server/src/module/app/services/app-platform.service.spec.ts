@@ -64,6 +64,8 @@ describe('AppPlatformService', () => {
     appRepo.create.mockImplementation((value) => ({ ...value }));
     appRepo.find.mockResolvedValue([]);
     appRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 1, ...value }));
+    versionRepo.create.mockImplementation((value) => ({ ...value }));
+    versionRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 11, ...value }));
     storageService.getPublicPrefix.mockReturnValue('/apps-static/');
     reviewLogRepo.create.mockImplementation((value) => ({ ...value }));
     reviewLogRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 1, ...value }));
@@ -146,6 +148,8 @@ describe('AppPlatformService', () => {
           name: 'Supplier Portal',
           type: 'iframe',
           entry_url: 'https://supplier.example.com',
+          allowed_origins: ['https://supplier.example.com:443'],
+          requested_capabilities: ['context.read', 'kv.read'],
           category: 'Industry',
         },
         88,
@@ -170,6 +174,109 @@ describe('AppPlatformService', () => {
         developerId: 88,
       }),
     );
+    expect(versionRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 1,
+        version: '1.0.0',
+        reviewStatus: 'approved',
+        publishStatus: 'published',
+        manifest: expect.objectContaining({
+          type: 'iframe',
+          entry: 'https://supplier.example.com/',
+          allowedOrigins: ['https://supplier.example.com'],
+          capabilities: ['context.read', 'kv.read'],
+        }),
+        approvedCapabilities: ['context.read', 'kv.read'],
+      }),
+    );
+    expect(versionRepo.save).toHaveBeenCalledTimes(1);
+    expect(capabilityPolicy.approvePlatformCapabilities).toHaveBeenCalledWith(
+      {
+        appId: 1,
+        versionId: 11,
+        requestedCapabilities: ['context.read', 'kv.read'],
+        approvedCapabilities: ['context.read', 'kv.read'],
+        operatorId: 88,
+      },
+      grantRepo,
+    );
+  });
+
+  it('creates a new immutable iframe version when runtime settings change', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 3,
+      code: 'supplier_portal',
+      name: 'Supplier Portal',
+      type: 'iframe',
+      status: 'published',
+      entryMode: 'iframe',
+      entryUrl: 'https://supplier.example.com/',
+    });
+    versionRepo.findOne.mockResolvedValue(null);
+
+    await service.updateApp('supplier_portal', {
+      entry_url: 'https://supplier.example.com/v2',
+      allowed_origins: ['https://supplier.example.com', 'https://api.example.com:443'],
+      requested_capabilities: ['http.request'],
+      version: '1.1.0',
+    });
+
+    expect(versionRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 3,
+        version: '1.1.0',
+        manifest: expect.objectContaining({
+          entry: 'https://supplier.example.com/v2',
+          allowedOrigins: ['https://supplier.example.com', 'https://api.example.com'],
+          capabilities: ['http.request'],
+        }),
+        approvedCapabilities: ['http.request'],
+      }),
+    );
+    expect(versionRepo.save).toHaveBeenCalledTimes(1);
+    expect(capabilityPolicy.approvePlatformCapabilities).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 3,
+        versionId: 11,
+        requestedCapabilities: ['http.request'],
+        approvedCapabilities: ['http.request'],
+      }),
+      grantRepo,
+    );
+    expect(appRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ entryUrl: 'https://supplier.example.com/v2' }),
+    );
+  });
+
+  it('rejects iframe origins that are not exact HTTPS origins or omit the entry origin', async () => {
+    appRepo.findOne.mockResolvedValue(null);
+
+    await expect(
+      service.createApp({
+        code: 'bad_origins',
+        name: 'Bad Origins',
+        type: 'iframe',
+        entry_url: 'https://supplier.example.com/app',
+        allowed_origins: ['https://supplier.example.com/path'],
+      }),
+    ).rejects.toThrow('Iframe allowed origins must be exact HTTPS origins');
+    await expect(
+      service.createApp({
+        code: 'missing_origin',
+        name: 'Missing Origin',
+        type: 'iframe',
+        entry_url: 'https://supplier.example.com/app',
+        allowed_origins: ['https://api.example.com'],
+      }),
+    ).rejects.toThrow('Iframe entry origin must be approved');
+    await expect(
+      service.createApp({
+        code: 'http_iframe',
+        name: 'HTTP Iframe',
+        type: 'iframe',
+        entry_url: 'http://supplier.example.com/app',
+      }),
+    ).rejects.toThrow('Iframe app entry must use https');
   });
 
   it('rejects unsafe iframe app entry urls', async () => {
@@ -182,7 +289,7 @@ describe('AppPlatformService', () => {
         type: 'iframe',
         entry_url: 'javascript:alert(1)',
       }),
-    ).rejects.toThrow('Iframe app entry must use http or https');
+    ).rejects.toThrow('Iframe app entry must use https');
   });
 
   it('creates an internal app that opens an existing route', async () => {
@@ -229,7 +336,10 @@ describe('AppPlatformService', () => {
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
 
-    expect(appRepo.findOne).toHaveBeenCalledWith({ where: { code: 'supplier_portal' }, withDeleted: true });
+    expect(appRepo.findOne).toHaveBeenCalledWith({
+      where: { code: 'supplier_portal' },
+      withDeleted: true,
+    });
     expect(appRepo.save).not.toHaveBeenCalled();
   });
 
@@ -249,7 +359,9 @@ describe('AppPlatformService', () => {
       status: 'disabled',
     });
 
-    expect(appRepo.save).toHaveBeenCalledWith(expect.objectContaining({ id: 3, status: 'disabled' }));
+    expect(appRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 3, status: 'disabled' }),
+    );
     expect(reviewLogRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
         appId: 3,
@@ -264,7 +376,9 @@ describe('AppPlatformService', () => {
   it('rejects updates for unknown apps', async () => {
     appRepo.findOne.mockResolvedValue(null);
 
-    await expect(service.updateStatus('missing_app', 'disabled')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.updateStatus('missing_app', 'disabled')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it('approves a pending app version and records an approval log', async () => {
@@ -317,7 +431,9 @@ describe('AppPlatformService', () => {
       },
       grantRepo,
     );
-    expect(appRepo.save).toHaveBeenCalledWith(expect.objectContaining({ id: 4, status: 'approved' }));
+    expect(appRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 4, status: 'approved' }),
+    );
     expect(reviewLogRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
         appId: 4,
@@ -768,14 +884,20 @@ describe('AppPlatformService', () => {
     versionRepo.find.mockResolvedValue([]);
     versionRepo.save.mockImplementation(async (value) => value);
 
-    await expect(service.unpublishVersion('job_board', '1.0.0', 'bad release', 66)).resolves.toMatchObject({
+    await expect(
+      service.unpublishVersion('job_board', '1.0.0', 'bad release', 66),
+    ).resolves.toMatchObject({
       version: '1.0.0',
       publish_status: 'unpublished_retired',
     });
 
-    expect(versionRepo.save).toHaveBeenCalledWith(expect.objectContaining({ publishStatus: 'unpublished_retired' }));
+    expect(versionRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ publishStatus: 'unpublished_retired' }),
+    );
     expect(runtimeSessionService.revokeVersion).toHaveBeenCalledWith(8, 'unpublished');
-    expect(appRepo.save).toHaveBeenCalledWith(expect.objectContaining({ status: 'approved', entryUrl: '' }));
+    expect(appRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'approved', entryUrl: '' }),
+    );
     expect(reviewLogRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
         appId: 4,
@@ -832,15 +954,21 @@ describe('AppPlatformService', () => {
     versionRepo.find.mockResolvedValue([currentVersion]);
     versionRepo.save.mockImplementation(async (value) => value);
 
-    await expect(service.rollbackVersion('job_board', '1.0.0', 'restore stable', 66)).resolves.toMatchObject({
+    await expect(
+      service.rollbackVersion('job_board', '1.0.0', 'restore stable', 66),
+    ).resolves.toMatchObject({
       version: '1.0.0',
       publish_status: 'published',
       entry_url: '/apps-static/job_board/1.0.0/dist/index.html',
     });
 
-    expect(versionRepo.save).toHaveBeenCalledWith(expect.objectContaining({ id: 9, publishStatus: 'unpublished_retired' }));
+    expect(versionRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 9, publishStatus: 'unpublished_retired' }),
+    );
     expect(runtimeSessionService.revokeVersion).toHaveBeenCalledWith(9, 'rollback_retired');
-    expect(versionRepo.save).toHaveBeenCalledWith(expect.objectContaining({ id: 8, publishStatus: 'published' }));
+    expect(versionRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 8, publishStatus: 'published' }),
+    );
     expect(appRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'Job Board Classic',
@@ -862,7 +990,12 @@ describe('AppPlatformService', () => {
   });
 
   it('rejects rollback when the target version has no published path', async () => {
-    appRepo.findOne.mockResolvedValue({ id: 4, code: 'job_board', type: 'static', status: 'published' });
+    appRepo.findOne.mockResolvedValue({
+      id: 4,
+      code: 'job_board',
+      type: 'static',
+      status: 'published',
+    });
     versionRepo.findOne.mockResolvedValue({
       id: 8,
       appId: 4,
@@ -936,10 +1069,26 @@ describe('AppPlatformService', () => {
       },
     ]);
     appRepo.find.mockResolvedValue([
-      { id: 4, code: 'job_board', name: 'Job Board', type: 'static', status: 'pending_review', entryUrl: '' },
-      { id: 5, code: 'crm_iframe', name: 'CRM', type: 'iframe', status: 'published', entryUrl: 'https://crm.example.com' },
+      {
+        id: 4,
+        code: 'job_board',
+        name: 'Job Board',
+        type: 'static',
+        status: 'pending_review',
+        entryUrl: '',
+      },
+      {
+        id: 5,
+        code: 'crm_iframe',
+        name: 'CRM',
+        type: 'iframe',
+        status: 'published',
+        entryUrl: 'https://crm.example.com',
+      },
     ]);
 
-    await expect(service.listReviewQueue({ keyword: 'job', type: 'static' })).resolves.toHaveLength(1);
+    await expect(service.listReviewQueue({ keyword: 'job', type: 'static' })).resolves.toHaveLength(
+      1,
+    );
   });
 });

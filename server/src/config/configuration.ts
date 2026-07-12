@@ -110,6 +110,8 @@ export default () => ({
       .split(',')
       .map((value) => value.trim().toLowerCase())
       .filter(Boolean),
+    runtimeIframeLaunchEnabled: process.env.APP_RUNTIME_IFRAME_LAUNCH_ENABLED === 'true',
+    runtimeLaunchSecret: process.env.APP_RUNTIME_LAUNCH_SECRET ?? '',
   },
   log: {
     level: process.env.LOG_LEVEL ?? 'info',

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, IsNull, Repository } from 'typeorm';
 
+import { normalizeExternalHttpUrl } from '../../../common/utils/safe-url.util';
 import { SaasModuleService } from '../../saas/services/saas-module.service';
 import { SystemModuleAccessService } from '../../system-module/services/system-module-access.service';
 import { normalizeAppCapabilities } from '../app-runtime.constants';
@@ -13,6 +14,7 @@ import { TenantAppInstallEntity } from '../entities/tenant-app-install.entity';
 import { AppRuntimeContextService } from './app-runtime-context.service';
 import { AppCapabilityPolicyService } from './app-capability-policy.service';
 import { AppRuntimeSessionService } from './app-runtime-session.service';
+import { AppIframeLaunchService } from './app-iframe-launch.service';
 
 export interface AppOpenClientInfo {
   ip?: string;
@@ -34,6 +36,7 @@ export interface AppAvailability {
 }
 
 const STATIC_APP_SANDBOX = 'allow-scripts allow-forms allow-popups allow-downloads';
+const EXTERNAL_IFRAME_SANDBOX = `${STATIC_APP_SANDBOX} allow-same-origin`;
 
 type AppOpenFailureReason = Exclude<AppOpenLogEntity['reasonCode'], 'none'>;
 
@@ -63,6 +66,7 @@ export class AppTenantService {
     private readonly systemModuleAccessService: SystemModuleAccessService,
     private readonly appRuntimeContextService: AppRuntimeContextService,
     private readonly appRuntimeSessionService: AppRuntimeSessionService,
+    private readonly appIframeLaunchService: AppIframeLaunchService,
     private readonly capabilityPolicy: AppCapabilityPolicyService,
     private readonly dataSource: DataSource,
   ) {}
@@ -78,22 +82,28 @@ export class AppTenantService {
     return Promise.all(
       apps
         .filter((app) => app.status === 'published')
-        .filter((app) => ['marketplace', 'tenant', 'platform'].includes(app.visibility || 'marketplace'))
+        .filter((app) =>
+          ['marketplace', 'tenant', 'platform'].includes(app.visibility || 'marketplace'),
+        )
         .map(async (app) => {
-        const install = installByAppId.get(Number(app.id));
-        const capabilityState = capabilityStateByAppId.get(Number(app.id)) || this.emptyCapabilityState();
-        return {
-          ...this.toAppResponse(app),
-          ...(await this.getAppAvailability(tenantId, app)),
-          installed: Boolean(install && Number(install.enabled) === 1),
-          ...this.toCapabilityResponse(capabilityState),
-        };
+          const install = installByAppId.get(Number(app.id));
+          const capabilityState =
+            capabilityStateByAppId.get(Number(app.id)) || this.emptyCapabilityState();
+          return {
+            ...this.toAppResponse(app),
+            ...(await this.getAppAvailability(tenantId, app)),
+            installed: Boolean(install && Number(install.enabled) === 1),
+            ...this.toCapabilityResponse(capabilityState),
+          };
         }),
     );
   }
 
   async listInstalled(tenantId: number) {
-    const installs = await this.installRepo.find({ where: { tenantId, deleteTime: IsNull() }, order: { id: 'DESC' } });
+    const installs = await this.installRepo.find({
+      where: { tenantId, deleteTime: IsNull() },
+      order: { id: 'DESC' },
+    });
     const appIds = [...new Set(installs.map((install) => Number(install.appId)).filter(Boolean))];
     const apps = appIds.length
       ? await this.appRepo.find({
@@ -107,7 +117,8 @@ export class AppTenantService {
     return Promise.all(
       installs.map(async (install) => {
         const app = appById.get(Number(install.appId));
-        const capabilityState = capabilityStateByAppId.get(Number(install.appId)) || this.emptyCapabilityState();
+        const capabilityState =
+          capabilityStateByAppId.get(Number(install.appId)) || this.emptyCapabilityState();
         return {
           ...this.toInstallResponse(install),
           ...this.toCapabilityResponse(capabilityState),
@@ -125,7 +136,12 @@ export class AppTenantService {
   async installApp(tenantId: number, code: string, userId?: number, capabilities: string[] = []) {
     const app = await this.findPublishedApp(code);
     this.assertAvailability(await this.getAppAvailability(tenantId, app));
-    const version = app.type === 'static' ? await this.findPublishedVersion(app.id) : null;
+    const version =
+      app.type === 'static'
+        ? await this.findPublishedVersion(app.id)
+        : app.type === 'iframe'
+          ? await this.findPublishedVersionOrNull(app.id)
+          : null;
     const existing = await this.installRepo.findOne({
       where: { tenantId, appId: app.id },
       withDeleted: true,
@@ -183,7 +199,12 @@ export class AppTenantService {
     );
   }
 
-  async updateCapabilities(tenantId: number, code: string, capabilities: string[], operatorId?: number) {
+  async updateCapabilities(
+    tenantId: number,
+    code: string,
+    capabilities: string[],
+    operatorId?: number,
+  ) {
     const { app, version } = await this.getInstalledPublishedVersion(tenantId, code);
     await this.dataSource.transaction((manager) =>
       this.capabilityPolicy.setTenantCapabilities(
@@ -206,7 +227,9 @@ export class AppTenantService {
 
   async uninstallApp(tenantId: number, code: string) {
     const app = await this.findApp(code);
-    const existing = await this.installRepo.findOne({ where: { tenantId, appId: app.id, deleteTime: IsNull() } });
+    const existing = await this.installRepo.findOne({
+      where: { tenantId, appId: app.id, deleteTime: IsNull() },
+    });
     if (!existing) {
       return { code, installed: false };
     }
@@ -217,7 +240,20 @@ export class AppTenantService {
     return { code, installed: false };
   }
 
-  async getOpenMetadata(tenantId: number, code: string, userId?: number, clientInfo: AppOpenClientInfo = {}) {
+  exchangeIframeLaunch(tenantId: number, userId: number, launchToken: string) {
+    return this.appIframeLaunchService.exchange({
+      tenantId,
+      userId,
+      launchToken: String(launchToken || '').trim(),
+    });
+  }
+
+  async getOpenMetadata(
+    tenantId: number,
+    code: string,
+    userId?: number,
+    clientInfo: AppOpenClientInfo = {},
+  ) {
     const appCode = String(code || '')
       .trim()
       .toLowerCase()
@@ -268,18 +304,25 @@ export class AppTenantService {
             : 'system_module_unavailable';
         return await fail(
           reasonCode,
-          new BadRequestException(availability.availability_reason || 'App is not available for this tenant'),
+          new BadRequestException(
+            availability.availability_reason || 'App is not available for this tenant',
+          ),
         );
       }
 
-      if (app.type === 'static') {
+      if (app.type === 'static' || app.type === 'iframe') {
         try {
           version = await this.resolveOpenVersion(app, install);
         } catch (error) {
-          if (error instanceof BadRequestException && error.message === 'App has no published version') {
+          if (
+            app.type === 'static' &&
+            error instanceof BadRequestException &&
+            error.message === 'App has no published version'
+          ) {
             return await fail('published_version_missing', error);
           }
-          throw error;
+          if (app.type === 'static') throw error;
+          version = null;
         }
       }
 
@@ -316,6 +359,28 @@ export class AppTenantService {
           }
         }
       }
+      let launch: Awaited<ReturnType<AppIframeLaunchService['create']>> | null = null;
+      const iframeEntryUrl =
+        app.type === 'iframe' ? this.resolveIframeEntryUrl(app.entryUrl, version) : app.entryUrl;
+      if (app.type === 'iframe' && version && userId && this.appIframeLaunchService.isEnabled()) {
+        const capabilityState = await this.capabilityPolicy.getCapabilityState(
+          tenantId,
+          version.id,
+          normalizeAppCapabilities(version.manifest),
+        );
+        launch = await this.appIframeLaunchService.create({
+          tenantId,
+          userId,
+          appId: app.id,
+          versionId: version.id,
+          installId: install.id,
+          entryUrl: iframeEntryUrl,
+          allowedOrigins: Array.isArray(version.manifest?.allowedOrigins)
+            ? version.manifest.allowedOrigins
+            : [],
+          capabilities: capabilityState.effective,
+        });
+      }
       await this.recordOpenOutcome({
         tenantId,
         userId,
@@ -333,10 +398,16 @@ export class AppTenantService {
         name: app.name,
         type: app.type,
         open_mode: openMode,
-        entry_url: app.entryUrl,
-        sandbox: app.type === 'internal' ? '' : STATIC_APP_SANDBOX,
+        entry_url: iframeEntryUrl,
+        sandbox:
+          app.type === 'internal'
+            ? ''
+            : app.type === 'iframe'
+              ? EXTERNAL_IFRAME_SANDBOX
+              : STATIC_APP_SANDBOX,
         version: version?.version || '',
         runtime,
+        launch,
       };
     } catch (error) {
       if (!failureAudited) {
@@ -391,11 +462,16 @@ export class AppTenantService {
 
   private assertAvailability(availability: AppAvailability) {
     if (!availability.available) {
-      throw new BadRequestException(availability.availability_reason || 'App is not available for this tenant');
+      throw new BadRequestException(
+        availability.availability_reason || 'App is not available for this tenant',
+      );
     }
   }
 
-  async getAppAvailability(tenantId: number, app: Partial<AppPackageEntity>): Promise<AppAvailability> {
+  async getAppAvailability(
+    tenantId: number,
+    app: Partial<AppPackageEntity>,
+  ): Promise<AppAvailability> {
     const saasModuleCode = app.saasModuleCode || '';
     const systemModuleCode = app.systemModuleCode || '';
 
@@ -403,7 +479,12 @@ export class AppTenantService {
       try {
         await this.saasModuleService.assertTenantModuleEnabled(tenantId, saasModuleCode);
       } catch (error) {
-        return this.createAvailability(false, 'missing_plan_module', this.getErrorMessage(error), app);
+        return this.createAvailability(
+          false,
+          'missing_plan_module',
+          this.getErrorMessage(error),
+          app,
+        );
       }
     }
 
@@ -420,7 +501,12 @@ export class AppTenantService {
             : diagnosis.status === 'missing_tenant_module'
               ? 'missing_system_module'
               : 'system_module_unavailable';
-        return this.createAvailability(false, status, diagnosis.reason || 'App is not available for this tenant', app);
+        return this.createAvailability(
+          false,
+          status,
+          diagnosis.reason || 'App is not available for this tenant',
+          app,
+        );
       }
     }
 
@@ -474,6 +560,51 @@ export class AppTenantService {
     return version;
   }
 
+  private async findPublishedVersionOrNull(appId: number) {
+    return this.versionRepo.findOne({
+      where: { appId, reviewStatus: 'approved', publishStatus: 'published', deleteTime: IsNull() },
+      order: { id: 'DESC' },
+    } as any);
+  }
+
+  private resolveIframeEntryUrl(appEntryUrl: string, version: AppPackageVersionEntity | null) {
+    try {
+      const candidate =
+        version && typeof version.manifest?.entry === 'string'
+          ? version.manifest.entry
+          : appEntryUrl;
+      const entryUrl = normalizeExternalHttpUrl(candidate, {
+        label: 'Iframe app entry',
+        httpsOnly: true,
+      });
+      if (!version) return entryUrl;
+      const origins = Array.isArray(version.manifest?.allowedOrigins)
+        ? version.manifest.allowedOrigins.map((value) => this.normalizeIframeOrigin(value))
+        : [];
+      if (!origins.includes(new URL(entryUrl).origin)) {
+        throw new Error('origin mismatch');
+      }
+      return entryUrl;
+    } catch {
+      throw new BadRequestException('Iframe version origin is invalid');
+    }
+  }
+
+  private normalizeIframeOrigin(value: unknown) {
+    const parsed = new URL(String(value || '').trim());
+    if (
+      parsed.protocol !== 'https:' ||
+      parsed.username ||
+      parsed.password ||
+      parsed.pathname !== '/' ||
+      parsed.search ||
+      parsed.hash
+    ) {
+      throw new Error('invalid origin');
+    }
+    return parsed.origin;
+  }
+
   private async getInstalledPublishedVersion(tenantId: number, code: string) {
     const app = await this.findPublishedApp(code);
     const install = await this.installRepo.findOne({
@@ -494,10 +625,11 @@ export class AppTenantService {
     installByAppId: Map<number, TenantAppInstallEntity>,
   ) {
     const staticAppIds = apps
-      .filter((app) => app.type === 'static')
+      .filter((app) => app.type === 'static' || app.type === 'iframe')
       .map((app) => Number(app.id))
       .filter(Boolean);
-    if (!staticAppIds.length) return new Map<number, ReturnType<AppTenantService['emptyCapabilityState']>>();
+    if (!staticAppIds.length)
+      return new Map<number, ReturnType<AppTenantService['emptyCapabilityState']>>();
 
     const versions = await this.versionRepo.find({
       where: {
@@ -564,7 +696,13 @@ export class AppTenantService {
 
   private async findVersionById(appId: number, id: number) {
     const version = await this.versionRepo.findOne({
-      where: { id, appId, reviewStatus: 'approved', publishStatus: 'published', deleteTime: IsNull() },
+      where: {
+        id,
+        appId,
+        reviewStatus: 'approved',
+        publishStatus: 'published',
+        deleteTime: IsNull(),
+      },
     } as any);
     if (!version) {
       throw new BadRequestException('App has no published version');

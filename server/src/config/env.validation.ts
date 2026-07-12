@@ -76,6 +76,12 @@ export const envValidationSchema = Joi.object({
     .trim()
     .min(1)
     .default('text/plain,application/json,image/png,image/jpeg,image/webp,application/pdf'),
+  APP_RUNTIME_IFRAME_LAUNCH_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
+  APP_RUNTIME_LAUNCH_SECRET: Joi.when('APP_RUNTIME_IFRAME_LAUNCH_ENABLED', {
+    is: true,
+    then: Joi.string().min(32).required(),
+    otherwise: Joi.string().allow('').default(''),
+  }),
 
   LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug').default('info'),
   LOG_DIR: Joi.string().default('logs'),
