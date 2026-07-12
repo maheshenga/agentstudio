@@ -9,6 +9,7 @@ export const APP_RUNTIME_CAPABILITIES = [
   'files.write',
   'http.request',
   'webhook.emit',
+  'service.invoke',
 ] as const;
 export type AppRuntimeCapability = (typeof APP_RUNTIME_CAPABILITIES)[number];
 

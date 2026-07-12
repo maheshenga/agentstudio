@@ -4,6 +4,7 @@ import * as path from 'path';
 
 import JSZip from 'jszip';
 
+import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
 import { AppManifestService } from './app-manifest.service';
 import { AppPackageStorageService } from './app-package-storage.service';
 import { AppServicePackageService } from './app-service-package.service';
@@ -92,6 +93,23 @@ describe('AppServicePackageService', () => {
     ).rejects.toThrow('Service release checksum does not match the installed version');
   });
 
+  it('accepts an existing P10 release whose manifest predates empty service targets', async () => {
+    const zipBuffer = await createZip(manifest, validSource);
+    const installed = await service.scanAndInstall({
+      appCode: 'admin_echo_service',
+      zipBuffer,
+    });
+    const manifestPath = path.join(installed.releaseDir, 'app.manifest.json');
+    const legacyManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    delete legacyManifest.serviceTargets;
+    fs.chmodSync(manifestPath, 0o644);
+    fs.writeFileSync(manifestPath, `${JSON.stringify(legacyManifest, null, 2)}\n`);
+
+    await expect(
+      service.scanAndInstall({ appCode: 'admin_echo_service', zipBuffer }),
+    ).resolves.toMatchObject({ releaseDir: installed.releaseDir });
+  });
+
   it('rejects an installed release whose reviewed files were modified', async () => {
     const zipBuffer = await createZip(manifest, validSource);
     const installed = await service.scanAndInstall({
@@ -108,6 +126,52 @@ describe('AppServicePackageService', () => {
         zipBuffer,
       }),
     ).rejects.toThrow('Service release checksum does not match the installed version');
+  });
+
+  it('re-hashes the installed entry without executing it before candidate start', async () => {
+    const installed = await service.scanAndInstall({
+      appCode: 'admin_echo_service',
+      zipBuffer: await createZip(manifest, validSource),
+    });
+    const version = {
+      packagePath: installed.releaseDir,
+      entryFile: installed.entryFile,
+      scanResult: installed.scanResult,
+    } as unknown as AppPackageVersionEntity;
+
+    await expect(service.verifyInstalledEntry(version)).resolves.toBeUndefined();
+
+    const entryPath = path.join(installed.releaseDir, 'dist', 'index.js');
+    fs.chmodSync(entryPath, 0o644);
+    fs.writeFileSync(entryPath, `${validSource}\nexports.tampered = true;`);
+    await expect(service.verifyInstalledEntry(version)).rejects.toThrow(
+      'Installed service entry checksum does not match reviewed content',
+    );
+  });
+
+  it('rejects installed entry paths outside the runtime root or with missing files', async () => {
+    await expect(
+      service.verifyInstalledEntry({
+        packagePath: path.join(tempRoot, '..', 'outside-release'),
+        entryFile: 'dist/index.js',
+        scanResult: { entrySha256: 'a'.repeat(64) },
+      } as unknown as AppPackageVersionEntity),
+    ).rejects.toThrow('Invalid installed service entry');
+
+    const installed = await service.scanAndInstall({
+      appCode: 'admin_echo_service',
+      zipBuffer: await createZip(manifest, validSource),
+    });
+    const entryPath = path.join(installed.releaseDir, 'dist', 'index.js');
+    fs.chmodSync(entryPath, 0o644);
+    fs.rmSync(entryPath);
+    await expect(
+      service.verifyInstalledEntry({
+        packagePath: installed.releaseDir,
+        entryFile: installed.entryFile,
+        scanResult: installed.scanResult,
+      } as unknown as AppPackageVersionEntity),
+    ).rejects.toThrow('Invalid installed service entry');
   });
 
   it('rejects installed release markers that were replaced by symbolic links', async () => {

@@ -6,12 +6,13 @@ import {
   type Node,
 } from 'acorn';
 import * as walk from 'acorn-walk';
-import { createHash, randomUUID } from 'crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import JSZip from 'jszip';
 
 import { APP_SERVICE_HOST_SOURCE } from '../runtime/app-service-host';
+import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
 import {
   AppManifestService,
   type NormalizedServiceManifest,
@@ -119,6 +120,62 @@ export class AppServicePackageService {
       packageSha256,
       scanResult,
     };
+  }
+
+  async verifyInstalledEntry(
+    version: Pick<AppPackageVersionEntity, 'packagePath' | 'entryFile' | 'scanResult'>,
+  ): Promise<void> {
+    const runtimeRoot = this.storage.getServiceRuntimeRoot();
+    const releaseDir = path.resolve(String(version.packagePath || ''));
+    if (
+      version.entryFile !== 'dist/index.js' ||
+      !this.isPathInside(releaseDir, runtimeRoot)
+    ) {
+      throw new BadRequestException('Invalid installed service entry');
+    }
+
+    const entryPath = path.resolve(releaseDir, 'dist', 'index.js');
+    if (!this.isPathInside(entryPath, releaseDir)) {
+      throw new BadRequestException('Invalid installed service entry');
+    }
+
+    try {
+      const releaseStat = fs.lstatSync(releaseDir);
+      const distDir = path.join(releaseDir, 'dist');
+      const distStat = fs.lstatSync(distDir);
+      const entryStat = fs.lstatSync(entryPath);
+      if (
+        releaseStat.isSymbolicLink() ||
+        !releaseStat.isDirectory() ||
+        distStat.isSymbolicLink() ||
+        !distStat.isDirectory() ||
+        entryStat.isSymbolicLink() ||
+        !entryStat.isFile()
+      ) {
+        throw new Error('invalid_entry');
+      }
+      const realRoot = fs.realpathSync(runtimeRoot);
+      const realEntry = fs.realpathSync(entryPath);
+      if (!this.isPathInside(realEntry, realRoot)) throw new Error('escaped_entry');
+    } catch {
+      throw new BadRequestException('Invalid installed service entry');
+    }
+
+    const expectedHash = String(version.scanResult?.entrySha256 || '');
+    if (!/^[a-f0-9]{64}$/.test(expectedHash)) {
+      throw new BadRequestException('Invalid reviewed service entry checksum');
+    }
+
+    const hash = createHash('sha256');
+    for await (const chunk of fs.createReadStream(entryPath)) {
+      hash.update(chunk as Buffer);
+    }
+    const actualHash = hash.digest('hex');
+    if (!timingSafeEqual(Buffer.from(expectedHash, 'hex'), Buffer.from(actualHash, 'hex'))) {
+      throw new BadRequestException(
+        'Installed service entry checksum does not match reviewed content',
+      );
+    }
   }
 
   private async loadZip(buffer: Buffer) {
@@ -372,9 +429,21 @@ export class AppServicePackageService {
         throw new Error('unexpected_release_files');
       }
 
+      const manifestPath = path.join(releaseDir, 'app.manifest.json');
+      const manifestStat = fs.lstatSync(manifestPath);
+      const storedManifest = this.manifestService.validateServiceManifest(
+        this.parseManifest(fs.readFileSync(manifestPath, 'utf8')),
+      );
+      if (
+        manifestStat.isSymbolicLink() ||
+        !manifestStat.isFile() ||
+        JSON.stringify(storedManifest) !== JSON.stringify(manifest)
+      ) {
+        throw new Error('release_manifest_mismatch');
+      }
+
       const expectedFiles = new Map<string, string>([
         ['.agentstudio-release.json', JSON.stringify({ package_sha256: packageSha256 })],
-        ['app.manifest.json', `${JSON.stringify(manifest, null, 2)}\n`],
         ['agentstudio-host.cjs', APP_SERVICE_HOST_SOURCE],
         ['dist/index.js', source],
       ]);
@@ -412,6 +481,16 @@ export class AppServicePackageService {
       if (entry.isDirectory()) this.makeWritable(target);
       else fs.chmodSync(target, 0o644);
     }
+  }
+
+  private isPathInside(candidatePath: string, rootPath: string) {
+    const resolvedRoot = path.resolve(rootPath);
+    const resolvedCandidate = path.resolve(candidatePath);
+    const root = process.platform === 'win32' ? resolvedRoot.toLowerCase() : resolvedRoot;
+    const candidate =
+      process.platform === 'win32' ? resolvedCandidate.toLowerCase() : resolvedCandidate;
+    const rootWithSep = root.endsWith(path.sep) ? root : `${root}${path.sep}`;
+    return candidate.startsWith(rootWithSep);
   }
 
   private sha256(value: Buffer) {

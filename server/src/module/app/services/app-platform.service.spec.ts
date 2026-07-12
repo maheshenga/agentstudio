@@ -12,6 +12,7 @@ import { AppManifestService } from './app-manifest.service';
 import { AppCapabilityPolicyService } from './app-capability-policy.service';
 import { AppPackageStorageService } from './app-package-storage.service';
 import { AppRuntimeSessionService } from './app-runtime-session.service';
+import { AppReviewSnapshotService } from './app-review-snapshot.service';
 import { AppServicePackageService } from './app-service-package.service';
 import { AppServiceRuntimeService } from './app-service-runtime.service';
 import { AppPlatformService } from './app-platform.service';
@@ -45,6 +46,12 @@ describe('AppPlatformService', () => {
   };
   const servicePackageService = {
     scanAndInstall: jest.fn(),
+  };
+  const reviewSnapshotService = {
+    create: jest.fn(),
+    hash: jest.fn(),
+    verify: jest.fn(),
+    sanitizeScanResult: jest.fn(),
   };
   const serviceRuntimeService = {
     startCandidate: jest.fn(),
@@ -84,6 +91,19 @@ describe('AppPlatformService', () => {
     reviewLogRepo.create.mockImplementation((value) => ({ ...value }));
     reviewLogRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 1, ...value }));
     runtimeSessionService.revokeVersion.mockResolvedValue(1);
+    reviewSnapshotService.sanitizeScanResult.mockImplementation((value) => ({
+      passed: value?.passed === true,
+      findings: Array.isArray(value?.findings)
+        ? value.findings.map((finding) => ({
+            code: finding.code,
+            severity: finding.severity,
+            line: finding.line,
+            column: finding.column,
+          }))
+        : [],
+      scannedFiles: Number(value?.scannedFiles) || 0,
+      entrySha256: String(value?.entrySha256 || ''),
+    }));
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -95,6 +115,7 @@ describe('AppPlatformService', () => {
         { provide: AppManifestService, useValue: manifestService },
         { provide: AppCapabilityPolicyService, useValue: capabilityPolicy },
         { provide: AppRuntimeSessionService, useValue: runtimeSessionService },
+        { provide: AppReviewSnapshotService, useValue: reviewSnapshotService },
         { provide: AppServicePackageService, useValue: servicePackageService },
         { provide: AppServiceRuntimeService, useValue: serviceRuntimeService },
         { provide: DataSource, useValue: dataSource },
@@ -287,6 +308,29 @@ describe('AppPlatformService', () => {
     expect(versionRepo.create).not.toHaveBeenCalled();
   });
 
+  it('creates an explicitly restricted developer service draft without changing platform defaults', async () => {
+    appRepo.findOne.mockResolvedValue(null);
+
+    await expect(
+      service.createApp(
+        {
+          code: 'workflow_service',
+          name: 'Workflow Service',
+          type: 'service',
+        },
+        17,
+        { trustLevel: 'developer_restricted' },
+      ),
+    ).resolves.toMatchObject({
+      code: 'workflow_service',
+      type: 'service',
+      trust_level: 'developer_restricted',
+    });
+    expect(appRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ trustLevel: 'developer_restricted', developerId: 17 }),
+    );
+  });
+
   it('uploads a scanned service version without starting or publishing it', async () => {
     appRepo.findOne.mockResolvedValue({
       id: 9,
@@ -309,6 +353,7 @@ describe('AppPlatformService', () => {
         entry: 'dist/index.js',
         healthPath: '/health',
         capabilities: ['context.read'],
+        serviceTargets: [],
         allowedOrigins: [],
         runtimeConfig: {},
       },
@@ -367,6 +412,90 @@ describe('AppPlatformService', () => {
     );
     expect(appRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'pending_review', serviceHealthPath: '/health' }),
+    );
+  });
+
+  it('stores one frozen restricted-service submission snapshot in the upload transaction', async () => {
+    const app = {
+      id: 9,
+      code: 'workflow_service',
+      name: 'Workflow Service',
+      type: 'service',
+      category: 'Automation',
+      summary: 'Runs workflows',
+      description: 'Approved workflow service',
+      developerId: 17,
+      developerName: 'Alice',
+      status: 'draft',
+      entryMode: 'service',
+      entryUrl: '',
+      runtimeType: 'service',
+      trustLevel: 'developer_restricted',
+    };
+    const profile = {
+      id: 5,
+      userId: 17,
+      certificationStatus: 'certified',
+      approvedRuntimeTypes: ['service'],
+      riskLevel: 'low',
+      certificationExpiry: new Date('2030-01-01T00:00:00.000Z'),
+      disabled: 0,
+    } as any;
+    const frozenSnapshot = { schema_version: 1, app: { code: 'workflow_service' } };
+    appRepo.findOne.mockResolvedValue(app);
+    versionRepo.findOne.mockResolvedValue(null);
+    servicePackageService.scanAndInstall.mockResolvedValue({
+      manifest: {
+        manifestVersion: 2,
+        code: 'workflow_service',
+        version: '1.0.0',
+        runtime: 'service',
+        entry: 'dist/index.js',
+        healthPath: '/health',
+        capabilities: ['service.invoke'],
+        serviceTargets: ['reporting_service'],
+        allowedOrigins: [],
+        runtimeConfig: {},
+      },
+      releaseDir: '/runtime/workflow_service/1.0.0',
+      entryFile: 'dist/index.js',
+      fileSize: 1024,
+      packageSha256: 'a'.repeat(64),
+      scanResult: {
+        passed: true,
+        findings: [],
+        scannedFiles: 1,
+        entrySha256: 'b'.repeat(64),
+      },
+    });
+    reviewSnapshotService.create.mockReturnValue(frozenSnapshot);
+    reviewSnapshotService.hash.mockReturnValue('c'.repeat(64));
+
+    await service.uploadServiceVersion(
+      'workflow_service',
+      { buffer: Buffer.from('zip'), size: 3 } as Express.Multer.File,
+      17,
+      profile,
+    );
+
+    expect(dataSource.transaction).toHaveBeenCalled();
+    expect(reviewSnapshotService.create).toHaveBeenCalledWith(
+      expect.objectContaining({ trustLevel: 'developer_restricted' }),
+      expect.objectContaining({
+        id: 11,
+        serviceTargets: ['reporting_service'],
+        submittedTime: expect.any(Date),
+      }),
+      profile,
+    );
+    expect(reviewSnapshotService.hash).toHaveBeenCalledWith(frozenSnapshot);
+    expect(versionRepo.save).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        reviewSnapshot: frozenSnapshot,
+        reviewSnapshotHash: 'c'.repeat(64),
+        serviceTargets: ['reporting_service'],
+        submittedTime: expect.any(Date),
+      }),
     );
   });
 
@@ -801,6 +930,7 @@ describe('AppPlatformService', () => {
       icon: 'ri:briefcase-line',
       tenant_scoped: true,
       permissions: [],
+      serviceTargets: ['reporting_service'],
     });
     storageService.extractStaticPackage.mockResolvedValue({
       packagePath: '/safe/packages/job_board/1.0.0',
@@ -832,6 +962,7 @@ describe('AppPlatformService', () => {
         version: '1.0.0',
         packagePath: '/safe/packages/job_board/1.0.0',
         entryFile: 'dist/index.html',
+        serviceTargets: ['reporting_service'],
         reviewStatus: 'pending',
         publishStatus: 'unpublished',
       }),
@@ -976,6 +1107,32 @@ describe('AppPlatformService', () => {
         entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
       }),
     );
+  });
+
+  it('keeps rejected developer service content terminal', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 9,
+      code: 'workflow_service',
+      type: 'service',
+      trustLevel: 'developer_restricted',
+      status: 'rejected',
+      entryUrl: '',
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 12,
+      appId: 9,
+      version: '1.0.0',
+      reviewStatus: 'rejected',
+      publishStatus: 'unpublished',
+      reviewSnapshot: { schema_version: 1 },
+      reviewSnapshotHash: 'a'.repeat(64),
+    });
+
+    await expect(service.submitVersion('workflow_service', '1.0.0', 17)).rejects.toThrow(
+      'Rejected developer service content is immutable; upload a new version',
+    );
+    expect(versionRepo.save).not.toHaveBeenCalled();
+    expect(appRepo.save).not.toHaveBeenCalled();
   });
 
   it('publishes an approved static version and updates the app entry url', async () => {

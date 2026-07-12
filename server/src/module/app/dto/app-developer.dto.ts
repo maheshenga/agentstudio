@@ -1,7 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
 export class CreateDeveloperAppDto {
+  @ApiProperty({ required: false, enum: ['static', 'service'], default: 'static' })
+  @IsOptional()
+  @IsIn(['static', 'service'])
+  runtime_type?: 'static' | 'service';
+
   @ApiProperty({ required: true })
   @IsString()
   @MaxLength(80)

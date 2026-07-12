@@ -18,6 +18,7 @@ export interface StaticAppManifest {
   icon: string;
   tenant_scoped: boolean;
   permissions: string[];
+  serviceTargets: string[];
 }
 
 export interface ValidateStaticManifestInput {
@@ -33,6 +34,7 @@ export interface NormalizedServiceManifest {
   entry: 'dist/index.js';
   healthPath: string;
   capabilities: AppRuntimeCapability[];
+  serviceTargets: string[];
   allowedOrigins: [];
   runtimeConfig: Record<string, never>;
 }
@@ -91,6 +93,17 @@ export class AppManifestService {
       }
     }
 
+    const permissions = Array.isArray(manifest.permissions)
+      ? manifest.permissions.filter((item): item is string => typeof item === 'string')
+      : [];
+    const serviceTargets = this.normalizeServiceTargets(manifest.serviceTargets, code);
+    if (serviceTargets.length > 0 && !permissions.includes('service.invoke')) {
+      throw new BadRequestException('Service targets require service.invoke');
+    }
+    if (permissions.includes('service.invoke') && serviceTargets.length === 0) {
+      throw new BadRequestException('service.invoke requires a service target');
+    }
+
     return {
       code,
       name,
@@ -102,9 +115,8 @@ export class AppManifestService {
       description: this.optionalString(manifest.description),
       icon: this.optionalString(manifest.icon),
       tenant_scoped: Boolean(manifest.tenant_scoped),
-      permissions: Array.isArray(manifest.permissions)
-        ? manifest.permissions.filter((item): item is string => typeof item === 'string')
-        : [],
+      permissions,
+      serviceTargets,
     };
   }
 
@@ -137,6 +149,13 @@ export class AppManifestService {
 
     const healthPath = this.normalizeHealthPath(manifest.healthPath);
     const capabilities = normalizeApprovedCapabilities(manifest.capabilities);
+    const serviceTargets = this.normalizeServiceTargets(manifest.serviceTargets, code);
+    if (serviceTargets.length > 0 && !capabilities.includes('service.invoke')) {
+      throw new BadRequestException('Service targets require service.invoke');
+    }
+    if (capabilities.includes('service.invoke') && serviceTargets.length === 0) {
+      throw new BadRequestException('service.invoke requires a service target');
+    }
     if (!Array.isArray(manifest.allowedOrigins)) {
       throw new BadRequestException('Service allowedOrigins must be an array');
     }
@@ -160,6 +179,7 @@ export class AppManifestService {
       entry: 'dist/index.js',
       healthPath,
       capabilities,
+      serviceTargets,
       allowedOrigins: [],
       runtimeConfig: {},
     };
@@ -222,5 +242,30 @@ export class AppManifestService {
       throw new BadRequestException('Invalid service health path');
     }
     return healthPath;
+  }
+
+  private normalizeServiceTargets(value: unknown, appCode: string) {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value)) {
+      throw new BadRequestException('Service targets must be an array');
+    }
+    if (value.length > 20) {
+      throw new BadRequestException('Service targets exceed the limit');
+    }
+    const seen = new Set<string>();
+    return value.map((item) => {
+      const target = typeof item === 'string' ? item.trim() : '';
+      if (!APP_CODE_PATTERN.test(target)) {
+        throw new BadRequestException('Invalid service target code');
+      }
+      if (seen.has(target)) {
+        throw new BadRequestException('Duplicate service target code');
+      }
+      if (target === appCode) {
+        throw new BadRequestException('App cannot target itself as a service');
+      }
+      seen.add(target);
+      return target;
+    });
   }
 }

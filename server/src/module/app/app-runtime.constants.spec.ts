@@ -13,6 +13,7 @@ describe('app runtime capability contract', () => {
       'files.write',
       'http.request',
       'webhook.emit',
+      'service.invoke',
     ]);
   });
 

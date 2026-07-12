@@ -51,6 +51,7 @@ import {
   UndiciAppRuntimeHttpTransport,
 } from './services/app-runtime-http.service';
 import { AppRuntimeSessionService } from './services/app-runtime-session.service';
+import { AppReviewSnapshotService } from './services/app-review-snapshot.service';
 import { AppServiceLogRedactor } from './services/app-service-log-redactor';
 import { AppServiceLoopbackTransport } from './services/app-service-loopback.transport';
 import { AppServicePackageService } from './services/app-service-package.service';
@@ -115,6 +116,7 @@ import { AppTenantService } from './services/app-tenant.service';
     AppDeveloperService,
     AppDeveloperCertificationService,
     AppPackageStorageService,
+    AppReviewSnapshotService,
     AppServicePackageService,
     AppServiceLogRedactor,
     AppServiceHostEnvironment,
@@ -141,6 +143,7 @@ import { AppTenantService } from './services/app-tenant.service';
     AppDeveloperService,
     AppDeveloperCertificationService,
     AppPackageStorageService,
+    AppReviewSnapshotService,
     AppServicePackageService,
     AppServiceLogRedactor,
     AppServiceProcessManager,

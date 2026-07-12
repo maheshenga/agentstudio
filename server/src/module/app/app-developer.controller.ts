@@ -26,7 +26,7 @@ export class AppDeveloperController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create my static app draft' })
+  @ApiOperation({ summary: 'Create my app draft' })
   @RequirePermission('app:developer:create')
   createApp(@Body() body: CreateDeveloperAppDto, @User() user: UserDto) {
     return this.runOutsideTenant(user, () =>
@@ -60,7 +60,7 @@ export class AppDeveloperController {
 
   @Post(':code/versions/upload')
   @UseInterceptors(FileInterceptor('file'))
-  @ApiOperation({ summary: 'Upload a static version for my app' })
+  @ApiOperation({ summary: 'Upload a version for my app' })
   @RequirePermission('app:developer:upload')
   uploadVersion(
     @Param('code') code: string,

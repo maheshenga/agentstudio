@@ -29,6 +29,113 @@ describe('AppManifestService', () => {
     });
   });
 
+  it('normalizes declared service targets for a static service.invoke caller', () => {
+    expect(
+      service.validateStaticManifest({
+        manifest: {
+          ...validManifest,
+          permissions: ['service.invoke'],
+          serviceTargets: ['workflow_service', 'reporting_service'],
+        },
+        entries,
+      }),
+    ).toMatchObject({
+      permissions: ['service.invoke'],
+      serviceTargets: ['workflow_service', 'reporting_service'],
+    });
+  });
+
+  it('rejects non-array service target declarations', () => {
+    expect(() =>
+      service.validateStaticManifest({
+        manifest: {
+          ...validManifest,
+          permissions: ['service.invoke'],
+          serviceTargets: 'workflow_service',
+        },
+        entries,
+      }),
+    ).toThrow('Service targets must be an array');
+  });
+
+  it('rejects malformed service target app codes', () => {
+    expect(() =>
+      service.validateStaticManifest({
+        manifest: {
+          ...validManifest,
+          permissions: ['service.invoke'],
+          serviceTargets: ['../workflow_service'],
+        },
+        entries,
+      }),
+    ).toThrow('Invalid service target code');
+  });
+
+  it('rejects duplicate service target app codes', () => {
+    expect(() =>
+      service.validateStaticManifest({
+        manifest: {
+          ...validManifest,
+          permissions: ['service.invoke'],
+          serviceTargets: ['workflow_service', 'workflow_service'],
+        },
+        entries,
+      }),
+    ).toThrow('Duplicate service target code');
+  });
+
+  it('rejects self-referential service targets', () => {
+    expect(() =>
+      service.validateStaticManifest({
+        manifest: {
+          ...validManifest,
+          permissions: ['service.invoke'],
+          serviceTargets: ['job_board'],
+        },
+        entries,
+      }),
+    ).toThrow('App cannot target itself as a service');
+  });
+
+  it('limits service target declarations to twenty apps', () => {
+    expect(() =>
+      service.validateStaticManifest({
+        manifest: {
+          ...validManifest,
+          permissions: ['service.invoke'],
+          serviceTargets: Array.from({ length: 21 }, (_, index) => `target_${index}`),
+        },
+        entries,
+      }),
+    ).toThrow('Service targets exceed the limit');
+  });
+
+  it('rejects service targets without the service.invoke capability', () => {
+    expect(() =>
+      service.validateStaticManifest({
+        manifest: {
+          ...validManifest,
+          permissions: ['context.read'],
+          serviceTargets: ['workflow_service'],
+        },
+        entries,
+      }),
+    ).toThrow('Service targets require service.invoke');
+  });
+
+  it('rejects service.invoke without a declared target', () => {
+    expect(() =>
+      service.validateStaticManifest({
+        manifest: {
+          ...validManifest,
+          permissions: ['service.invoke'],
+          serviceTargets: [],
+        },
+        entries,
+      }),
+    ).toThrow('service.invoke requires a service target');
+  });
+
   it('rejects invalid app codes', () => {
     expect(() =>
       service.validateStaticManifest({
@@ -104,9 +211,29 @@ describe('AppManifestService', () => {
         entry: 'dist/index.js',
         healthPath: '/health',
         capabilities: ['context.read', 'kv.read'],
+        serviceTargets: [],
         allowedOrigins: [],
         runtimeConfig: {},
       });
+    });
+
+    it('rejects service.invoke without a declared service target', () => {
+      expect(() =>
+        service.validateServiceManifest({
+          ...serviceManifest,
+          capabilities: ['service.invoke'],
+          serviceTargets: [],
+        }),
+      ).toThrow('service.invoke requires a service target');
+    });
+
+    it('rejects declared service targets without service.invoke', () => {
+      expect(() =>
+        service.validateServiceManifest({
+          ...serviceManifest,
+          serviceTargets: ['workflow_service'],
+        }),
+      ).toThrow('Service targets require service.invoke');
     });
 
     it.each([

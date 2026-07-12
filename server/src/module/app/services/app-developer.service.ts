@@ -1,9 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 
 import { CreateDeveloperAppDto, UpdateDeveloperAppDto } from '../dto/app-developer.dto';
 import { AppPackageEntity } from '../entities/app-package.entity';
+import { AppDeveloperCertificationService } from './app-developer-certification.service';
 import { AppPlatformService } from './app-platform.service';
 
 @Injectable()
@@ -12,6 +14,8 @@ export class AppDeveloperService {
     @InjectRepository(AppPackageEntity)
     private readonly appRepo: Repository<AppPackageEntity>,
     private readonly appPlatformService: AppPlatformService,
+    private readonly certificationService: AppDeveloperCertificationService,
+    private readonly configService: ConfigService,
   ) {}
 
   listApps(developerId: number) {
@@ -25,17 +29,24 @@ export class AppDeveloperService {
 
   async createApp(dto: CreateDeveloperAppDto, developerId: number, developerName: string) {
     const metadata = this.sanitizeMetadata(dto);
-    return this.appPlatformService.createApp(
-      {
-        code: dto.code.trim(),
-        ...metadata,
-        name: this.sanitizeRequiredName(dto.name),
-        type: 'static',
-        visibility: 'marketplace',
-        developer_name: String(developerName || `User ${developerId}`).slice(0, 100),
-      },
-      developerId,
-    );
+    const runtimeType = dto.runtime_type || 'static';
+    if (runtimeType === 'service') {
+      this.assertDeveloperServiceEnabled();
+      await this.certificationService.assertRuntimeApproved(developerId, 'service');
+    }
+    const payload = {
+      code: dto.code.trim(),
+      ...metadata,
+      name: this.sanitizeRequiredName(dto.name),
+      type: runtimeType,
+      visibility: 'marketplace' as const,
+      developer_name: String(developerName || `User ${developerId}`).slice(0, 100),
+    };
+    return runtimeType === 'service'
+      ? this.appPlatformService.createApp(payload, developerId, {
+          trustLevel: 'developer_restricted',
+        })
+      : this.appPlatformService.createApp(payload, developerId);
   }
 
   async updateApp(code: string, dto: UpdateDeveloperAppDto, developerId: number) {
@@ -50,6 +61,14 @@ export class AppDeveloperService {
     const app = await this.findOwnedApp(code, developerId);
     if (app.status === 'disabled' || app.status === 'archived') {
       throw new BadRequestException('Disabled or archived apps cannot upload versions');
+    }
+    if (app.type === 'service') {
+      if (app.trustLevel !== 'developer_restricted') {
+        throw new BadRequestException('Developer uploads require a restricted service app');
+      }
+      this.assertDeveloperServiceEnabled();
+      const profile = await this.certificationService.assertRuntimeApproved(developerId, 'service');
+      return this.appPlatformService.uploadServiceVersion(code, file, developerId, profile);
     }
     return this.appPlatformService.uploadStaticVersion(code, file, developerId);
   }
@@ -88,5 +107,11 @@ export class AppDeveloperService {
       throw new BadRequestException('App name is required');
     }
     return name;
+  }
+
+  private assertDeveloperServiceEnabled() {
+    if (!this.configService.get<boolean>('appMarketplace.developerService.enabled', false)) {
+      throw new BadRequestException('Developer service apps are disabled');
+    }
   }
 }

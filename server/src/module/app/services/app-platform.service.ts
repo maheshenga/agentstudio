@@ -9,7 +9,13 @@ import { normalizeExternalHttpUrl } from '../../../common/utils/safe-url.util';
 import { normalizeAppCapabilities, normalizeApprovedCapabilities } from '../app-runtime.constants';
 import { CreateAppPackageDto, UpdateAppPackageDto } from '../dto/app-platform.dto';
 import { AppCapabilityGrantEntity } from '../entities/app-capability-grant.entity';
-import { AppPackageEntity, AppPackageStatus, AppPackageType } from '../entities/app-package.entity';
+import { AppDeveloperProfileEntity } from '../entities/app-developer-profile.entity';
+import {
+  AppPackageEntity,
+  AppPackageStatus,
+  AppPackageType,
+  type AppTrustLevel,
+} from '../entities/app-package.entity';
 import {
   AppPackageVersionEntity,
   AppVersionPublishStatus,
@@ -19,6 +25,7 @@ import { AppReviewAction, AppReviewLogEntity } from '../entities/app-review-log.
 import { AppManifestService, type StaticAppManifest } from './app-manifest.service';
 import { AppCapabilityPolicyService } from './app-capability-policy.service';
 import { AppPackageStorageService } from './app-package-storage.service';
+import { AppReviewSnapshotService } from './app-review-snapshot.service';
 import { AppRuntimeSessionService } from './app-runtime-session.service';
 import { AppServicePackageService } from './app-service-package.service';
 import { AppServiceRuntimeService } from './app-service-runtime.service';
@@ -47,6 +54,7 @@ export class AppPlatformService {
     private readonly reviewLogRepo: Repository<AppReviewLogEntity>,
     private readonly storage: AppPackageStorageService,
     private readonly manifestService: AppManifestService,
+    private readonly reviewSnapshotService: AppReviewSnapshotService,
     private readonly servicePackageService: AppServicePackageService,
     private readonly serviceRuntimeService: AppServiceRuntimeService,
     private readonly capabilityPolicy: AppCapabilityPolicyService,
@@ -150,7 +158,11 @@ export class AppPlatformService {
       });
   }
 
-  async createApp(dto: CreateAppPackageDto, operatorId?: number) {
+  async createApp(
+    dto: CreateAppPackageDto,
+    operatorId?: number,
+    options?: { trustLevel?: AppTrustLevel },
+  ) {
     const code = dto.code.trim();
     const existing = await this.appRepo.findOne({ where: { code }, withDeleted: true });
     if (existing) {
@@ -186,7 +198,7 @@ export class AppPlatformService {
       entryMode: this.resolveEntryMode(dto.type),
       entryUrl: iframeRuntime?.entryUrl || this.normalizeEntryUrl(dto.type, dto.entry_url || ''),
       runtimeType: this.runtimeType(dto.type),
-      trustLevel: this.trustLevel(dto.type),
+      trustLevel: options?.trustLevel ?? this.trustLevel(dto.type),
       serviceHealthPath: dto.type === 'service' ? '/health' : '',
       runtimeConfig: null,
       systemModuleCode: dto.system_module_code || '',
@@ -431,6 +443,7 @@ export class AppPlatformService {
       appId: app.id,
       version: manifest.version,
       manifest: manifest as unknown as Record<string, unknown>,
+      serviceTargets: manifest.serviceTargets,
       packagePath: extracted.packagePath,
       publishPath: '',
       entryFile: manifest.entry,
@@ -463,10 +476,25 @@ export class AppPlatformService {
     return this.toVersionResponse(savedVersion);
   }
 
-  async uploadServiceVersion(code: string, file: Express.Multer.File, operatorId?: number) {
+  async uploadServiceVersion(
+    code: string,
+    file: Express.Multer.File,
+    operatorId?: number,
+    developerProfile?: AppDeveloperProfileEntity,
+  ) {
     const app = await this.findApp(code);
     if (app.type !== 'service') {
       throw new BadRequestException('Only service apps can upload service packages');
+    }
+    const restricted = app.trustLevel === 'developer_restricted';
+    if (
+      restricted &&
+      (!developerProfile ||
+        operatorId === undefined ||
+        Number(developerProfile.userId) !== Number(operatorId) ||
+        Number(app.developerId) !== Number(operatorId))
+    ) {
+      throw new BadRequestException('Developer service certification is required');
     }
     if (!file?.buffer || !Buffer.isBuffer(file.buffer)) {
       throw new BadRequestException('Service package file is required');
@@ -492,8 +520,10 @@ export class AppPlatformService {
       manifestVersion: installed.manifest.manifestVersion,
       packageFormat: 'service_zip',
       scanResult: installed.scanResult as unknown as Record<string, unknown>,
+      serviceTargets: installed.manifest.serviceTargets,
       candidateHealthStatus: 'unknown',
       submittedBy: operatorId ?? null,
+      submittedTime: new Date(),
       packagePath: installed.releaseDir,
       publishPath: '',
       entryFile: installed.entryFile,
@@ -505,15 +535,27 @@ export class AppPlatformService {
       reviewerId: null,
       reviewTime: null,
     } as Partial<AppPackageVersionEntity>) as AppPackageVersionEntity;
-    const savedVersion = await this.versionRepo.save(versionEntity);
+    const savedVersion = await this.dataSource.transaction(async (manager) => {
+      const txVersionRepo = manager.getRepository(AppPackageVersionEntity);
+      const txAppRepo = manager.getRepository(AppPackageEntity);
+      let saved = await txVersionRepo.save(versionEntity);
 
-    this.updateAppReviewStatus(app, 'pending_review');
-    app.entryMode = 'service';
-    app.runtimeType = 'service';
-    app.trustLevel = 'platform_trusted';
-    app.serviceHealthPath = installed.manifest.healthPath;
-    app.runtimeConfig = installed.manifest.runtimeConfig;
-    await this.appRepo.save(app);
+      this.updateAppReviewStatus(app, 'pending_review');
+      app.entryMode = 'service';
+      app.runtimeType = 'service';
+      app.trustLevel = restricted ? 'developer_restricted' : 'platform_trusted';
+      app.serviceHealthPath = installed.manifest.healthPath;
+      app.runtimeConfig = installed.manifest.runtimeConfig;
+
+      if (restricted) {
+        const snapshot = this.reviewSnapshotService.create(app, saved, developerProfile!);
+        saved.reviewSnapshot = snapshot as unknown as Record<string, unknown>;
+        saved.reviewSnapshotHash = this.reviewSnapshotService.hash(snapshot);
+        saved = await txVersionRepo.save(saved);
+      }
+      await txAppRepo.save(app);
+      return saved;
+    });
     await this.recordAppEvent(
       app.id,
       savedVersion.id,
@@ -535,6 +577,11 @@ export class AppPlatformService {
     const appVersion = await this.findVersion(app.id, version);
     if (appVersion.reviewStatus !== 'rejected') {
       throw new BadRequestException('Only rejected versions can be resubmitted');
+    }
+    if (app.type === 'service' && app.trustLevel === 'developer_restricted') {
+      throw new BadRequestException(
+        'Rejected developer service content is immutable; upload a new version',
+      );
     }
     appVersion.reviewStatus = 'pending';
     appVersion.reviewMessage = '';
@@ -1024,6 +1071,7 @@ export class AppPlatformService {
       manifest_version: Number(version.manifestVersion) || 1,
       package_format: version.packageFormat || 'static_zip',
       scan_result: version.scanResult || null,
+      service_targets: version.serviceTargets || [],
       candidate_health_status: version.candidateHealthStatus || 'unknown',
       package_path: version.packagePath || '',
       publish_path: version.publishPath || '',
@@ -1059,6 +1107,10 @@ export class AppPlatformService {
       manifest_version: Number(version.manifestVersion) || 2,
       package_format: version.packageFormat || 'service_zip',
       scan_result: this.sanitizeServiceScanResult(version.scanResult),
+      review_snapshot: version.reviewSnapshot || null,
+      review_snapshot_hash: version.reviewSnapshotHash || '',
+      submitted_time: version.submittedTime ?? null,
+      service_targets: version.serviceTargets || [],
       candidate_health_status: version.candidateHealthStatus || 'unknown',
       review_status: version.reviewStatus,
       publish_status: version.publishStatus,
@@ -1086,31 +1138,7 @@ export class AppPlatformService {
 
   private sanitizeServiceScanResult(value: Record<string, unknown> | null | undefined) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-    const findings = Array.isArray(value.findings)
-      ? value.findings
-          .filter(
-            (finding): finding is Record<string, unknown> =>
-              Boolean(finding) && typeof finding === 'object' && !Array.isArray(finding),
-          )
-          .slice(0, 50)
-          .map((finding) => ({
-            code: String(finding.code || '').slice(0, 80),
-            severity: finding.severity === 'warning' ? 'warning' : 'error',
-            ...(Number.isInteger(Number(finding.line))
-              ? { line: Math.max(1, Number(finding.line)) }
-              : {}),
-            ...(Number.isInteger(Number(finding.column))
-              ? { column: Math.max(0, Number(finding.column)) }
-              : {}),
-          }))
-      : [];
-    const entrySha256 = String(value.entrySha256 || '');
-    return {
-      passed: value.passed === true,
-      findings,
-      scannedFiles: Math.max(0, Math.trunc(Number(value.scannedFiles) || 0)),
-      entrySha256: /^[a-f0-9]{64}$/.test(entrySha256) ? entrySha256 : '',
-    };
+    return this.reviewSnapshotService.sanitizeScanResult(value);
   }
 
   private toReviewQueueResponse(app: AppPackageEntity, version: AppPackageVersionEntity) {

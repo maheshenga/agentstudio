@@ -1,9 +1,11 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { AppPackageEntity } from '../entities/app-package.entity';
 import { AppDeveloperService } from './app-developer.service';
+import { AppDeveloperCertificationService } from './app-developer-certification.service';
 import { AppPlatformService } from './app-platform.service';
 
 describe('AppDeveloperService', () => {
@@ -18,7 +20,14 @@ describe('AppDeveloperService', () => {
     createApp: jest.fn(),
     updateApp: jest.fn(),
     uploadStaticVersion: jest.fn(),
+    uploadServiceVersion: jest.fn(),
     submitVersion: jest.fn(),
+  };
+  const certificationService = {
+    assertRuntimeApproved: jest.fn(),
+  };
+  const configService = {
+    get: jest.fn(),
   };
   const file = {
     originalname: 'creator-portal.zip',
@@ -29,11 +38,14 @@ describe('AppDeveloperService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    configService.get.mockImplementation((key: string, fallback?: unknown) => fallback);
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AppDeveloperService,
         { provide: getRepositoryToken(AppPackageEntity), useValue: appRepo },
         { provide: AppPlatformService, useValue: platformService },
+        { provide: AppDeveloperCertificationService, useValue: certificationService },
+        { provide: ConfigService, useValue: configService },
       ],
     }).compile();
 
@@ -77,6 +89,45 @@ describe('AppDeveloperService', () => {
     const [createParams] = platformService.createApp.mock.calls[0];
     expect(createParams).not.toHaveProperty('entry_url');
     expect(createParams).not.toHaveProperty('system_module_code');
+    expect(certificationService.assertRuntimeApproved).not.toHaveBeenCalled();
+  });
+
+  it('creates a developer_restricted service draft only for a certified service developer', async () => {
+    configService.get.mockImplementation((key: string, fallback?: unknown) =>
+      key === 'appMarketplace.developerService.enabled' ? true : fallback,
+    );
+    certificationService.assertRuntimeApproved.mockResolvedValue({ id: 5, userId: 17 });
+    platformService.createApp.mockResolvedValue({ code: 'workflow_service', developer_id: 17 });
+
+    await service.createApp(
+      { code: 'workflow_service', name: 'Workflow Service', runtime_type: 'service' },
+      17,
+      'Alice',
+    );
+
+    expect(certificationService.assertRuntimeApproved).toHaveBeenCalledWith(17, 'service');
+    expect(platformService.createApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'workflow_service',
+        type: 'service',
+        visibility: 'marketplace',
+      }),
+      17,
+      { trustLevel: 'developer_restricted' },
+    );
+  });
+
+  it('rejects service creation while the developer service flag is disabled', async () => {
+    await expect(
+      service.createApp(
+        { code: 'workflow_service', name: 'Workflow Service', runtime_type: 'service' },
+        17,
+        'Alice',
+      ),
+    ).rejects.toThrow('Developer service apps are disabled');
+
+    expect(certificationService.assertRuntimeApproved).not.toHaveBeenCalled();
+    expect(platformService.createApp).not.toHaveBeenCalled();
   });
 
   it('rejects a blank app name', async () => {
@@ -160,6 +211,51 @@ describe('AppDeveloperService', () => {
     await service.uploadVersion('creator_portal', file, 17);
 
     expect(platformService.uploadStaticVersion).toHaveBeenCalledWith('creator_portal', file, 17);
+  });
+
+  it('dispatches an owned service upload only after the flag and certification checks', async () => {
+    configService.get.mockImplementation((key: string, fallback?: unknown) =>
+      key === 'appMarketplace.developerService.enabled' ? true : fallback,
+    );
+    appRepo.findOne.mockResolvedValue({
+      code: 'workflow_service',
+      developerId: 17,
+      status: 'draft',
+      type: 'service',
+      trustLevel: 'developer_restricted',
+    });
+    certificationService.assertRuntimeApproved.mockResolvedValue({ id: 5, userId: 17 });
+    platformService.uploadServiceVersion.mockResolvedValue({
+      version: '1.0.0',
+      review_status: 'pending',
+    });
+
+    await service.uploadVersion('workflow_service', file, 17);
+
+    expect(certificationService.assertRuntimeApproved).toHaveBeenCalledWith(17, 'service');
+    expect(platformService.uploadServiceVersion).toHaveBeenCalledWith(
+      'workflow_service',
+      file,
+      17,
+      expect.objectContaining({ id: 5, userId: 17 }),
+    );
+    expect(platformService.uploadStaticVersion).not.toHaveBeenCalled();
+  });
+
+  it('rejects an owned service upload while the developer service flag is disabled', async () => {
+    appRepo.findOne.mockResolvedValue({
+      code: 'workflow_service',
+      developerId: 17,
+      status: 'draft',
+      type: 'service',
+      trustLevel: 'developer_restricted',
+    });
+
+    await expect(service.uploadVersion('workflow_service', file, 17)).rejects.toThrow(
+      'Developer service apps are disabled',
+    );
+    expect(certificationService.assertRuntimeApproved).not.toHaveBeenCalled();
+    expect(platformService.uploadServiceVersion).not.toHaveBeenCalled();
   });
 
   it('resubmits a rejected version for an owned app', async () => {

@@ -370,7 +370,7 @@ git commit -m "feat(app): govern certified developer profiles"
 - Extends: `StaticAppManifest.serviceTargets` and `NormalizedServiceManifest.serviceTargets` as normalized immutable app-code arrays
 - Extends: `AppDeveloperService.uploadVersion` to dispatch static or restricted-service upload by authoritative app type
 
-- [ ] **Step 1: Write failing snapshot and developer submission tests**
+- [x] **Step 1: Write failing snapshot and developer submission tests**
 
 Cover:
 
@@ -390,7 +390,7 @@ it('preserves rejected static-app resubmission behavior');
 it('re-hashes dist/index.js before candidate start and rejects a changed installed entry');
 ```
 
-- [ ] **Step 2: Run Task 3 tests to verify RED**
+- [x] **Step 2: Run Task 3 tests to verify RED**
 
 ```powershell
 pnpm run test -- app-review-snapshot.service.spec.ts app-developer.service.spec.ts app-developer.controller.spec.ts app-platform.service.spec.ts app-service-package.service.spec.ts --runInBand
@@ -398,7 +398,7 @@ pnpm run test -- app-review-snapshot.service.spec.ts app-developer.service.spec.
 
 Expected: FAIL on missing service creation, snapshot, and verification behavior.
 
-- [ ] **Step 3: Implement canonical frozen snapshots**
+- [x] **Step 3: Implement canonical frozen snapshots**
 
 The snapshot contains only:
 
@@ -442,7 +442,7 @@ export interface FrozenAppReviewSnapshot {
 
 Canonical hashing recursively sorts object keys, preserves array order after normalization, serializes UTF-8 JSON, and hashes with SHA-256. Snapshot response sanitization must reuse the existing scan-result sanitizer and never return package paths.
 
-- [ ] **Step 4: Implement service draft/upload dispatch**
+- [x] **Step 4: Implement service draft/upload dispatch**
 
 For `runtime_type='service'`:
 
@@ -456,15 +456,15 @@ For `runtime_type='service'`:
 
 Static uploads retain their package, review, sandbox, and publication behavior, while their normalized manifest and `serviceTargets` column may now include `service.invoke` plus declared target codes. Reject `serviceTargets` unless `service.invoke` is requested, and reject `service.invoke` unless at least one target is declared.
 
-- [ ] **Step 5: Make rejected restricted content terminal**
+- [x] **Step 5: Make rejected restricted content terminal**
 
 `submitVersion` keeps current behavior for static/iframe versions. For `developer_restricted` service versions it throws `Rejected developer service content is immutable; upload a new version` before any update.
 
-- [ ] **Step 6: Verify installed entry integrity without execution**
+- [x] **Step 6: Verify installed entry integrity without execution**
 
 `verifyInstalledEntry(version)` resolves `dist/index.js` under the configured runtime root, rejects path escape/symlink/missing files, streams SHA-256, and compares against `scanResult.entrySha256`. It never imports the file and never shells out.
 
-- [ ] **Step 7: Run Task 3 tests to verify GREEN**
+- [x] **Step 7: Run Task 3 tests to verify GREEN**
 
 ```powershell
 pnpm run test -- app-review-snapshot.service.spec.ts app-developer.service.spec.ts app-developer.controller.spec.ts app-platform.service.spec.ts app-service-package.service.spec.ts --runInBand
@@ -472,7 +472,7 @@ pnpm run test -- app-review-snapshot.service.spec.ts app-developer.service.spec.
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit Task 3**
+- [x] **Step 8: Commit Task 3**
 
 ```powershell
 git add server/src/module/app
