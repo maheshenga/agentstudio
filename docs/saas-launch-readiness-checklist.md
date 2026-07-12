@@ -434,6 +434,24 @@ Verified in the `saas-order-risk-ops` worktree:
 - Review findings for future-protocol handling, runtime freezing of the public error catalog, exact timeout/abort cleanup assertions, export metadata coverage, identity redaction, atomic Redis ownership/cleanup, forced-process exit waiting, signal cleanup, runner-only reload, repeated leak scans, production manifest validation, and Starter source allowlisting were fixed and reverified.
 - P9-A still adds no runtime token, storage API, write API, capability gateway, backend plugin, external iframe bridge, npm publication, or CDN publication.
 
+## P9-B Runtime Sessions And Capability Gateway Verification - 2026-07-12
+
+Implemented and covered by deterministic gates:
+
+- Platform review records an allowlisted `context.read` capability, tenant installation requires explicit consent, and effective grants are revalidated for every runtime request.
+- Runtime open metadata returns a short-lived one-time bearer token only when the feature flag is enabled. Persistence contains only a SHA-256 digest with tenant, user, app, version, and installation bindings.
+- The dedicated `/api/app-runtime/context` endpoint accepts exactly one bounded `X-App-Runtime-Token` header and preserves strict HTTP 400/401/403/429/503 status semantics without changing the admin API's legacy envelope behavior.
+- Session authorization fails closed after expiry, revocation, uninstall, publication loss, membership loss, tenant consent loss, SaaS entitlement loss, or system-module disablement.
+- Redis atomically limits each session and capability to `120` requests per minute by default. `APP_RUNTIME_CAPABILITY_RATE_LIMIT_PER_MINUTE` is clamped from `1` to `1000`; keys contain only session IDs and capability names, never raw tokens.
+- Rate-limit responses expose only a fixed message and a `retry_after` value bounded from `1` to `60`. One window writes at most one `rate_limited` audit, and Redis failures return a fixed 503 even if audit persistence is unavailable.
+- Browser host bridging keeps the token outside the child iframe and SDK. The SDK adds capability metadata types without changing protocol version `1` or the existing `getContext` API.
+- The disposable live E2E contract covers approval, consent, digest-only persistence, direct context access, per-session rate limiting, cross-tenant denial, expiry, revocation, uninstall invalidation, bounded audits, secret redaction, and owned MySQL/Redis cleanup.
+
+Environment-dependent verification:
+
+- Run `pnpm.cmd run verify:app-runtime-live-e2e` only with explicitly isolated `APP_RUNTIME_E2E_*` MySQL and Redis targets. The script refuses Redis DB `0`, leases an empty isolated DB, creates and drops its disposable MySQL database, and never prints credentials or raw runtime tokens.
+- Keep `APP_RUNTIME_CAPABILITIES_ENABLED` disabled by default until the P9-B migration, Redis connectivity, and authenticated platform/tenant smoke flow have passed in the target environment.
+
 ## Known Out-of-Scope Items
 
 - Invoice functionality is intentionally excluded.

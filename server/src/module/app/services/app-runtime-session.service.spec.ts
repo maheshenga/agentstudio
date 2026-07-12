@@ -1,4 +1,9 @@
-import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  HttpException,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { IsNull } from 'typeorm';
@@ -11,6 +16,9 @@ import { AppRuntimeSessionEntity } from '../entities/app-runtime-session.entity'
 import { TenantAppInstallEntity } from '../entities/tenant-app-install.entity';
 import { AppCapabilityPolicyService } from './app-capability-policy.service';
 import { AppRuntimeSessionService } from './app-runtime-session.service';
+import { SaasModuleService } from '../../saas/services/saas-module.service';
+import { SystemModuleAccessService } from '../../system-module/services/system-module-access.service';
+import { RedisService } from '../../../redis/redis.service';
 
 describe('AppRuntimeSessionService', () => {
   const sessionRepo = {
@@ -28,6 +36,10 @@ describe('AppRuntimeSessionService', () => {
   const versionRepo = { findOne: jest.fn() };
   const membershipRepo = { findOne: jest.fn() };
   const capabilityPolicy = { resolveGrantedCapabilities: jest.fn() };
+  const saasModuleService = { assertTenantModuleEnabled: jest.fn() };
+  const systemModuleAccessService = { assertModuleAccess: jest.fn() };
+  const redisClient = { eval: jest.fn() };
+  const redisService = { getClient: jest.fn(() => redisClient) };
 
   let service: AppRuntimeSessionService;
 
@@ -57,6 +69,7 @@ describe('AppRuntimeSessionService', () => {
     jest.clearAllMocks();
     process.env.APP_RUNTIME_CAPABILITIES_ENABLED = 'true';
     delete process.env.APP_RUNTIME_SESSION_TTL_SECONDS;
+    delete process.env.APP_RUNTIME_CAPABILITY_RATE_LIMIT_PER_MINUTE;
     installRepo.findOne.mockResolvedValue({
       id: 30,
       tenantId: 23,
@@ -64,7 +77,12 @@ describe('AppRuntimeSessionService', () => {
       versionId: 20,
       enabled: 1,
     });
-    appRepo.findOne.mockResolvedValue({ id: 10, status: 'published' });
+    appRepo.findOne.mockResolvedValue({
+      id: 10,
+      status: 'published',
+      saasModuleCode: 'recruiting',
+      systemModuleCode: 'job_board',
+    });
     versionRepo.findOne.mockResolvedValue({
       id: 20,
       appId: 10,
@@ -73,6 +91,9 @@ describe('AppRuntimeSessionService', () => {
     });
     membershipRepo.findOne.mockResolvedValue({ id: 7, tenantId: 23, userId: 91 });
     capabilityPolicy.resolveGrantedCapabilities.mockResolvedValue(['context.read']);
+    saasModuleService.assertTenantModuleEnabled.mockResolvedValue(true);
+    systemModuleAccessService.assertModuleAccess.mockResolvedValue(true);
+    redisClient.eval.mockResolvedValue([1, 60]);
 
     const module = await Test.createTestingModule({
       providers: [
@@ -84,6 +105,9 @@ describe('AppRuntimeSessionService', () => {
         { provide: getRepositoryToken(AppPackageVersionEntity), useValue: versionRepo },
         { provide: getRepositoryToken(SysUserTenantEntity), useValue: membershipRepo },
         { provide: AppCapabilityPolicyService, useValue: capabilityPolicy },
+        { provide: SaasModuleService, useValue: saasModuleService },
+        { provide: SystemModuleAccessService, useValue: systemModuleAccessService },
+        { provide: RedisService, useValue: redisService },
       ],
     }).compile();
     service = module.get(AppRuntimeSessionService);
@@ -92,6 +116,7 @@ describe('AppRuntimeSessionService', () => {
   afterEach(() => {
     delete process.env.APP_RUNTIME_CAPABILITIES_ENABLED;
     delete process.env.APP_RUNTIME_SESSION_TTL_SECONDS;
+    delete process.env.APP_RUNTIME_CAPABILITY_RATE_LIMIT_PER_MINUTE;
   });
 
   it('issues a one-time raw token while persisting only its digest', async () => {
@@ -117,17 +142,17 @@ describe('AppRuntimeSessionService', () => {
 
   it('refuses to issue a session when any authority binding is inactive', async () => {
     membershipRepo.findOne.mockResolvedValue(null);
-    await expect(service.issue({ ...issueInput, capabilities: ['context.read'] })).rejects.toBeInstanceOf(
-      UnauthorizedException,
-    );
+    await expect(
+      service.issue({ ...issueInput, capabilities: ['context.read'] }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
     expect(sessionRepo.save).not.toHaveBeenCalled();
   });
 
   it('refuses to issue capabilities outside the current platform and tenant grants', async () => {
     capabilityPolicy.resolveGrantedCapabilities.mockResolvedValue([]);
-    await expect(service.issue({ ...issueInput, capabilities: ['context.read'] })).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(
+      service.issue({ ...issueInput, capabilities: ['context.read'] }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
     expect(sessionRepo.save).not.toHaveBeenCalled();
   });
 
@@ -141,9 +166,9 @@ describe('AppRuntimeSessionService', () => {
 
   it('fails closed when runtime capabilities are disabled', async () => {
     process.env.APP_RUNTIME_CAPABILITIES_ENABLED = 'false';
-    await expect(service.issue({ ...issueInput, capabilities: ['context.read'] })).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(
+      service.issue({ ...issueInput, capabilities: ['context.read'] }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
     expect(sessionRepo.save).not.toHaveBeenCalled();
   });
 
@@ -163,6 +188,104 @@ describe('AppRuntimeSessionService', () => {
       expect.objectContaining({ outcome: 'allowed', reasonCode: 'authorized', requestId: 'req-1' }),
     );
     expect(JSON.stringify(auditRepo.create.mock.calls)).not.toContain('raw-runtime-token');
+    expect(redisClient.eval).toHaveBeenCalledWith(
+      expect.any(String),
+      1,
+      'app_runtime:rate:41:context.read',
+      60,
+      120,
+    );
+    expect(JSON.stringify(redisClient.eval.mock.calls)).not.toContain('raw-runtime-token');
+  });
+
+  it('clamps the configured per-session capability rate limit', async () => {
+    process.env.APP_RUNTIME_CAPABILITY_RATE_LIMIT_PER_MINUTE = '9999';
+    sessionRepo.findOne.mockResolvedValue(activeSession());
+
+    await service.authorize('raw-runtime-token', 'context.read', {});
+
+    expect(redisClient.eval).toHaveBeenCalledWith(
+      expect.any(String),
+      1,
+      'app_runtime:rate:41:context.read',
+      60,
+      1000,
+    );
+  });
+
+  it('returns a bounded retry interval and audits when the capability rate limit is exceeded', async () => {
+    sessionRepo.findOne.mockResolvedValue(activeSession());
+    redisClient.eval.mockResolvedValue([121, 47]);
+
+    let error: unknown;
+    try {
+      await service.authorize('raw-runtime-token', 'context.read', {});
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(HttpException);
+    expect((error as HttpException).getStatus()).toBe(429);
+    expect((error as HttpException).getResponse()).toEqual({
+      statusCode: 429,
+      message: 'App runtime capability rate limit exceeded',
+      error: 'Too Many Requests',
+      retry_after: 47,
+    });
+    expect(auditRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'denied', reasonCode: 'rate_limited' }),
+    );
+    expect(sessionRepo.update).not.toHaveBeenCalled();
+  });
+
+  it('writes only one rate-limit audit per session capability window', async () => {
+    sessionRepo.findOne.mockResolvedValue(activeSession());
+    redisClient.eval.mockResolvedValueOnce([121, 47]).mockResolvedValueOnce([122, 46]);
+
+    await expect(service.authorize('raw-runtime-token', 'context.read', {})).rejects.toMatchObject({
+      status: 429,
+    });
+    await expect(service.authorize('raw-runtime-token', 'context.read', {})).rejects.toMatchObject({
+      status: 429,
+    });
+
+    expect(auditRepo.create).toHaveBeenCalledTimes(1);
+    expect(auditRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'denied', reasonCode: 'rate_limited' }),
+    );
+  });
+
+  it('fails closed with a fixed response and bounded audit when Redis is unavailable', async () => {
+    sessionRepo.findOne.mockResolvedValue(activeSession());
+    redisClient.eval.mockRejectedValue(new Error('redis secret connection details'));
+
+    let error: unknown;
+    try {
+      await service.authorize('raw-runtime-token', 'context.read', {});
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(ServiceUnavailableException);
+    expect((error as ServiceUnavailableException).message).toBe(
+      'App runtime rate limit is unavailable',
+    );
+    expect(JSON.stringify(error)).not.toContain('redis secret connection details');
+    expect(auditRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'denied', reasonCode: 'rate_limit_unavailable' }),
+    );
+    expect(sessionRepo.update).not.toHaveBeenCalled();
+  });
+
+  it('keeps the fixed unavailable response when the failure audit cannot be stored', async () => {
+    sessionRepo.findOne.mockResolvedValue(activeSession());
+    redisClient.eval.mockRejectedValue(new Error('redis internal failure'));
+    auditRepo.save.mockRejectedValueOnce(new Error('database internal failure'));
+
+    await expect(service.authorize('raw-runtime-token', 'context.read', {})).rejects.toMatchObject({
+      status: 503,
+      message: 'App runtime rate limit is unavailable',
+    });
   });
 
   it.each([
@@ -172,10 +295,12 @@ describe('AppRuntimeSessionService', () => {
   ])('rejects an %s', async (_label, session, reasonCode) => {
     sessionRepo.findOne.mockResolvedValue(session);
 
-    await expect(service.authorize('invalid-runtime-token', 'context.read', {})).rejects.toBeInstanceOf(
-      UnauthorizedException,
+    await expect(
+      service.authorize('invalid-runtime-token', 'context.read', {}),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(auditRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'denied', reasonCode }),
     );
-    expect(auditRepo.create).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'denied', reasonCode }));
   });
 
   it('rejects capabilities missing from the session snapshot', async () => {
@@ -201,6 +326,38 @@ describe('AppRuntimeSessionService', () => {
     });
     expect(auditRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: 'denied', reasonCode: 'membership_inactive' }),
+    );
+  });
+
+  it('rejects a session after SaaS plan entitlement is lost', async () => {
+    sessionRepo.findOne.mockResolvedValue(activeSession());
+    saasModuleService.assertTenantModuleEnabled.mockRejectedValue(
+      new Error('plan entitlement lost'),
+    );
+
+    await expect(service.authorize('raw-runtime-token', 'context.read', {})).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(saasModuleService.assertTenantModuleEnabled).toHaveBeenCalledWith(23, 'recruiting');
+    expect(auditRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'denied', reasonCode: 'entitlement_inactive' }),
+    );
+  });
+
+  it('rejects a session after the tenant system module is disabled', async () => {
+    sessionRepo.findOne.mockResolvedValue(activeSession());
+    systemModuleAccessService.assertModuleAccess.mockRejectedValue(new Error('module disabled'));
+
+    await expect(service.authorize('raw-runtime-token', 'context.read', {})).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(systemModuleAccessService.assertModuleAccess).toHaveBeenCalledWith({
+      tenantId: 23,
+      moduleCode: 'job_board',
+      requiredSaasModuleCode: 'recruiting',
+    });
+    expect(auditRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'denied', reasonCode: 'entitlement_inactive' }),
     );
   });
 

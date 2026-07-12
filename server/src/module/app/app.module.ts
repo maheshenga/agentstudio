@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { RedisModule } from '../../redis/redis.module';
 import { SaasModule } from '../saas/saas.module';
 import { SystemModuleRegistryModule } from '../system-module/system-module.module';
 import { TenantEntity } from '../system/tenant/entities/tenant.entity';
@@ -40,6 +41,7 @@ import { AppTenantService } from './services/app-tenant.service';
   imports: [
     SaasModule,
     SystemModuleRegistryModule,
+    RedisModule,
     TypeOrmModule.forFeature([
       AppPackageEntity,
       AppPackageVersionEntity,

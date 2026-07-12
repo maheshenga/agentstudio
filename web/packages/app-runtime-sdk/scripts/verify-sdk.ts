@@ -12,13 +12,28 @@ import {
   normalizeTimeout,
   parseRuntimeResponse
 } from '../src/protocol'
-import type { AppRuntimeContext, AppRuntimeErrorCode } from '../src/types'
+import type {
+  AppRuntimeCapability,
+  AppRuntimeCapabilityMetadata,
+  AppRuntimeContext,
+  AppRuntimeErrorCode
+} from '../src/types'
 
 const approvedContext: AppRuntimeContext = {
   tenant: { id: '23', name: 'Acme' },
   user: { id: '91', display_name: 'Owner' },
   app: { code: 'runtime_starter', name: 'Runtime Starter', version: '1.0.0' }
 }
+
+const capability: AppRuntimeCapability = 'context.read'
+const capabilityMetadata: AppRuntimeCapabilityMetadata = {
+  requested: [capability],
+  platform_approved: [capability],
+  tenant_approved: [capability],
+  effective: [capability]
+}
+assert.deepEqual(capabilityMetadata.effective, ['context.read'])
+assert.doesNotMatch(JSON.stringify(capabilityMetadata), /token|authorization|cookie/i)
 
 function assertError(result: ReturnType<typeof parseRuntimeResponse>, code: AppRuntimeErrorCode) {
   assert.equal(result.kind, 'error')
@@ -334,7 +349,9 @@ async function verifyBuiltOutputs() {
     'getContext',
     'GetContextOptions',
     'AppRuntimeContext',
-    'AppRuntimeError'
+    'AppRuntimeError',
+    'AppRuntimeCapability',
+    'AppRuntimeCapabilityMetadata'
   ]) {
     assert.ok(declarations.includes(symbol), `declarations must contain ${symbol}`)
   }

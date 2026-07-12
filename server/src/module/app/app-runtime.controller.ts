@@ -1,14 +1,23 @@
-import { BadRequestException, Controller, Get, Req, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Req,
+  ServiceUnavailableException,
+  UseFilters,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 
 import { Public } from '../../common/decorators/auth.decorator';
 import { ResultData } from '../../common/utils/result';
+import { AppRuntimeHttpExceptionFilter } from './app-runtime-http-exception.filter';
 import { AppRuntimeContextService } from './services/app-runtime-context.service';
 import { AppRuntimeSessionService } from './services/app-runtime-session.service';
 
 @ApiTags('App Runtime')
 @Controller('api/app-runtime')
+@UseFilters(AppRuntimeHttpExceptionFilter)
 export class AppRuntimeController {
   constructor(
     private readonly sessionService: AppRuntimeSessionService,

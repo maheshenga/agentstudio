@@ -1,13 +1,20 @@
-import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes } from 'crypto';
 import { IsNull, Repository } from 'typeorm';
 
 import { SysUserTenantEntity } from '../../system/user/entities/user-tenant.entity';
-import {
-  type AppRuntimeCapability,
-  normalizeApprovedCapabilities,
-} from '../app-runtime.constants';
+import { SaasModuleService } from '../../saas/services/saas-module.service';
+import { SystemModuleAccessService } from '../../system-module/services/system-module-access.service';
+import { RedisService } from '../../../redis/redis.service';
+import { type AppRuntimeCapability, normalizeApprovedCapabilities } from '../app-runtime.constants';
 import { AppPackageEntity } from '../entities/app-package.entity';
 import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
 import { AppRuntimeAuditLogEntity } from '../entities/app-runtime-audit-log.entity';
@@ -57,6 +64,9 @@ export class AppRuntimeSessionService {
     @InjectRepository(SysUserTenantEntity)
     private readonly membershipRepo: Repository<SysUserTenantEntity>,
     private readonly capabilityPolicy: AppCapabilityPolicyService,
+    private readonly saasModuleService: SaasModuleService,
+    private readonly systemModuleAccessService: SystemModuleAccessService,
+    private readonly redisService: RedisService,
   ) {}
 
   async issue(input: IssueAppRuntimeSessionInput) {
@@ -65,6 +75,9 @@ export class AppRuntimeSessionService {
     const [install, app, version, membership, granted] = await this.loadAuthorityBindings(input);
     if (!install || !app || !version || !membership) {
       throw new UnauthorizedException('App runtime authority is inactive');
+    }
+    if (!(await this.hasCurrentEntitlement(input.tenantId, app))) {
+      throw new ForbiddenException('App runtime entitlement is inactive');
     }
     const grantedSet = new Set(granted);
     if (capabilities.some((capability) => !grantedSet.has(capability))) {
@@ -117,13 +130,21 @@ export class AppRuntimeSessionService {
 
     const [install, app, version, membership, granted] = await this.loadAuthorityBindings(session);
 
-    if (!install) await this.deny(session, capability, 'installation_inactive', request, UnauthorizedException);
-    if (!app) await this.deny(session, capability, 'app_unpublished', request, UnauthorizedException);
-    if (!version) await this.deny(session, capability, 'version_unpublished', request, UnauthorizedException);
-    if (!membership) await this.deny(session, capability, 'membership_inactive', request, UnauthorizedException);
+    if (!install)
+      await this.deny(session, capability, 'installation_inactive', request, UnauthorizedException);
+    if (!app)
+      await this.deny(session, capability, 'app_unpublished', request, UnauthorizedException);
+    if (!version)
+      await this.deny(session, capability, 'version_unpublished', request, UnauthorizedException);
+    if (!membership)
+      await this.deny(session, capability, 'membership_inactive', request, UnauthorizedException);
+    if (!(await this.hasCurrentEntitlement(session.tenantId, app))) {
+      await this.deny(session, capability, 'entitlement_inactive', request, ForbiddenException);
+    }
     if (!granted.includes(capability)) {
       await this.deny(session, capability, 'consent_revoked', request, ForbiddenException);
     }
+    await this.enforceRateLimit(session, capability, request);
 
     await this.sessionRepo.update(session.id, { lastUsedTime: new Date() });
     await this.audit(session, capability, 'allowed', 'authorized', request);
@@ -158,7 +179,7 @@ export class AppRuntimeSessionService {
       }),
       this.appRepo.findOne({
         where: { id: input.appId, status: 'published', deleteTime: IsNull() },
-        select: { id: true },
+        select: { id: true, saasModuleCode: true, systemModuleCode: true },
       }),
       this.versionRepo.findOne({
         where: {
@@ -178,6 +199,88 @@ export class AppRuntimeSessionService {
     ]);
   }
 
+  private async hasCurrentEntitlement(tenantId: number, app: AppPackageEntity) {
+    try {
+      if (app.saasModuleCode) {
+        await this.saasModuleService.assertTenantModuleEnabled(tenantId, app.saasModuleCode);
+      }
+      if (app.systemModuleCode) {
+        await this.systemModuleAccessService.assertModuleAccess({
+          tenantId,
+          moduleCode: app.systemModuleCode,
+          requiredSaasModuleCode: app.saasModuleCode || undefined,
+        });
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async enforceRateLimit(
+    session: AppRuntimeSessionEntity,
+    capability: AppRuntimeCapability,
+    request: AppRuntimeRequestMetadata,
+  ) {
+    const windowSeconds = 60;
+    const rateLimit = this.getRateLimitPerMinute();
+    const key = `app_runtime:rate:${session.id}:${capability}`;
+    const script = `
+      local current = redis.call('INCR', KEYS[1])
+      if current == 1 then
+        redis.call('EXPIRE', KEYS[1], ARGV[1])
+      end
+      local ttl = redis.call('TTL', KEYS[1])
+      if ttl < 0 then
+        redis.call('EXPIRE', KEYS[1], ARGV[1])
+        ttl = tonumber(ARGV[1])
+      end
+      return { current, ttl }
+    `;
+
+    let result: unknown;
+    try {
+      result = await this.redisService.getClient().eval(script, 1, key, windowSeconds, rateLimit);
+    } catch {
+      await this.auditBestEffort(session, capability, 'rate_limit_unavailable', request);
+      throw new ServiceUnavailableException('App runtime rate limit is unavailable');
+    }
+
+    const [count, ttl] = Array.isArray(result) ? result.map(Number) : [Number.NaN, Number.NaN];
+    if (!Number.isFinite(count) || !Number.isFinite(ttl)) {
+      await this.auditBestEffort(session, capability, 'rate_limit_unavailable', request);
+      throw new ServiceUnavailableException('App runtime rate limit is unavailable');
+    }
+    if (count > rateLimit) {
+      const retryAfter = Math.min(windowSeconds, Math.max(1, Math.trunc(ttl)));
+      if (count === rateLimit + 1) {
+        await this.auditBestEffort(session, capability, 'rate_limited', request);
+      }
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.TOO_MANY_REQUESTS,
+          message: 'App runtime capability rate limit exceeded',
+          error: 'Too Many Requests',
+          retry_after: retryAfter,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
+
+  private async auditBestEffort(
+    session: AppRuntimeSessionEntity,
+    capability: AppRuntimeCapability,
+    reasonCode: string,
+    request: AppRuntimeRequestMetadata,
+  ) {
+    try {
+      await this.audit(session, capability, 'denied', reasonCode, request);
+    } catch {
+      // Authorization remains fail-closed even when operational audit storage is unavailable.
+    }
+  }
+
   async revokeInstall(tenantId: number, installId: number, reason: string) {
     const result = await this.sessionRepo.update(
       { tenantId, installId, revokedTime: IsNull() },
@@ -195,7 +298,11 @@ export class AppRuntimeSessionService {
   }
 
   isEnabled() {
-    return String(process.env.APP_RUNTIME_CAPABILITIES_ENABLED || '').trim().toLowerCase() === 'true';
+    return (
+      String(process.env.APP_RUNTIME_CAPABILITIES_ENABLED || '')
+        .trim()
+        .toLowerCase() === 'true'
+    );
   }
 
   private assertEnabled() {
@@ -203,13 +310,27 @@ export class AppRuntimeSessionService {
   }
 
   private getTtlSeconds() {
-    const configured = Number.parseInt(String(process.env.APP_RUNTIME_SESSION_TTL_SECONDS || ''), 10);
+    const configured = Number.parseInt(
+      String(process.env.APP_RUNTIME_SESSION_TTL_SECONDS || ''),
+      10,
+    );
     const value = Number.isFinite(configured) ? configured : 300;
     return Math.min(900, Math.max(60, value));
   }
 
+  private getRateLimitPerMinute() {
+    const configured = Number.parseInt(
+      String(process.env.APP_RUNTIME_CAPABILITY_RATE_LIMIT_PER_MINUTE || ''),
+      10,
+    );
+    const value = Number.isFinite(configured) ? configured : 120;
+    return Math.min(1000, Math.max(1, value));
+  }
+
   private hashToken(token: string) {
-    return createHash('sha256').update(String(token || ''), 'utf8').digest('hex');
+    return createHash('sha256')
+      .update(String(token || ''), 'utf8')
+      .digest('hex');
   }
 
   private async deny(

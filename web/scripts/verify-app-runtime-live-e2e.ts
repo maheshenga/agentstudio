@@ -6,7 +6,7 @@ import {
   type SpawnOptions,
   type SpawnSyncOptions
 } from 'node:child_process'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { basename, resolve } from 'node:path'
@@ -53,6 +53,11 @@ type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT'
   token?: string
   body?: Record<string, unknown>
+}
+
+type RuntimeSessionMetadata = {
+  token?: string
+  expires_at?: string
 }
 
 type E2EConfig = {
@@ -403,6 +408,70 @@ function dropDatabase() {
   )
 }
 
+function mysqlQuery(sql: string) {
+  const result = spawnSync(
+    'mysql',
+    mysqlArgs(['--batch', '--skip-column-names', databaseName, '--execute', sql]),
+    {
+      cwd: serverRoot,
+      env: databaseEnv(),
+      encoding: 'utf8',
+      stdio: 'pipe'
+    }
+  )
+  if (result.error) throw new Error(`MySQL query failed to start: ${redact(result.error.message)}`)
+  if (result.status !== 0) {
+    throw new Error(
+      `MySQL query failed with exit code ${result.status}: ${tail(result.stderr || '')}`
+    )
+  }
+  return String(result.stdout || '').trim()
+}
+
+function assertNumericId(value: unknown, label: string) {
+  const numeric = Number(value)
+  assert.ok(Number.isSafeInteger(numeric) && numeric > 0, `${label} must be a positive integer`)
+  return numeric
+}
+
+function hashRuntimeToken(token: string) {
+  return createHash('sha256').update(token, 'utf8').digest('hex')
+}
+
+function readRuntimeSession(metadata: any) {
+  const session = metadata?.runtime?.session as RuntimeSessionMetadata | undefined
+  assert.equal(metadata?.runtime?.context, null, 'session mode must not inline runtime context')
+  assert.match(String(session?.token || ''), /^[A-Za-z0-9_-]{43}$/)
+  assert.ok(Number.isFinite(Date.parse(String(session?.expires_at || ''))))
+  const token = String(session?.token)
+  sensitiveValues.add(token)
+  return { token, expiresAt: String(session?.expires_at) }
+}
+
+async function requestRuntimeContext(baseUrl: string, token: string) {
+  const response = await fetch(new URL('/api/app-runtime/context', `${baseUrl}/`), {
+    headers: {
+      accept: 'application/json',
+      'x-app-runtime-token': token
+    },
+    signal: terminationController.signal
+  })
+  const raw = await response.text()
+  let envelope: ApiEnvelope | undefined
+  try {
+    envelope = raw ? (JSON.parse(raw) as ApiEnvelope) : {}
+  } catch {
+    envelope = undefined
+  }
+  return { status: response.status, envelope }
+}
+
+async function expectRuntimeDenied(baseUrl: string, token: string, label: string) {
+  const response = await requestRuntimeContext(baseUrl, token)
+  assert.ok([401, 403].includes(response.status), `${label} must return HTTP 401 or 403`)
+  assert.notEqual(Number(response.envelope?.code), 200, `${label} must not return business success`)
+}
+
 async function requestJson<T>(baseUrl: string, path: string, options: RequestOptions = {}) {
   const response = await fetch(new URL(path, `${baseUrl}/`), {
     method: options.method || 'GET',
@@ -711,7 +780,18 @@ async function verifyBrowserFlow(input: {
   browser = await chromium.launch({ headless: true })
   const context = await browser.newContext()
   await configureBrowserContext(context, input.auth, input.backendUrl, (value) => {
-    observedOpenMetadata = value
+    const metadata = value as any
+    const runtimeToken = String(metadata?.runtime?.session?.token || '')
+    if (runtimeToken) sensitiveValues.add(runtimeToken)
+    observedOpenMetadata = metadata?.runtime?.session
+      ? {
+          ...metadata,
+          runtime: {
+            ...metadata.runtime,
+            session: { ...metadata.runtime.session, token: '[REDACTED]' }
+          }
+        }
+      : metadata
   })
   page = await context.newPage()
   page.on('console', (message) => browserConsole.push(tail(message.text(), 1, 500)))
@@ -907,6 +987,9 @@ async function main() {
       APP_PACKAGE_DIR: resolve(artifactRoot, 'packages'),
       APP_PUBLIC_DIR: resolve(artifactRoot, 'public'),
       APP_PUBLIC_PREFIX: '/apps-static/',
+      APP_RUNTIME_CAPABILITIES_ENABLED: 'true',
+      APP_RUNTIME_SESSION_TTL_SECONDS: '300',
+      APP_RUNTIME_CAPABILITY_RATE_LIMIT_PER_MINUTE: '2',
       FILE_UPLOAD_DIR: resolve(artifactRoot, 'uploads')
     }
   })
@@ -954,7 +1037,7 @@ async function main() {
   await requestJson(backendUrl, '/api/app-platform/apps/runtime_starter/versions/1.0.0/approve', {
     method: 'POST',
     token: platform.accessToken,
-    body: { message: 'P9-A automated review' }
+    body: { message: 'P9-B automated review', approved_capabilities: ['context.read'] }
   })
   await requestJson(backendUrl, '/api/app-platform/apps/runtime_starter/versions/1.0.0/publish', {
     method: 'POST',
@@ -986,7 +1069,7 @@ async function main() {
   await requestJson(backendUrl, '/api/app-tenant/apps/runtime_starter/install', {
     method: 'POST',
     token: tenant.accessToken,
-    body: {}
+    body: { capabilities: ['context.read'] }
   })
   const openMetadata = await requestJson<any>(
     backendUrl,
@@ -995,13 +1078,36 @@ async function main() {
   )
   assert.equal(openMetadata.runtime?.protocol_version, 1)
   assert.deepEqual(openMetadata.runtime?.scopes, ['runtime:context:read'])
+  const firstSession = readRuntimeSession(openMetadata)
 
   const expectedContext = {
     tenant: { id: String(signup.tenantId), name: tenantName },
     user: { id: String(signup.userId), display_name: ownerRealname },
     app: { code: 'runtime_starter', name: 'Runtime Starter', version: '1.0.0' }
   }
-  assert.deepEqual(openMetadata.runtime?.context, expectedContext)
+  const directContext = await requestRuntimeContext(backendUrl, firstSession.token)
+  assert.equal(directContext.status, 200)
+  assert.deepEqual(directContext.envelope?.data, expectedContext)
+
+  const firstTokenHash = hashRuntimeToken(firstSession.token)
+  const sessionRow = mysqlQuery(
+    `SELECT id, tenant_id, user_id, app_id, version_id, install_id, token_hash FROM app_runtime_session WHERE token_hash='${firstTokenHash}'`
+  ).split('\t')
+  assert.equal(sessionRow.length, 7, 'session issue must persist one complete authority binding')
+  assert.match(sessionRow[6], /^[a-f0-9]{64}$/)
+  assert.notEqual(sessionRow[6], firstSession.token)
+  const sessionId = assertNumericId(sessionRow[0], 'runtime session id')
+  const originalTenantId = assertNumericId(sessionRow[1], 'runtime session tenant id')
+  assert.equal(originalTenantId, Number(signup.tenantId))
+  assert.equal(
+    Number(
+      mysqlQuery(
+        `SELECT COUNT(*) FROM app_capability_grant WHERE version_id=${assertNumericId(sessionRow[4], 'runtime version id')} AND capability='context.read' AND status='approved'`
+      )
+    ),
+    2,
+    'platform approval and tenant consent must both be persisted'
+  )
 
   addStep('verify sandboxed browser runtime')
   await verifyBrowserFlow({
@@ -1011,6 +1117,112 @@ async function main() {
     expectedContext,
     forbiddenIdentityValues: [ownerUsername, ownerEmail, ownerPhone]
   })
+
+  const rateLimitMetadata = await requestJson<any>(
+    backendUrl,
+    '/api/app-tenant/apps/runtime_starter/open',
+    { token: tenant.accessToken }
+  )
+  const rateLimitSession = readRuntimeSession(rateLimitMetadata)
+  const rateLimitSessionId = assertNumericId(
+    mysqlQuery(
+      `SELECT id FROM app_runtime_session WHERE token_hash='${hashRuntimeToken(rateLimitSession.token)}'`
+    ),
+    'rate-limited runtime session id'
+  )
+  addStep('verify runtime capability rate limiting')
+  for (let requestNumber = 1; requestNumber <= 2; requestNumber += 1) {
+    const response = await requestRuntimeContext(backendUrl, rateLimitSession.token)
+    assert.equal(response.status, 200, `runtime request ${requestNumber} within quota must succeed`)
+    assert.deepEqual(response.envelope?.data, expectedContext)
+  }
+  const rateLimited = await requestRuntimeContext(backendUrl, rateLimitSession.token)
+  assert.equal(rateLimited.status, 429)
+  assert.equal(Number(rateLimited.envelope?.code), 429)
+  assert.equal(rateLimited.envelope?.message, 'App runtime capability rate limit exceeded')
+  assert.ok(
+    Number((rateLimited.envelope as ApiEnvelope & { retry_after?: number })?.retry_after) >= 1 &&
+      Number((rateLimited.envelope as ApiEnvelope & { retry_after?: number })?.retry_after) <= 60,
+    'rate-limit response must expose a bounded retry_after'
+  )
+  assert.equal(
+    Number(
+      mysqlQuery(
+        `SELECT COUNT(*) FROM app_runtime_audit_log WHERE session_id=${rateLimitSessionId} AND reason_code='rate_limited'`
+      )
+    ),
+    1,
+    'one session capability window must persist only one rate-limit audit'
+  )
+
+  const otherUsername = `runtime_other_${suffix}`.slice(0, 60)
+  const otherPassword = `Ot${randomBytes(12).toString('hex')}7`
+  const otherPhone = `137${String(Date.now() + 1).slice(-8)}`
+  const otherEmail = `${otherUsername}@example.test`
+  for (const value of [otherUsername, otherPassword, otherPhone, otherEmail])
+    sensitiveValues.add(value)
+  const otherSignup = await requestJson<SignupData>(backendUrl, '/api/saas/signup', {
+    method: 'POST',
+    body: {
+      username: otherUsername,
+      password: otherPassword,
+      realname: `Other Owner ${suffix}`,
+      tenant_name: `Other Runtime E2E ${suffix}`,
+      phone: otherPhone,
+      email: otherEmail,
+      industry: 'software',
+      team_size: '1-10'
+    }
+  })
+  const otherTenantId = assertNumericId(otherSignup.tenantId, 'other tenant id')
+
+  addStep('verify cross-tenant runtime token denial')
+  mysqlQuery(`UPDATE app_runtime_session SET tenant_id=${otherTenantId} WHERE id=${sessionId}`)
+  await expectRuntimeDenied(backendUrl, firstSession.token, 'cross-tenant runtime token denial')
+  mysqlQuery(`UPDATE app_runtime_session SET tenant_id=${originalTenantId} WHERE id=${sessionId}`)
+
+  addStep('verify expired runtime token denial')
+  mysqlQuery(
+    `UPDATE app_runtime_session SET expires_time=DATE_SUB(NOW(), INTERVAL 1 SECOND) WHERE id=${sessionId}`
+  )
+  await expectRuntimeDenied(backendUrl, firstSession.token, 'expired runtime token denial')
+
+  const revokeMetadata = await requestJson<any>(
+    backendUrl,
+    '/api/app-tenant/apps/runtime_starter/open',
+    { token: tenant.accessToken }
+  )
+  const revokeSession = readRuntimeSession(revokeMetadata)
+  const revokeSessionId = assertNumericId(
+    mysqlQuery(
+      `SELECT id FROM app_runtime_session WHERE token_hash='${hashRuntimeToken(revokeSession.token)}'`
+    ),
+    'revoked runtime session id'
+  )
+  addStep('verify revoked runtime token denial')
+  mysqlQuery(
+    `UPDATE app_runtime_session SET revoked_time=NOW(), revoke_reason='e2e_revoked' WHERE id=${revokeSessionId}`
+  )
+  await expectRuntimeDenied(backendUrl, revokeSession.token, 'revoked runtime token denial')
+
+  const uninstallMetadata = await requestJson<any>(
+    backendUrl,
+    '/api/app-tenant/apps/runtime_starter/open',
+    { token: tenant.accessToken }
+  )
+  const uninstallSession = readRuntimeSession(uninstallMetadata)
+  addStep('verify uninstall runtime invalidation')
+  await requestJson(backendUrl, '/api/app-tenant/apps/runtime_starter/uninstall', {
+    method: 'POST',
+    token: tenant.accessToken,
+    body: {}
+  })
+  await expectRuntimeDenied(backendUrl, uninstallSession.token, 'uninstall runtime invalidation')
+
+  assert.ok(
+    Number(mysqlQuery('SELECT COUNT(*) FROM app_runtime_audit_log')) >= 5,
+    'runtime lifecycle must persist bounded allow and denial audits'
+  )
 }
 
 async function cleanupResources() {
