@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
+import { ArrayUnique, IsArray, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
 
 import type { AppPackageStatus, AppPackageType, AppPackageVisibility } from '../entities/app-package.entity';
 import type { AppVersionPublishStatus, AppVersionReviewStatus } from '../entities/app-package-version.entity';
@@ -229,4 +229,11 @@ export class ReviewAppPackageVersionDto {
   @IsString()
   @MaxLength(500)
   message?: string;
+
+  @ApiProperty({ required: false, type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  approved_capabilities?: string[];
 }

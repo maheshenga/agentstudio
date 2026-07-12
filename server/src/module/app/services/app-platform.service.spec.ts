@@ -2,11 +2,14 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import JSZip from 'jszip';
+import { DataSource } from 'typeorm';
 
+import { AppCapabilityGrantEntity } from '../entities/app-capability-grant.entity';
 import { AppPackageEntity } from '../entities/app-package.entity';
 import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
 import { AppReviewLogEntity } from '../entities/app-review-log.entity';
 import { AppManifestService } from './app-manifest.service';
+import { AppCapabilityPolicyService } from './app-capability-policy.service';
 import { AppPackageStorageService } from './app-package-storage.service';
 import { AppPlatformService } from './app-platform.service';
 
@@ -37,6 +40,22 @@ describe('AppPlatformService', () => {
   const manifestService = {
     validateStaticManifest: jest.fn(),
   };
+  const capabilityPolicy = {
+    approvePlatformCapabilities: jest.fn(),
+  };
+  const grantRepo = {};
+  const dataSource = {
+    transaction: jest.fn(async (callback) =>
+      callback({
+        getRepository: (entity) => {
+          if (entity === AppPackageEntity) return appRepo;
+          if (entity === AppPackageVersionEntity) return versionRepo;
+          if (entity === AppCapabilityGrantEntity) return grantRepo;
+          throw new Error('Unexpected transaction repository');
+        },
+      }),
+    ),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -55,6 +74,8 @@ describe('AppPlatformService', () => {
         { provide: getRepositoryToken(AppReviewLogEntity), useValue: reviewLogRepo },
         { provide: AppPackageStorageService, useValue: storageService },
         { provide: AppManifestService, useValue: manifestService },
+        { provide: AppCapabilityPolicyService, useValue: capabilityPolicy },
+        { provide: DataSource, useValue: dataSource },
       ],
     }).compile();
 
@@ -259,14 +280,18 @@ describe('AppPlatformService', () => {
       reviewStatus: 'pending',
       publishStatus: 'unpublished',
       entryFile: 'dist/index.html',
+      manifest: { permissions: ['runtime:context:read'] },
     });
     versionRepo.save.mockImplementation(async (value) => value);
 
-    await expect(service.approveVersion('job_board', '1.0.0', 'Looks safe', 66)).resolves.toMatchObject({
+    await expect(
+      service.approveVersion('job_board', '1.0.0', 'Looks safe', 66, ['context.read']),
+    ).resolves.toMatchObject({
       version: '1.0.0',
       review_status: 'approved',
       review_message: 'Looks safe',
       reviewer_id: 66,
+      approved_capabilities: ['context.read'],
     });
 
     expect(versionRepo.save).toHaveBeenCalledWith(
@@ -275,7 +300,18 @@ describe('AppPlatformService', () => {
         reviewMessage: 'Looks safe',
         reviewerId: 66,
         reviewTime: expect.any(Date),
+        approvedCapabilities: ['context.read'],
       }),
+    );
+    expect(capabilityPolicy.approvePlatformCapabilities).toHaveBeenCalledWith(
+      {
+        appId: 4,
+        versionId: 8,
+        requestedCapabilities: ['context.read'],
+        approvedCapabilities: ['context.read'],
+        operatorId: 66,
+      },
+      grantRepo,
     );
     expect(appRepo.save).toHaveBeenCalledWith(expect.objectContaining({ id: 4, status: 'approved' }));
     expect(reviewLogRepo.create).toHaveBeenCalledWith(
@@ -286,6 +322,26 @@ describe('AppPlatformService', () => {
         message: 'Looks safe',
         operatorId: 66,
       }),
+    );
+  });
+
+  it('stores a normalized platform capability snapshot', async () => {
+    appRepo.findOne.mockResolvedValue({ id: 4, code: 'job_board', status: 'pending_review' });
+    versionRepo.findOne.mockResolvedValue({
+      id: 8,
+      appId: 4,
+      version: '1.0.0',
+      reviewStatus: 'pending',
+      publishStatus: 'unpublished',
+      manifest: { permissions: ['runtime:context:read'] },
+    });
+    versionRepo.save.mockImplementation(async (value) => value);
+    capabilityPolicy.approvePlatformCapabilities.mockResolvedValue(['context.read']);
+
+    await service.approveVersion('job_board', '1.0.0', '', 66, ['context.read', 'context.read']);
+
+    expect(versionRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ approvedCapabilities: ['context.read'] }),
     );
   });
 

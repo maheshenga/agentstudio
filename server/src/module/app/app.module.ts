@@ -25,6 +25,7 @@ import { AppRuntimeSessionEntity } from './entities/app-runtime-session.entity';
 import { TenantAppInstallEntity } from './entities/tenant-app-install.entity';
 import { AppManifestService } from './services/app-manifest.service';
 import { AppAnalyticsService } from './services/app-analytics.service';
+import { AppCapabilityPolicyService } from './services/app-capability-policy.service';
 import { AppDeveloperService } from './services/app-developer.service';
 import { AppFactoryTemplateService } from './services/app-factory-template.service';
 import { AppFactoryService } from './services/app-factory.service';
@@ -65,6 +66,7 @@ import { AppTenantService } from './services/app-tenant.service';
   providers: [
     AppAnalyticsService,
     AppManifestService,
+    AppCapabilityPolicyService,
     AppDeveloperService,
     AppPackageStorageService,
     AppPlatformService,

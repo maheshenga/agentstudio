@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 
@@ -7,6 +7,7 @@ import { getTenantId } from '../../common/utils/tenant.util';
 import { ResultData } from '../../common/utils/result';
 import { User } from '../system/user/user.decorator';
 import type { UserDto } from '../system/user/user.decorator';
+import { InstallTenantAppDto, UpdateTenantAppCapabilitiesDto } from './dto/app-tenant.dto';
 import { AppTenantService } from './services/app-tenant.service';
 
 @ApiTags('App Tenant')
@@ -36,10 +37,36 @@ export class AppTenantController {
   @Post('apps/:code/install')
   @ApiOperation({ summary: 'Install tenant app' })
   @RequirePermission('app:tenant:install')
-  async install(@Param('code') code: string, @User() user: UserDto) {
+  async install(@Param('code') code: string, @Body() body: InstallTenantAppDto, @User() user: UserDto) {
     const tenantId = getTenantId();
     if (!tenantId) return ResultData.fail(401, 'Tenant context is required');
-    return ResultData.ok(await this.appTenantService.installApp(tenantId, code, user?.userId));
+    return ResultData.ok(
+      await this.appTenantService.installApp(tenantId, code, user?.userId, body?.capabilities || []),
+    );
+  }
+
+  @Get('apps/:code/capabilities')
+  @ApiOperation({ summary: 'Get tenant app capability consent' })
+  @RequirePermission('app:tenant:install')
+  async capabilities(@Param('code') code: string) {
+    const tenantId = getTenantId();
+    if (!tenantId) return ResultData.fail(401, 'Tenant context is required');
+    return ResultData.ok(await this.appTenantService.getCapabilities(tenantId, code));
+  }
+
+  @Put('apps/:code/capabilities')
+  @ApiOperation({ summary: 'Update tenant app capability consent' })
+  @RequirePermission('app:tenant:install')
+  async updateCapabilities(
+    @Param('code') code: string,
+    @Body() body: UpdateTenantAppCapabilitiesDto,
+    @User() user: UserDto,
+  ) {
+    const tenantId = getTenantId();
+    if (!tenantId) return ResultData.fail(401, 'Tenant context is required');
+    return ResultData.ok(
+      await this.appTenantService.updateCapabilities(tenantId, code, body.capabilities, user?.userId),
+    );
   }
 
   @Post('apps/:code/uninstall')

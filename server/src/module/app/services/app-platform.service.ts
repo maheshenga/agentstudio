@@ -3,10 +3,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'crypto';
 import JSZip from 'jszip';
 import * as path from 'path';
-import { In, IsNull, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Repository } from 'typeorm';
 
 import { normalizeExternalHttpUrl } from '../../../common/utils/safe-url.util';
+import { normalizeAppCapabilities, normalizeApprovedCapabilities } from '../app-runtime.constants';
 import { CreateAppPackageDto, UpdateAppPackageDto } from '../dto/app-platform.dto';
+import { AppCapabilityGrantEntity } from '../entities/app-capability-grant.entity';
 import { AppPackageEntity, AppPackageStatus, AppPackageType } from '../entities/app-package.entity';
 import {
   AppPackageVersionEntity,
@@ -15,6 +17,7 @@ import {
 } from '../entities/app-package-version.entity';
 import { AppReviewAction, AppReviewLogEntity } from '../entities/app-review-log.entity';
 import { AppManifestService, type StaticAppManifest } from './app-manifest.service';
+import { AppCapabilityPolicyService } from './app-capability-policy.service';
 import { AppPackageStorageService } from './app-package-storage.service';
 
 export interface AppPlatformListQuery {
@@ -41,6 +44,8 @@ export class AppPlatformService {
     private readonly reviewLogRepo: Repository<AppReviewLogEntity>,
     private readonly storage: AppPackageStorageService,
     private readonly manifestService: AppManifestService,
+    private readonly capabilityPolicy: AppCapabilityPolicyService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async listApps(query: AppPlatformListQuery = {}) {
@@ -277,21 +282,43 @@ export class AppPlatformService {
     return this.toVersionResponse(savedVersion);
   }
 
-  async approveVersion(code: string, version: string, message = '', operatorId?: number) {
+  async approveVersion(
+    code: string,
+    version: string,
+    message = '',
+    operatorId?: number,
+    approvedCapabilities?: string[],
+  ) {
     const app = await this.findApp(code);
     const appVersion = await this.findVersion(app.id, version);
     if (appVersion.reviewStatus !== 'pending') {
       throw new BadRequestException('Only pending versions can be approved');
     }
 
-    appVersion.reviewStatus = 'approved';
-    appVersion.reviewMessage = message || '';
-    appVersion.reviewerId = operatorId ?? null;
-    appVersion.reviewTime = new Date();
-    this.updateAppReviewStatus(app, 'approved');
+    const requestedCapabilities = normalizeAppCapabilities(appVersion.manifest);
+    const effectiveApproval = normalizeApprovedCapabilities(approvedCapabilities ?? requestedCapabilities);
+    const savedVersion = await this.dataSource.transaction(async (manager) => {
+      appVersion.reviewStatus = 'approved';
+      appVersion.reviewMessage = message || '';
+      appVersion.reviewerId = operatorId ?? null;
+      appVersion.reviewTime = new Date();
+      appVersion.approvedCapabilities = effectiveApproval;
+      this.updateAppReviewStatus(app, 'approved');
 
-    const savedVersion = await this.versionRepo.save(appVersion);
-    await this.appRepo.save(app);
+      await this.capabilityPolicy.approvePlatformCapabilities(
+        {
+          appId: app.id,
+          versionId: appVersion.id,
+          requestedCapabilities,
+          approvedCapabilities: effectiveApproval,
+          operatorId,
+        },
+        manager.getRepository(AppCapabilityGrantEntity),
+      );
+      const saved = await manager.getRepository(AppPackageVersionEntity).save(appVersion);
+      await manager.getRepository(AppPackageEntity).save(app);
+      return saved;
+    });
     await this.recordAppEvent(app.id, appVersion.id, 'approve', message || `Approved version ${version}`, operatorId);
     return this.toVersionResponse(savedVersion);
   }
@@ -565,6 +592,8 @@ export class AppPlatformService {
       app_id: version.appId,
       version: version.version,
       manifest: version.manifest || null,
+      requested_capabilities: normalizeAppCapabilities(version.manifest),
+      approved_capabilities: version.approvedCapabilities || [],
       package_path: version.packagePath || '',
       publish_path: version.publishPath || '',
       entry_file: version.entryFile || '',

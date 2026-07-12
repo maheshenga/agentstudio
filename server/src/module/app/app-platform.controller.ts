@@ -90,7 +90,9 @@ export class AppPlatformController {
     @User() user: UserDto,
   ) {
     return this.runOutsideTenant(user, () =>
-      this.appPlatformService.approveVersion(code, version, body.message || '', user?.userId).then((data) => ResultData.ok(data)),
+      this.appPlatformService
+        .approveVersion(code, version, body.message || '', user?.userId, body.approved_capabilities)
+        .then((data) => ResultData.ok(data)),
     );
   }
 

@@ -1,14 +1,17 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Repository } from 'typeorm';
 
 import { SaasModuleService } from '../../saas/services/saas-module.service';
 import { SystemModuleAccessService } from '../../system-module/services/system-module-access.service';
+import { normalizeAppCapabilities } from '../app-runtime.constants';
+import { AppCapabilityGrantEntity } from '../entities/app-capability-grant.entity';
 import { AppOpenLogEntity } from '../entities/app-open-log.entity';
 import { AppPackageEntity } from '../entities/app-package.entity';
 import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
 import { TenantAppInstallEntity } from '../entities/tenant-app-install.entity';
 import { AppRuntimeContextService } from './app-runtime-context.service';
+import { AppCapabilityPolicyService } from './app-capability-policy.service';
 
 export interface AppOpenClientInfo {
   ip?: string;
@@ -58,6 +61,8 @@ export class AppTenantService {
     private readonly saasModuleService: SaasModuleService,
     private readonly systemModuleAccessService: SystemModuleAccessService,
     private readonly appRuntimeContextService: AppRuntimeContextService,
+    private readonly capabilityPolicy: AppCapabilityPolicyService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async listMarketplace(tenantId: number) {
@@ -108,7 +113,7 @@ export class AppTenantService {
     );
   }
 
-  async installApp(tenantId: number, code: string, userId?: number) {
+  async installApp(tenantId: number, code: string, userId?: number, capabilities: string[] = []) {
     const app = await this.findPublishedApp(code);
     this.assertAvailability(await this.getAppAvailability(tenantId, app));
     const version = app.type === 'static' ? await this.findPublishedVersion(app.id) : null;
@@ -137,7 +142,57 @@ export class AppTenantService {
     install.installedTime = installedTime;
     install.deleteTime = null;
 
-    return this.toInstallResponse(await this.installRepo.save(install));
+    if (capabilities.length && !version) {
+      throw new BadRequestException('App has no published version for capability consent');
+    }
+
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const savedInstall = await manager.getRepository(TenantAppInstallEntity).save(install);
+      if (version) {
+        await this.capabilityPolicy.setTenantCapabilities(
+          {
+            tenantId,
+            appId: app.id,
+            versionId: version.id,
+            capabilities,
+            operatorId: userId,
+          },
+          manager.getRepository(AppCapabilityGrantEntity),
+        );
+      }
+      return savedInstall;
+    });
+    return this.toInstallResponse(saved);
+  }
+
+  async getCapabilities(tenantId: number, code: string) {
+    const { version } = await this.getInstalledPublishedVersion(tenantId, code);
+    return this.capabilityPolicy.getCapabilityState(
+      tenantId,
+      version.id,
+      normalizeAppCapabilities(version.manifest),
+    );
+  }
+
+  async updateCapabilities(tenantId: number, code: string, capabilities: string[], operatorId?: number) {
+    const { app, version } = await this.getInstalledPublishedVersion(tenantId, code);
+    await this.dataSource.transaction((manager) =>
+      this.capabilityPolicy.setTenantCapabilities(
+        {
+          tenantId,
+          appId: app.id,
+          versionId: version.id,
+          capabilities,
+          operatorId,
+        },
+        manager.getRepository(AppCapabilityGrantEntity),
+      ),
+    );
+    return this.capabilityPolicy.getCapabilityState(
+      tenantId,
+      version.id,
+      normalizeAppCapabilities(version.manifest),
+    );
   }
 
   async uninstallApp(tenantId: number, code: string) {
@@ -378,6 +433,20 @@ export class AppTenantService {
       throw new BadRequestException('App has no published version');
     }
     return version;
+  }
+
+  private async getInstalledPublishedVersion(tenantId: number, code: string) {
+    const app = await this.findPublishedApp(code);
+    const install = await this.installRepo.findOne({
+      where: { tenantId, appId: app.id, enabled: 1, deleteTime: IsNull() },
+    });
+    if (!install) {
+      throw new BadRequestException('App is not installed');
+    }
+    const version = install.versionId
+      ? await this.findVersionById(app.id, Number(install.versionId))
+      : await this.findPublishedVersion(app.id);
+    return { app, install, version };
   }
 
   private async resolveOpenVersion(app: AppPackageEntity, install: TenantAppInstallEntity) {

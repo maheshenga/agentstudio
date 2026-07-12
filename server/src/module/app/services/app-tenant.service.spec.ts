@@ -1,12 +1,15 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 
+import { AppCapabilityGrantEntity } from '../entities/app-capability-grant.entity';
 import { AppOpenLogEntity } from '../entities/app-open-log.entity';
 import { AppPackageEntity } from '../entities/app-package.entity';
 import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
 import { TenantAppInstallEntity } from '../entities/tenant-app-install.entity';
 import { AppRuntimeContextService } from './app-runtime-context.service';
+import { AppCapabilityPolicyService } from './app-capability-policy.service';
 import { AppTenantService } from './app-tenant.service';
 import { SaasModuleService } from '../../saas/services/saas-module.service';
 import { SystemModuleAccessService } from '../../system-module/services/system-module-access.service';
@@ -41,6 +44,22 @@ describe('AppTenantService', () => {
   const appRuntimeContextService = {
     buildBootstrap: jest.fn(),
   };
+  const capabilityPolicy = {
+    getCapabilityState: jest.fn(),
+    setTenantCapabilities: jest.fn(),
+  };
+  const grantRepo = {};
+  const dataSource = {
+    transaction: jest.fn(async (callback) =>
+      callback({
+        getRepository: (entity) => {
+          if (entity === TenantAppInstallEntity) return installRepo;
+          if (entity === AppCapabilityGrantEntity) return grantRepo;
+          throw new Error('Unexpected transaction repository');
+        },
+      }),
+    ),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -64,6 +83,13 @@ describe('AppTenantService', () => {
     });
     systemModuleAccessService.assertModuleAccess.mockResolvedValue(true);
     appRuntimeContextService.buildBootstrap.mockResolvedValue(null);
+    capabilityPolicy.getCapabilityState.mockResolvedValue({
+      requested: [],
+      platform_approved: [],
+      tenant_approved: [],
+      effective: [],
+    });
+    capabilityPolicy.setTenantCapabilities.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -75,6 +101,8 @@ describe('AppTenantService', () => {
         { provide: SaasModuleService, useValue: saasModuleService },
         { provide: SystemModuleAccessService, useValue: systemModuleAccessService },
         { provide: AppRuntimeContextService, useValue: appRuntimeContextService },
+        { provide: AppCapabilityPolicyService, useValue: capabilityPolicy },
+        { provide: DataSource, useValue: dataSource },
       ],
     }).compile();
 
@@ -274,6 +302,122 @@ describe('AppTenantService', () => {
         installedTime: expect.any(Date),
       }),
     );
+  });
+
+  it('installs and records first tenant capability consent in one transaction', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 1,
+      code: 'job_board',
+      type: 'static',
+      status: 'published',
+      visibility: 'marketplace',
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 9,
+      appId: 1,
+      version: '1.0.0',
+      publishStatus: 'published',
+      reviewStatus: 'approved',
+      manifest: { permissions: ['runtime:context:read'] },
+    });
+    installRepo.findOne.mockResolvedValue(null);
+
+    await service.installApp(23, 'job_board', 7, ['context.read']);
+
+    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+    expect(capabilityPolicy.setTenantCapabilities).toHaveBeenCalledWith(
+      {
+        tenantId: 23,
+        appId: 1,
+        versionId: 9,
+        capabilities: ['context.read'],
+        operatorId: 7,
+      },
+      grantRepo,
+    );
+  });
+
+  it('returns capability state only for an active tenant installation', async () => {
+    appRepo.findOne.mockResolvedValue({ id: 1, code: 'job_board', status: 'published' });
+    installRepo.findOne.mockResolvedValue({
+      id: 5,
+      tenantId: 23,
+      appId: 1,
+      versionId: 9,
+      enabled: 1,
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 9,
+      appId: 1,
+      version: '1.0.0',
+      publishStatus: 'published',
+      reviewStatus: 'approved',
+      manifest: { permissions: ['runtime:context:read'] },
+    });
+    capabilityPolicy.getCapabilityState.mockResolvedValue({
+      requested: ['context.read'],
+      platform_approved: ['context.read'],
+      tenant_approved: [],
+      effective: [],
+    });
+
+    await expect(service.getCapabilities(23, 'job_board')).resolves.toEqual({
+      requested: ['context.read'],
+      platform_approved: ['context.read'],
+      tenant_approved: [],
+      effective: [],
+    });
+    expect(capabilityPolicy.getCapabilityState).toHaveBeenCalledWith(23, 9, ['context.read']);
+  });
+
+  it('updates tenant capability consent for the installed published version', async () => {
+    appRepo.findOne.mockResolvedValue({ id: 1, code: 'job_board', status: 'published' });
+    installRepo.findOne.mockResolvedValue({
+      id: 5,
+      tenantId: 23,
+      appId: 1,
+      versionId: 9,
+      enabled: 1,
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 9,
+      appId: 1,
+      version: '1.0.0',
+      publishStatus: 'published',
+      reviewStatus: 'approved',
+      manifest: { permissions: ['runtime:context:read'] },
+    });
+    capabilityPolicy.getCapabilityState.mockResolvedValue({
+      requested: ['context.read'],
+      platform_approved: ['context.read'],
+      tenant_approved: ['context.read'],
+      effective: ['context.read'],
+    });
+
+    await expect(
+      service.updateCapabilities(23, 'job_board', ['context.read'], 7),
+    ).resolves.toMatchObject({ effective: ['context.read'] });
+    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+    expect(capabilityPolicy.setTenantCapabilities).toHaveBeenCalledWith(
+      {
+        tenantId: 23,
+        appId: 1,
+        versionId: 9,
+        capabilities: ['context.read'],
+        operatorId: 7,
+      },
+      grantRepo,
+    );
+  });
+
+  it('rejects capability changes when the tenant has no active installation', async () => {
+    appRepo.findOne.mockResolvedValue({ id: 1, code: 'job_board', status: 'published' });
+    installRepo.findOne.mockResolvedValue(null);
+
+    await expect(service.updateCapabilities(23, 'job_board', ['context.read'], 7)).rejects.toThrow(
+      'App is not installed',
+    );
+    expect(capabilityPolicy.setTenantCapabilities).not.toHaveBeenCalled();
   });
 
   it('rejects installing a published app when the current plan lacks the required SaaS module', async () => {
