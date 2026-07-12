@@ -262,6 +262,7 @@ assert.doesNotMatch(
 const webRoot = process.cwd()
 const runnerSource = readFileSync(resolve(webRoot, 'src/views/app-center/open/index.vue'), 'utf8')
 const apiSource = readFileSync(resolve(webRoot, 'src/api/app-marketplace.ts'), 'utf8')
+const runtimeApiSource = readFileSync(resolve(webRoot, 'src/api/app-runtime.ts'), 'utf8')
 
 for (const [source, token, label] of [
   [runnerSource, 'ref="appFrame"', 'app runner iframe binding'],
@@ -279,10 +280,24 @@ for (const [source, token, label] of [
     'runtime listener cleanup'
   ],
   [runnerSource, 'loadSequence', 'stale metadata response guard'],
+  [runnerSource, 'runtimeAbortController', 'runtime request cancellation'],
+  [runnerSource, 'fetchAppRuntimeContext', 'session-backed runtime context'],
+  [runnerSource, 'parseAppRuntimeRequest', 'synchronous runtime request validation'],
+  [runnerSource, 'createAppRuntimeContextResponse', 'correlated runtime success response'],
+  [runnerSource, 'metadata.value.runtime?.session', 'optional runtime session branch'],
+  [runnerSource, 'resolveAppRuntimeRequest', 'legacy inline bootstrap fallback'],
   [runnerSource, "item !== 'allow-same-origin'", 'same-origin sandbox rejection'],
-  [apiSource, 'runtime: AppRuntimeBootstrap | null', 'open metadata runtime contract']
+  [apiSource, 'runtime: AppRuntimeBootstrap | null', 'open metadata runtime contract'],
+  [runtimeApiSource, "url: '/api/app-runtime/context'", 'dedicated runtime endpoint'],
+  [runtimeApiSource, "headers: { 'X-App-Runtime-Token': token }", 'dedicated runtime header'],
+  [runtimeApiSource, 'signal', 'runtime abort signal']
 ] as const) {
   assert.ok(source.includes(token), `${label} must include ${token}`)
+}
+
+for (const forbidden of ['localStorage', 'sessionStorage', 'document.cookie', 'URLSearchParams']) {
+  assert.ok(!runnerSource.includes(forbidden), `runtime runner must not persist tokens via ${forbidden}`)
+  assert.ok(!runtimeApiSource.includes(forbidden), `runtime API must not persist tokens via ${forbidden}`)
 }
 
 console.log('App runtime readiness verified.')

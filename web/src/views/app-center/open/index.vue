@@ -59,7 +59,13 @@
   import { ElMessage } from 'element-plus'
   import { Back, Loading, Refresh } from '@element-plus/icons-vue'
   import { fetchTenantAppOpenMetadata, type AppOpenMetadata } from '@/api/app-marketplace'
-  import { resolveAppRuntimeRequest } from '@/utils/app-runtime'
+  import { fetchAppRuntimeContext } from '@/api/app-runtime'
+  import {
+    createAppRuntimeContextResponse,
+    createAppRuntimeErrorResponse,
+    parseAppRuntimeRequest,
+    resolveAppRuntimeRequest
+  } from '@/utils/app-runtime'
 
   defineOptions({ name: 'AppCenterOpenPage' })
 
@@ -70,6 +76,7 @@
   const metadata = ref<AppOpenMetadata | null>(null)
   const appFrame = ref<HTMLIFrameElement | null>(null)
   let loadSequence = 0
+  const runtimeAbortControllers = new Set<AbortController>()
   const safeSandbox = computed(() => {
     const raw = metadata.value?.sandbox || 'allow-scripts allow-forms allow-popups allow-downloads'
     return raw
@@ -86,6 +93,7 @@
   async function loadOpenMetadata() {
     const sequence = ++loadSequence
     const code = currentCode()
+    abortRuntimeRequests()
     metadata.value = null
     loadError.value = ''
     if (!code) {
@@ -112,13 +120,45 @@
     }
   }
 
-  function handleRuntimeMessage(event: MessageEvent<unknown>) {
+  async function handleRuntimeMessage(event: MessageEvent<unknown>) {
     const frameWindow = appFrame.value?.contentWindow
     if (!frameWindow || event.source !== frameWindow || metadata.value?.type !== 'static') return
 
-    const response = resolveAppRuntimeRequest(event.data, metadata.value.runtime)
-    if (!response) return
-    frameWindow.postMessage(response, '*')
+    const parsed = parseAppRuntimeRequest(event.data)
+    if (!parsed) return
+    if (parsed.response) {
+      frameWindow.postMessage(parsed.response, '*')
+      return
+    }
+
+    const session = metadata.value.runtime?.session
+    if (!session) {
+      const response = resolveAppRuntimeRequest(event.data, metadata.value.runtime)
+      if (response) frameWindow.postMessage(response, '*')
+      return
+    }
+
+    const runtimeAbortController = new AbortController()
+    runtimeAbortControllers.add(runtimeAbortController)
+    try {
+      const context = await fetchAppRuntimeContext(session.token, runtimeAbortController.signal)
+      if (runtimeAbortController.signal.aborted || event.source !== appFrame.value?.contentWindow) return
+      frameWindow.postMessage(
+        createAppRuntimeContextResponse(parsed.request.request_id, context),
+        '*'
+      )
+    } catch (error: any) {
+      if (runtimeAbortController.signal.aborted || event.source !== appFrame.value?.contentWindow) return
+      const code = Number(error?.code) === 403 ? 'scope_denied' : 'context_unavailable'
+      frameWindow.postMessage(createAppRuntimeErrorResponse(parsed.request.request_id, code), '*')
+    } finally {
+      runtimeAbortControllers.delete(runtimeAbortController)
+    }
+  }
+
+  function abortRuntimeRequests() {
+    for (const controller of runtimeAbortControllers) controller.abort()
+    runtimeAbortControllers.clear()
   }
 
   function goBack() {
@@ -143,6 +183,8 @@
 
   onBeforeUnmount(() => {
     loadSequence += 1
+    abortRuntimeRequests()
+    metadata.value = null
     window.removeEventListener('message', handleRuntimeMessage)
   })
 </script>

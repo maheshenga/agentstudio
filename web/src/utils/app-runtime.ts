@@ -12,7 +12,19 @@ export interface AppRuntimeBootstrap {
   protocol_version: typeof APP_RUNTIME_PROTOCOL_VERSION
   scopes: Array<typeof APP_RUNTIME_CONTEXT_SCOPE>
   context: AppRuntimeContext | null
+  session?: {
+    token: string
+    expires_at: string
+  }
 }
+
+export interface ParsedAppRuntimeRequest {
+  request_id: string
+}
+
+export type AppRuntimeRequestParseResult =
+  | { request: ParsedAppRuntimeRequest; response?: never }
+  | { request?: never; response: AppRuntimeErrorResponse }
 
 export interface AppRuntimeSuccessResponse {
   channel: typeof APP_RUNTIME_CHANNEL
@@ -83,7 +95,10 @@ function sanitizeRuntimeContext(value: unknown): AppRuntimeContext | null {
   }
 }
 
-function errorResponse(requestId: string, code: AppRuntimeErrorCode): AppRuntimeErrorResponse {
+export function createAppRuntimeErrorResponse(
+  requestId: string,
+  code: AppRuntimeErrorCode
+): AppRuntimeErrorResponse {
   return {
     channel: APP_RUNTIME_CHANNEL,
     version: APP_RUNTIME_PROTOCOL_VERSION,
@@ -94,39 +109,50 @@ function errorResponse(requestId: string, code: AppRuntimeErrorCode): AppRuntime
   }
 }
 
-export function resolveAppRuntimeRequest(
-  message: unknown,
-  bootstrap: AppRuntimeBootstrap | null
-): AppRuntimeResponse | null {
+export function parseAppRuntimeRequest(message: unknown): AppRuntimeRequestParseResult | null {
   if (!isPlainRecord(message)) return null
-  const request = message
-  if (request.channel !== APP_RUNTIME_CHANNEL) return null
-  const rawRequestId = typeof request.request_id === 'string' ? request.request_id : ''
+  if (message.channel !== APP_RUNTIME_CHANNEL) return null
+  const rawRequestId = typeof message.request_id === 'string' ? message.request_id : ''
   const requestId = rawRequestId.trim()
   if (!requestId || rawRequestId.length > 100) return null
-  if (request.version !== APP_RUNTIME_PROTOCOL_VERSION) {
-    return errorResponse(requestId, 'unsupported_protocol')
+  if (message.version !== APP_RUNTIME_PROTOCOL_VERSION) {
+    return { response: createAppRuntimeErrorResponse(requestId, 'unsupported_protocol') }
   }
-  if (request.type !== 'context.get') {
-    return errorResponse(requestId, 'unsupported_request')
+  if (message.type !== 'context.get') {
+    return { response: createAppRuntimeErrorResponse(requestId, 'unsupported_request') }
   }
-  if (!bootstrap || bootstrap.protocol_version !== APP_RUNTIME_PROTOCOL_VERSION) {
-    return errorResponse(requestId, 'context_unavailable')
-  }
-  if (!Array.isArray(bootstrap.scopes) || !bootstrap.scopes.includes(APP_RUNTIME_CONTEXT_SCOPE)) {
-    return errorResponse(requestId, 'scope_denied')
-  }
-  const context = sanitizeRuntimeContext(bootstrap.context)
-  if (!context) {
-    return errorResponse(requestId, 'context_unavailable')
-  }
+  return { request: { request_id: requestId } }
+}
 
+export function createAppRuntimeContextResponse(
+  requestId: string,
+  context: unknown
+): AppRuntimeResponse {
+  const sanitized = sanitizeRuntimeContext(context)
+  if (!sanitized) return createAppRuntimeErrorResponse(requestId, 'context_unavailable')
   return {
     channel: APP_RUNTIME_CHANNEL,
     version: APP_RUNTIME_PROTOCOL_VERSION,
     type: 'context.result',
     request_id: requestId,
     ok: true,
-    data: context
+    data: sanitized
   }
+}
+
+export function resolveAppRuntimeRequest(
+  message: unknown,
+  bootstrap: AppRuntimeBootstrap | null
+): AppRuntimeResponse | null {
+  const parsed = parseAppRuntimeRequest(message)
+  if (!parsed) return null
+  if (parsed.response) return parsed.response
+  const requestId = parsed.request.request_id
+  if (!bootstrap || bootstrap.protocol_version !== APP_RUNTIME_PROTOCOL_VERSION) {
+    return createAppRuntimeErrorResponse(requestId, 'context_unavailable')
+  }
+  if (!Array.isArray(bootstrap.scopes) || !bootstrap.scopes.includes(APP_RUNTIME_CONTEXT_SCOPE)) {
+    return createAppRuntimeErrorResponse(requestId, 'scope_denied')
+  }
+  return createAppRuntimeContextResponse(requestId, bootstrap.context)
 }
