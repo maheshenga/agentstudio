@@ -11,6 +11,7 @@ import { AppDeveloperController } from './app-developer.controller';
 import { AppFactoryController } from './app-factory.controller';
 import { AppPlatformReviewController } from './app-platform-review.controller';
 import { AppPlatformController } from './app-platform.controller';
+import { AppRuntimeController } from './app-runtime.controller';
 import { AppTenantController } from './app-tenant.controller';
 import { AppFactoryModuleEntity } from './entities/app-factory-module.entity';
 import { AppFactoryPublishLogEntity } from './entities/app-factory-publish-log.entity';
@@ -32,6 +33,7 @@ import { AppFactoryService } from './services/app-factory.service';
 import { AppPackageStorageService } from './services/app-package-storage.service';
 import { AppPlatformService } from './services/app-platform.service';
 import { AppRuntimeContextService } from './services/app-runtime-context.service';
+import { AppRuntimeSessionService } from './services/app-runtime-session.service';
 import { AppTenantService } from './services/app-tenant.service';
 
 @Module({
@@ -59,6 +61,7 @@ import { AppTenantService } from './services/app-tenant.service';
     AppAnalyticsController,
     AppPlatformController,
     AppPlatformReviewController,
+    AppRuntimeController,
     AppTenantController,
     AppFactoryController,
     AppDeveloperController,
@@ -71,6 +74,7 @@ import { AppTenantService } from './services/app-tenant.service';
     AppPackageStorageService,
     AppPlatformService,
     AppRuntimeContextService,
+    AppRuntimeSessionService,
     AppTenantService,
     AppFactoryService,
     AppFactoryTemplateService,

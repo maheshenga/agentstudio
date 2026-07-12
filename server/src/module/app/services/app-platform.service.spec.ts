@@ -11,6 +11,7 @@ import { AppReviewLogEntity } from '../entities/app-review-log.entity';
 import { AppManifestService } from './app-manifest.service';
 import { AppCapabilityPolicyService } from './app-capability-policy.service';
 import { AppPackageStorageService } from './app-package-storage.service';
+import { AppRuntimeSessionService } from './app-runtime-session.service';
 import { AppPlatformService } from './app-platform.service';
 
 describe('AppPlatformService', () => {
@@ -43,6 +44,7 @@ describe('AppPlatformService', () => {
   const capabilityPolicy = {
     approvePlatformCapabilities: jest.fn(),
   };
+  const runtimeSessionService = { revokeVersion: jest.fn() };
   const grantRepo = {};
   const dataSource = {
     transaction: jest.fn(async (callback) =>
@@ -65,6 +67,7 @@ describe('AppPlatformService', () => {
     storageService.getPublicPrefix.mockReturnValue('/apps-static/');
     reviewLogRepo.create.mockImplementation((value) => ({ ...value }));
     reviewLogRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 1, ...value }));
+    runtimeSessionService.revokeVersion.mockResolvedValue(1);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -75,6 +78,7 @@ describe('AppPlatformService', () => {
         { provide: AppPackageStorageService, useValue: storageService },
         { provide: AppManifestService, useValue: manifestService },
         { provide: AppCapabilityPolicyService, useValue: capabilityPolicy },
+        { provide: AppRuntimeSessionService, useValue: runtimeSessionService },
         { provide: DataSource, useValue: dataSource },
       ],
     }).compile();
@@ -770,6 +774,7 @@ describe('AppPlatformService', () => {
     });
 
     expect(versionRepo.save).toHaveBeenCalledWith(expect.objectContaining({ publishStatus: 'unpublished_retired' }));
+    expect(runtimeSessionService.revokeVersion).toHaveBeenCalledWith(8, 'unpublished');
     expect(appRepo.save).toHaveBeenCalledWith(expect.objectContaining({ status: 'approved', entryUrl: '' }));
     expect(reviewLogRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -834,6 +839,7 @@ describe('AppPlatformService', () => {
     });
 
     expect(versionRepo.save).toHaveBeenCalledWith(expect.objectContaining({ id: 9, publishStatus: 'unpublished_retired' }));
+    expect(runtimeSessionService.revokeVersion).toHaveBeenCalledWith(9, 'rollback_retired');
     expect(versionRepo.save).toHaveBeenCalledWith(expect.objectContaining({ id: 8, publishStatus: 'published' }));
     expect(appRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({

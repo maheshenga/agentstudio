@@ -182,4 +182,30 @@ describe('AppRuntimeContextService', () => {
       expect.objectContaining({ select: { id: true, realname: true } }),
     );
   });
+
+  it('rebuilds sanitized context from an authorized runtime session binding', async () => {
+    const appRepo = { findOne: jest.fn().mockResolvedValue(staticApp) };
+    const versionRepo = { findOne: jest.fn().mockResolvedValue(scopedVersion) };
+    tenantRepo.findOne.mockResolvedValue({ id: 23, tenantName: 'Acme', status: 1 });
+    userRepo.findOne.mockResolvedValue({ id: 91, realname: 'Owner', status: 1 });
+    membershipRepo.findOne.mockResolvedValue({ id: 7, tenantId: 23, userId: 91 });
+    service = new AppRuntimeContextService(
+      tenantRepo as any,
+      userRepo as any,
+      membershipRepo as any,
+      appRepo as any,
+      versionRepo as any,
+    );
+
+    await expect(
+      service.buildAuthorizedContext({ tenantId: 23, userId: 91, appId: 10, versionId: 20 }),
+    ).resolves.toEqual({
+      tenant: { id: '23', name: 'Acme' },
+      user: { id: '91', display_name: 'Owner' },
+      app: { code: 'job_board', name: 'Job Board', version: '1.2.0' },
+    });
+    expect(appRepo.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: 10, status: 'published' }) }),
+    );
+  });
 });

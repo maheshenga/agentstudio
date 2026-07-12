@@ -9,6 +9,7 @@ import { AppPackageEntity } from '../entities/app-package.entity';
 import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
 import { TenantAppInstallEntity } from '../entities/tenant-app-install.entity';
 import { AppRuntimeContextService } from './app-runtime-context.service';
+import { AppRuntimeSessionService } from './app-runtime-session.service';
 import { AppCapabilityPolicyService } from './app-capability-policy.service';
 import { AppTenantService } from './app-tenant.service';
 import { SaasModuleService } from '../../saas/services/saas-module.service';
@@ -43,6 +44,11 @@ describe('AppTenantService', () => {
   };
   const appRuntimeContextService = {
     buildBootstrap: jest.fn(),
+  };
+  const appRuntimeSessionService = {
+    isEnabled: jest.fn(),
+    issue: jest.fn(),
+    revokeInstall: jest.fn(),
   };
   const capabilityPolicy = {
     getCapabilityState: jest.fn(),
@@ -83,6 +89,13 @@ describe('AppTenantService', () => {
     });
     systemModuleAccessService.assertModuleAccess.mockResolvedValue(true);
     appRuntimeContextService.buildBootstrap.mockResolvedValue(null);
+    appRuntimeSessionService.isEnabled.mockReturnValue(false);
+    appRuntimeSessionService.issue.mockResolvedValue({
+      token: 'runtime-token',
+      expires_at: '2026-07-12T07:00:00.000Z',
+      capabilities: ['context.read'],
+    });
+    appRuntimeSessionService.revokeInstall.mockResolvedValue(1);
     capabilityPolicy.getCapabilityState.mockResolvedValue({
       requested: [],
       platform_approved: [],
@@ -101,6 +114,7 @@ describe('AppTenantService', () => {
         { provide: SaasModuleService, useValue: saasModuleService },
         { provide: SystemModuleAccessService, useValue: systemModuleAccessService },
         { provide: AppRuntimeContextService, useValue: appRuntimeContextService },
+        { provide: AppRuntimeSessionService, useValue: appRuntimeSessionService },
         { provide: AppCapabilityPolicyService, useValue: capabilityPolicy },
         { provide: DataSource, useValue: dataSource },
       ],
@@ -572,6 +586,96 @@ describe('AppTenantService', () => {
     );
   });
 
+  it('issues a short-lived runtime session instead of inline context when enabled', async () => {
+    appRuntimeSessionService.isEnabled.mockReturnValue(true);
+    appRepo.findOne.mockResolvedValue({
+      id: 1,
+      code: 'job_board',
+      name: 'Job Board',
+      type: 'static',
+      status: 'published',
+      entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
+    });
+    installRepo.findOne.mockResolvedValue({ id: 4, tenantId: 23, appId: 1, versionId: 9, enabled: 1 });
+    versionRepo.findOne.mockResolvedValue({
+      id: 9,
+      appId: 1,
+      version: '1.0.0',
+      publishStatus: 'published',
+      reviewStatus: 'approved',
+      manifest: { permissions: ['runtime:context:read'] },
+    });
+    capabilityPolicy.getCapabilityState.mockResolvedValue({
+      requested: ['context.read'],
+      platform_approved: ['context.read'],
+      tenant_approved: ['context.read'],
+      effective: ['context.read'],
+    });
+    appRuntimeContextService.buildBootstrap.mockResolvedValue({
+      protocol_version: 1,
+      scopes: ['runtime:context:read'],
+      context: { tenant: { id: '23' } },
+    });
+
+    await expect(service.getOpenMetadata(23, 'job_board', 7)).resolves.toMatchObject({
+      runtime: {
+        protocol_version: 1,
+        scopes: ['runtime:context:read'],
+        context: null,
+        session: { token: 'runtime-token', expires_at: '2026-07-12T07:00:00.000Z' },
+      },
+    });
+    expect(appRuntimeSessionService.issue).toHaveBeenCalledWith({
+      tenantId: 23,
+      userId: 7,
+      appId: 1,
+      versionId: 9,
+      installId: 4,
+      capabilities: ['context.read'],
+    });
+  });
+
+  it('omits a session when enabled but no capability is effectively granted', async () => {
+    appRuntimeSessionService.isEnabled.mockReturnValue(true);
+    appRepo.findOne.mockResolvedValue({ id: 1, code: 'job_board', name: 'Job Board', type: 'static', status: 'published' });
+    installRepo.findOne.mockResolvedValue({ id: 4, tenantId: 23, appId: 1, versionId: 9, enabled: 1 });
+    versionRepo.findOne.mockResolvedValue({
+      id: 9,
+      appId: 1,
+      version: '1.0.0',
+      publishStatus: 'published',
+      reviewStatus: 'approved',
+      manifest: { permissions: ['runtime:context:read'] },
+    });
+    capabilityPolicy.getCapabilityState.mockResolvedValue({
+      requested: ['context.read'],
+      platform_approved: ['context.read'],
+      tenant_approved: [],
+      effective: [],
+    });
+    appRuntimeContextService.buildBootstrap.mockResolvedValue({
+      protocol_version: 1,
+      scopes: ['runtime:context:read'],
+      context: { tenant: { id: '23' } },
+    });
+
+    const result = await service.getOpenMetadata(23, 'job_board', 7);
+    expect(result.runtime).toEqual({ protocol_version: 1, scopes: ['runtime:context:read'], context: null });
+    expect(appRuntimeSessionService.issue).not.toHaveBeenCalled();
+  });
+
+  it('revokes runtime sessions before completing an uninstall', async () => {
+    appRepo.findOne.mockResolvedValue({ id: 1, code: 'job_board' });
+    installRepo.findOne.mockResolvedValue({ id: 4, tenantId: 23, appId: 1, enabled: 1 });
+
+    await service.uninstallApp(23, 'job_board');
+
+    expect(appRuntimeSessionService.revokeInstall).toHaveBeenCalledWith(23, 4, 'uninstalled');
+    expect(appRuntimeSessionService.revokeInstall.mock.invocationCallOrder[0]).toBeLessThan(
+      installRepo.save.mock.invocationCallOrder[0],
+    );
+  });
+
   it('keeps app opening successful when runtime context resolution fails', async () => {
     appRepo.findOne.mockResolvedValue({
       id: 1,
@@ -634,6 +738,51 @@ describe('AppTenantService', () => {
       expect.objectContaining({
         versionId: 9,
       }),
+    );
+  });
+
+  it('updates a stale installation binding before issuing a fallback-version session', async () => {
+    appRuntimeSessionService.isEnabled.mockReturnValue(true);
+    appRepo.findOne.mockResolvedValue({
+      id: 1,
+      code: 'job_board',
+      name: 'Job Board',
+      type: 'static',
+      status: 'published',
+      entryUrl: '/apps-static/job_board/2.0.0/dist/index.html',
+    });
+    const install = { id: 4, tenantId: 23, appId: 1, versionId: 10, enabled: 1 };
+    installRepo.findOne.mockResolvedValue(install);
+    versionRepo.findOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 11,
+        appId: 1,
+        version: '2.0.0',
+        publishStatus: 'published',
+        reviewStatus: 'approved',
+        manifest: { permissions: ['runtime:context:read'] },
+      });
+    capabilityPolicy.getCapabilityState.mockResolvedValue({
+      requested: ['context.read'],
+      platform_approved: ['context.read'],
+      tenant_approved: ['context.read'],
+      effective: ['context.read'],
+    });
+    appRuntimeContextService.buildBootstrap.mockResolvedValue({
+      protocol_version: 1,
+      scopes: ['runtime:context:read'],
+      context: { tenant: { id: '23' } },
+    });
+
+    await service.getOpenMetadata(23, 'job_board', 7);
+
+    expect(installRepo.save).toHaveBeenCalledWith(expect.objectContaining({ id: 4, versionId: 11 }));
+    expect(appRuntimeSessionService.issue).toHaveBeenCalledWith(
+      expect.objectContaining({ installId: 4, versionId: 11 }),
+    );
+    expect(installRepo.save.mock.invocationCallOrder[0]).toBeLessThan(
+      appRuntimeSessionService.issue.mock.invocationCallOrder[0],
     );
   });
 

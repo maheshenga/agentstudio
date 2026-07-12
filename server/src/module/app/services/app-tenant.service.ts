@@ -12,6 +12,7 @@ import { AppPackageVersionEntity } from '../entities/app-package-version.entity'
 import { TenantAppInstallEntity } from '../entities/tenant-app-install.entity';
 import { AppRuntimeContextService } from './app-runtime-context.service';
 import { AppCapabilityPolicyService } from './app-capability-policy.service';
+import { AppRuntimeSessionService } from './app-runtime-session.service';
 
 export interface AppOpenClientInfo {
   ip?: string;
@@ -61,6 +62,7 @@ export class AppTenantService {
     private readonly saasModuleService: SaasModuleService,
     private readonly systemModuleAccessService: SystemModuleAccessService,
     private readonly appRuntimeContextService: AppRuntimeContextService,
+    private readonly appRuntimeSessionService: AppRuntimeSessionService,
     private readonly capabilityPolicy: AppCapabilityPolicyService,
     private readonly dataSource: DataSource,
   ) {}
@@ -203,6 +205,7 @@ export class AppTenantService {
     }
 
     existing.enabled = 0;
+    await this.appRuntimeSessionService.revokeInstall(tenantId, existing.id, 'uninstalled');
     await this.installRepo.save(existing);
     return { code, installed: false };
   }
@@ -273,10 +276,39 @@ export class AppTenantService {
         }
       }
 
+      if (version && Number(install.versionId || 0) !== Number(version.id)) {
+        install.versionId = version.id;
+        await this.installRepo.save(install);
+      }
+
       openMode = app.type === 'internal' ? 'internal_route' : 'iframe';
-      const runtime = await this.appRuntimeContextService
+      let runtime = await this.appRuntimeContextService
         .buildBootstrap({ tenantId, userId, app, version })
         .catch(() => null);
+      if (this.appRuntimeSessionService.isEnabled() && runtime) {
+        runtime = { ...runtime, context: null };
+        if (version && userId) {
+          const capabilityState = await this.capabilityPolicy.getCapabilityState(
+            tenantId,
+            version.id,
+            normalizeAppCapabilities(version.manifest),
+          );
+          if (capabilityState.effective.length) {
+            const issued = await this.appRuntimeSessionService.issue({
+              tenantId,
+              userId,
+              appId: app.id,
+              versionId: version.id,
+              installId: install.id,
+              capabilities: capabilityState.effective,
+            });
+            runtime = {
+              ...runtime,
+              session: { token: issued.token, expires_at: issued.expires_at },
+            } as typeof runtime & { session: { token: string; expires_at: string } };
+          }
+        }
+      }
       await this.recordOpenOutcome({
         tenantId,
         userId,

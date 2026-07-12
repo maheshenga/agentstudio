@@ -34,6 +34,10 @@ export class AppRuntimeContextService {
     private readonly userRepo: Repository<UserEntity>,
     @InjectRepository(SysUserTenantEntity)
     private readonly membershipRepo: Repository<SysUserTenantEntity>,
+    @InjectRepository(AppPackageEntity)
+    private readonly appRepo?: Repository<AppPackageEntity>,
+    @InjectRepository(AppPackageVersionEntity)
+    private readonly versionRepo?: Repository<AppPackageVersionEntity>,
   ) {}
 
   async buildBootstrap(input: {
@@ -90,6 +94,32 @@ export class AppRuntimeContextService {
     } catch {
       return unavailable;
     }
+  }
+
+  async buildAuthorizedContext(input: { tenantId: number; userId: number; appId: number; versionId: number }) {
+    if (!this.appRepo || !this.versionRepo) return null;
+    const [app, version] = await Promise.all([
+      this.appRepo.findOne({
+        where: { id: input.appId, type: 'static', status: 'published', deleteTime: IsNull() },
+      }),
+      this.versionRepo.findOne({
+        where: {
+          id: input.versionId,
+          appId: input.appId,
+          reviewStatus: 'approved',
+          publishStatus: 'published',
+          deleteTime: IsNull(),
+        },
+      }),
+    ]);
+    if (!app || !version) return null;
+    const bootstrap = await this.buildBootstrap({
+      tenantId: input.tenantId,
+      userId: input.userId,
+      app,
+      version,
+    });
+    return bootstrap?.context || null;
   }
 
   private resolveScopes(manifest?: Record<string, unknown> | null): AppRuntimeScope[] {

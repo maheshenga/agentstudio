@@ -19,6 +19,7 @@ import { AppReviewAction, AppReviewLogEntity } from '../entities/app-review-log.
 import { AppManifestService, type StaticAppManifest } from './app-manifest.service';
 import { AppCapabilityPolicyService } from './app-capability-policy.service';
 import { AppPackageStorageService } from './app-package-storage.service';
+import { AppRuntimeSessionService } from './app-runtime-session.service';
 
 export interface AppPlatformListQuery {
   keyword?: string;
@@ -46,6 +47,7 @@ export class AppPlatformService {
     private readonly manifestService: AppManifestService,
     private readonly capabilityPolicy: AppCapabilityPolicyService,
     private readonly dataSource: DataSource,
+    private readonly runtimeSessionService: AppRuntimeSessionService,
   ) {}
 
   async listApps(query: AppPlatformListQuery = {}) {
@@ -386,6 +388,7 @@ export class AppPlatformService {
     const targetEntryUrl = this.createStaticEntryUrl(app.code, appVersion.version, appVersion.entryFile);
     const wasActiveVersion = app.entryUrl === targetEntryUrl || !app.entryUrl;
     appVersion.publishStatus = 'unpublished_retired';
+    await this.runtimeSessionService.revokeVersion(appVersion.id, 'unpublished');
     const savedVersion = await this.versionRepo.save(appVersion);
 
     if (wasActiveVersion) {
@@ -525,6 +528,7 @@ export class AppPlatformService {
         continue;
       }
       item.publishStatus = 'unpublished_retired';
+      await this.runtimeSessionService.revokeVersion(item.id, 'rollback_retired');
       await this.versionRepo.save(item);
     }
   }
