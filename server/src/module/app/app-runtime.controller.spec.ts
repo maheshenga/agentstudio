@@ -7,6 +7,7 @@ describe('AppRuntimeController', () => {
   const sessionService = { authorize: jest.fn() };
   const contextService = { buildAuthorizedContext: jest.fn() };
   const kvService = { get: jest.fn(), set: jest.fn(), delete: jest.fn() };
+  const fileService = { upload: jest.fn(), open: jest.fn(), delete: jest.fn() };
   let controller: AppRuntimeController;
 
   beforeEach(() => {
@@ -15,7 +16,70 @@ describe('AppRuntimeController', () => {
       sessionService as any,
       contextService as any,
       kvService as any,
+      fileService as any,
     );
+  });
+
+  it('authorizes file upload with files.write and never returns a storage path', async () => {
+    const session = { id: 1, tenantId: 23, userId: 91, appId: 10, versionId: 20 };
+    const file = { originalname: 'notes.txt', buffer: Buffer.from('hello') } as any;
+    const metadata = { id: 'a'.repeat(43), name: 'notes.txt', size: 5 };
+    sessionService.authorize.mockResolvedValue(session);
+    fileService.upload.mockResolvedValue(metadata);
+    const request = runtimeRequest('req-file');
+
+    await expect(controller.filesUpload(request, file)).resolves.toMatchObject({ data: metadata });
+    expect(sessionService.authorize).toHaveBeenCalledWith(
+      'runtime-token',
+      'files.write',
+      expect.objectContaining({ requestId: 'req-file' }),
+    );
+    expect(JSON.stringify(metadata)).not.toMatch(/storage|path|token/i);
+  });
+
+  it('authorizes file read and emits bounded attachment headers', async () => {
+    const session = { id: 1, tenantId: 23, userId: 91, appId: 10, versionId: 20 };
+    const stream = { pipe: jest.fn() };
+    sessionService.authorize.mockResolvedValue(session);
+    fileService.open.mockResolvedValue({
+      stream,
+      name: 'notes\r\nInjected.txt',
+      mimeType: 'text/plain',
+      size: 5,
+    });
+    const response = { setHeader: jest.fn() } as any;
+
+    const result = await controller.filesRead(
+      runtimeRequest('req-read'),
+      { objectId: 'a'.repeat(43) },
+      response,
+    );
+
+    expect(sessionService.authorize).toHaveBeenCalledWith(
+      'runtime-token',
+      'files.read',
+      expect.any(Object),
+    );
+    expect(response.setHeader).toHaveBeenCalledWith('Content-Type', 'text/plain');
+    expect(response.setHeader).toHaveBeenCalledWith('Content-Length', '5');
+    expect(response.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-store');
+    expect(
+      response.setHeader.mock.calls.find(([name]) => name === 'Content-Disposition')[1],
+    ).not.toMatch(/[\r\n]/);
+    expect(result.getStream()).toBe(stream);
+  });
+
+  it('authorizes file deletion with files.write', async () => {
+    const session = { id: 1, tenantId: 23, userId: 91, appId: 10, versionId: 20 };
+    sessionService.authorize.mockResolvedValue(session);
+    fileService.delete.mockResolvedValue({ deleted: true });
+    await controller.filesDelete(runtimeRequest('req-delete'), { objectId: 'a'.repeat(43) });
+    expect(sessionService.authorize).toHaveBeenCalledWith(
+      'runtime-token',
+      'files.write',
+      expect.any(Object),
+    );
+    expect(fileService.delete).toHaveBeenCalledWith(session, 'a'.repeat(43));
   });
 
   it.each([
@@ -97,3 +161,11 @@ describe('AppRuntimeController', () => {
     expect(sessionService.authorize).not.toHaveBeenCalled();
   });
 });
+
+function runtimeRequest(requestId: string) {
+  return {
+    headers: { 'x-app-runtime-token': 'runtime-token', 'x-request-id': requestId },
+    rawHeaders: ['X-App-Runtime-Token', 'runtime-token'],
+    ip: '127.0.0.1',
+  } as any;
+}

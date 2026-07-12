@@ -5,19 +5,29 @@ import {
   Delete,
   Get,
   Param,
+  Post,
   Put,
   Req,
+  Res,
   ServiceUnavailableException,
+  StreamableFile,
+  UploadedFile,
   UseFilters,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
+import type { Response } from 'express';
+import { memoryStorage } from 'multer';
 
 import { Public } from '../../common/decorators/auth.decorator';
 import { ResultData } from '../../common/utils/result';
 import { AppRuntimeHttpExceptionFilter } from './app-runtime-http-exception.filter';
 import { SetAppRuntimeKvDto } from './dto/app-runtime-kv.dto';
+import { AppRuntimeFileParamsDto } from './dto/app-runtime-file.dto';
 import { AppRuntimeContextService } from './services/app-runtime-context.service';
+import { AppRuntimeFileService } from './services/app-runtime-file.service';
 import { AppRuntimeKvService } from './services/app-runtime-kv.service';
 import { AppRuntimeSessionService } from './services/app-runtime-session.service';
 
@@ -29,6 +39,7 @@ export class AppRuntimeController {
     private readonly sessionService: AppRuntimeSessionService,
     private readonly contextService: AppRuntimeContextService,
     private readonly kvService: AppRuntimeKvService,
+    private readonly fileService: AppRuntimeFileService,
   ) {}
 
   @Get('context')
@@ -44,6 +55,45 @@ export class AppRuntimeController {
     const context = await this.contextService.buildAuthorizedContext(session);
     if (!context) throw new ServiceUnavailableException('App runtime context is unavailable');
     return ResultData.ok(context);
+  }
+
+  @Post('files')
+  @Public()
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { files: 1, fileSize: 50 * 1024 * 1024 },
+    }),
+  )
+  async filesUpload(@Req() request: Request, @UploadedFile() file: Express.Multer.File) {
+    const session = await this.authorize(request, 'files.write');
+    return ResultData.ok(await this.fileService.upload(session, file));
+  }
+
+  @Get('files/:objectId')
+  @Public()
+  async filesRead(
+    @Req() request: Request,
+    @Param() params: AppRuntimeFileParamsDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const session = await this.authorize(request, 'files.read');
+    const file = await this.fileService.open(session, params.objectId);
+    response.setHeader('Content-Type', file.mimeType);
+    response.setHeader('Content-Length', String(file.size));
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${file.name.replace(/["\\\r\n]/g, '_')}"`,
+    );
+    return new StreamableFile(file.stream);
+  }
+
+  @Delete('files/:objectId')
+  @Public()
+  async filesDelete(@Req() request: Request, @Param() params: AppRuntimeFileParamsDto) {
+    const session = await this.authorize(request, 'files.write');
+    return ResultData.ok(await this.fileService.delete(session, params.objectId));
   }
 
   @Get('kv/:namespace/:key')
@@ -80,7 +130,10 @@ export class AppRuntimeController {
     return ResultData.ok(await this.kvService.delete(session, namespace, key));
   }
 
-  private authorize(request: Request, capability: 'kv.read' | 'kv.write' | 'kv.delete') {
+  private authorize(
+    request: Request,
+    capability: 'kv.read' | 'kv.write' | 'kv.delete' | 'files.read' | 'files.write',
+  ) {
     return this.sessionService.authorize(this.getRuntimeToken(request), capability, {
       requestId: this.header(request, 'x-request-id', 100),
       ip: String(request.ip || '').slice(0, 80),

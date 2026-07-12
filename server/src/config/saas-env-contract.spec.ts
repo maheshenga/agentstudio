@@ -33,6 +33,10 @@ const CONFIGURATION_ENV_KEYS_REQUIRING_SCHEMA = [
   'TAIXU_QDRANT_TIMEOUT',
   'TAIXU_QDRANT_EMBED_BATCH',
   'TAIXU_TAVILY_API_KEY',
+  'APP_RUNTIME_STORAGE_DIR',
+  'APP_RUNTIME_STORAGE_MAX_FILE_MB',
+  'APP_RUNTIME_STORAGE_QUOTA_MB',
+  'APP_RUNTIME_STORAGE_ALLOWED_MIME_TYPES',
 ] as const;
 
 const UNSAFE_EXAMPLE_VALUES = new Map([
@@ -53,7 +57,7 @@ describe('SaaS environment contract readiness', () => {
       expect(checklist).toContain(key);
     }
 
-    expect(schema).toContain('ALIPAY_GATEWAY_URL: Joi.string().uri()');
+    expect(schema).toMatch(/ALIPAY_GATEWAY_URL:\s*Joi\.string\(\)\s*\.uri\(\)/);
     expect(example.ALIPAY_GATEWAY_URL).toBe('https://openapi-sandbox.dl.alipaydev.com/gateway.do');
   });
 

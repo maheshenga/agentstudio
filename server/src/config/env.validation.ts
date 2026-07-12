@@ -44,7 +44,9 @@ export const envValidationSchema = Joi.object({
   ALIPAY_PUBLIC_KEY: Joi.string().allow('').optional(),
   ALIPAY_NOTIFY_URL: Joi.string().allow('').optional(),
   ALIPAY_RETURN_URL: Joi.string().allow('').optional(),
-  ALIPAY_GATEWAY_URL: Joi.string().uri().default('https://openapi-sandbox.dl.alipaydev.com/gateway.do'),
+  ALIPAY_GATEWAY_URL: Joi.string()
+    .uri()
+    .default('https://openapi-sandbox.dl.alipaydev.com/gateway.do'),
 
   SWAGGER_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
   SWAGGER_USERNAME: Joi.string().allow('').optional(),
@@ -67,6 +69,13 @@ export const envValidationSchema = Joi.object({
     .default('/apps-static/'),
   APP_PACKAGE_MAX_SIZE_MB: Joi.number().integer().min(1).default(50),
   APP_PACKAGE_MAX_FILES: Joi.number().integer().min(1).default(500),
+  APP_RUNTIME_STORAGE_DIR: Joi.string().default('../upload/app-runtime-data'),
+  APP_RUNTIME_STORAGE_MAX_FILE_MB: Joi.number().integer().min(1).max(50).default(10),
+  APP_RUNTIME_STORAGE_QUOTA_MB: Joi.number().integer().min(1).max(10240).default(100),
+  APP_RUNTIME_STORAGE_ALLOWED_MIME_TYPES: Joi.string()
+    .trim()
+    .min(1)
+    .default('text/plain,application/json,image/png,image/jpeg,image/webp,application/pdf'),
 
   LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug').default('info'),
   LOG_DIR: Joi.string().default('logs'),

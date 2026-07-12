@@ -71,7 +71,8 @@ export default () => ({
       publicKey: process.env.ALIPAY_PUBLIC_KEY ?? '',
       notifyUrl: process.env.ALIPAY_NOTIFY_URL ?? '',
       returnUrl: process.env.ALIPAY_RETURN_URL ?? '',
-      gatewayUrl: process.env.ALIPAY_GATEWAY_URL ?? 'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+      gatewayUrl:
+        process.env.ALIPAY_GATEWAY_URL ?? 'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
     },
   },
   swagger: {
@@ -99,6 +100,16 @@ export default () => ({
     publicPrefix: process.env.APP_PUBLIC_PREFIX ?? '/apps-static/',
     maxPackageSizeMb: Number(process.env.APP_PACKAGE_MAX_SIZE_MB ?? 50),
     maxPackageFiles: Number(process.env.APP_PACKAGE_MAX_FILES ?? 500),
+    runtimeStorageDir: process.env.APP_RUNTIME_STORAGE_DIR ?? '../upload/app-runtime-data',
+    runtimeStorageMaxFileMb: Number(process.env.APP_RUNTIME_STORAGE_MAX_FILE_MB ?? 10),
+    runtimeStorageQuotaMb: Number(process.env.APP_RUNTIME_STORAGE_QUOTA_MB ?? 100),
+    runtimeStorageAllowedMimeTypes: (
+      process.env.APP_RUNTIME_STORAGE_ALLOWED_MIME_TYPES ??
+      'text/plain,application/json,image/png,image/jpeg,image/webp,application/pdf'
+    )
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean),
   },
   log: {
     level: process.env.LOG_LEVEL ?? 'info',
@@ -113,12 +124,10 @@ export default () => ({
   memory: {
     // ponytail: Bun 基线 RSS 高于 Node，默认阈值按运行时区分；生产 PM2 可配 MEMORY_FATAL_EXIT=true
     rssWarnMb: Number(
-      process.env.MEMORY_RSS_WARN_MB ??
-        ((process.versions as { bun?: string }).bun ? 768 : 300),
+      process.env.MEMORY_RSS_WARN_MB ?? ((process.versions as { bun?: string }).bun ? 768 : 300),
     ),
     rssFatalMb: Number(
-      process.env.MEMORY_RSS_FATAL_MB ??
-        ((process.versions as { bun?: string }).bun ? 1536 : 450),
+      process.env.MEMORY_RSS_FATAL_MB ?? ((process.versions as { bun?: string }).bun ? 1536 : 450),
     ),
     heapUsageWarn: Number(process.env.MEMORY_HEAP_WARN_PERCENT ?? 85),
     heapUsageFatal: Number(process.env.MEMORY_HEAP_FATAL_PERCENT ?? 95),
@@ -126,7 +135,8 @@ export default () => ({
       process.env.MEMORY_FATAL_EXIT === 'true' ||
       (process.env.NODE_ENV === 'production' && process.env.MEMORY_FATAL_EXIT !== 'false'),
     /** Bun 下 RSS 不能反映真实堆压力，致命判断以堆使用率为主 */
-    rssFatalEnabled: process.env.MEMORY_RSS_FATAL_ENABLED !== 'false' &&
+    rssFatalEnabled:
+      process.env.MEMORY_RSS_FATAL_ENABLED !== 'false' &&
       !(process.versions as { bun?: string }).bun,
   },
   perm: {
@@ -161,7 +171,8 @@ export default () => ({
     documents: {
       saveDir: process.env.TAIXU_DOC_SAVE_DIR ?? '',
       // 默认 false：后台索引不依赖前台登录会话；设为 true 则恢复旧行为
-      indexRequireLogin: String(process.env.TAIXU_DOC_INDEX_REQUIRE_LOGIN ?? 'false').toLowerCase() === 'true',
+      indexRequireLogin:
+        String(process.env.TAIXU_DOC_INDEX_REQUIRE_LOGIN ?? 'false').toLowerCase() === 'true',
     },
     mcp: {
       amapKey: process.env.TAIXU_MCP_AMAP_KEY ?? '',
