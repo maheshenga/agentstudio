@@ -23,7 +23,9 @@ import { AppPackageVersionEntity } from './entities/app-package-version.entity';
 import { AppPackageEntity } from './entities/app-package.entity';
 import { AppReviewLogEntity } from './entities/app-review-log.entity';
 import { AppRuntimeAuditLogEntity } from './entities/app-runtime-audit-log.entity';
+import { AppRuntimeKvEntity } from './entities/app-runtime-kv.entity';
 import { AppRuntimeSessionEntity } from './entities/app-runtime-session.entity';
+import { AppStorageObjectEntity } from './entities/app-storage-object.entity';
 import { TenantAppInstallEntity } from './entities/tenant-app-install.entity';
 import { AppManifestService } from './services/app-manifest.service';
 import { AppAnalyticsService } from './services/app-analytics.service';
@@ -48,6 +50,8 @@ import { AppTenantService } from './services/app-tenant.service';
       AppCapabilityGrantEntity,
       AppRuntimeSessionEntity,
       AppRuntimeAuditLogEntity,
+      AppRuntimeKvEntity,
+      AppStorageObjectEntity,
       AppReviewLogEntity,
       TenantAppInstallEntity,
       AppOpenLogEntity,
