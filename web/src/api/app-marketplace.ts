@@ -24,6 +24,51 @@ export type AppAvailabilityStatus =
   | 'missing_system_module'
   | 'system_module_unavailable'
 
+export interface FrozenAppReviewSnapshot {
+  schema_version: 1
+  app: {
+    id: string
+    code: string
+    name: string
+    type: 'service'
+    runtime_type: 'service'
+    trust_level: 'developer_restricted'
+    category: string
+    summary: string
+    description: string
+    developer_id: string
+    developer_name: string
+  }
+  version: {
+    id: string
+    version: string
+    manifest: Record<string, unknown>
+    package_sha256: string
+    entry_sha256: string
+    file_size: number
+    requested_capabilities: string[]
+    service_targets: string[]
+    scan: {
+      passed: boolean
+      scanned_files: number
+      findings: Array<{
+        code: string
+        severity: 'warning' | 'error'
+        line?: number
+        column?: number
+      }>
+    }
+  }
+  developer: {
+    profile_id: string
+    certification_status: 'certified'
+    approved_runtime_types: Array<'static' | 'iframe' | 'service'>
+    risk_level: 'low' | 'medium' | 'high'
+    certification_expiry: string
+  }
+  submitted_at: string
+}
+
 export interface AppPackageRecord {
   id: number
   code: string
@@ -73,7 +118,13 @@ export interface AppPackageVersionRecord {
     scannedFiles: number
     entrySha256: string
   } | null
+  review_snapshot?: FrozenAppReviewSnapshot | null
+  review_snapshot_hash?: string
+  submitted_time?: string | Date | null
+  service_targets?: string[]
   candidate_health_status?: 'unknown' | 'checking' | 'healthy' | 'unhealthy'
+  candidate_reviewed_by?: number | null
+  candidate_reviewed_time?: string | Date | null
   requested_capabilities?: string[]
   approved_capabilities?: string[]
   package_path?: string
@@ -87,6 +138,7 @@ export interface AppPackageVersionRecord {
   publish_status: 'unpublished' | 'published' | 'failed' | 'unpublished_retired'
   review_message?: string
   reviewer_id?: number | null
+  submitted_by?: number | null
   review_time?: string | Date | null
   create_time?: string | Date | null
   update_time?: string | Date | null
@@ -114,6 +166,7 @@ export interface AppReviewQueueRecord extends AppPackageVersionRecord {
   app_name: string
   app_type: AppPackageType
   app_status: AppPackageStatus
+  trust_level?: AppTrustLevel
   category?: string
   developer_name?: string
 }

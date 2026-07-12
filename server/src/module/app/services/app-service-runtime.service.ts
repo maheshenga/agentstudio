@@ -14,6 +14,8 @@ import { AppPackageEntity } from '../entities/app-package.entity';
 import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
 import { AppReviewLogEntity, type AppReviewAction } from '../entities/app-review-log.entity';
 import { AppServiceInstanceEntity } from '../entities/app-service-instance.entity';
+import { AppDeveloperCertificationService } from './app-developer-certification.service';
+import { AppReviewSnapshotService } from './app-review-snapshot.service';
 import { AppServiceLogRedactor } from './app-service-log-redactor';
 import {
   AppServiceLoopbackTransport,
@@ -25,6 +27,7 @@ import {
   type AppServiceProcessSpec,
   type AppServiceProcessSnapshot,
 } from './app-service-process-manager';
+import { AppServicePackageService } from './app-service-package.service';
 
 export interface AppServicePortAllocationInput {
   min: number;
@@ -111,6 +114,9 @@ export class AppServiceRuntimeService {
     @Inject(AppServiceDelay)
     private readonly delay: AppServiceDelay,
     private readonly logRedactor: AppServiceLogRedactor,
+    private readonly certificationService: AppDeveloperCertificationService,
+    private readonly snapshotService: AppReviewSnapshotService,
+    private readonly packageService: AppServicePackageService,
   ) {}
 
   async startCandidate(appCode: string, versionValue: string, operatorId: number) {
@@ -149,7 +155,13 @@ export class AppServiceRuntimeService {
       throw new ServiceUnavailableException('Candidate health verification failed');
     }
 
-    return this.markCandidateHealthy(prepared.instance.id, prepared.version.id, snapshot);
+    return this.markCandidateHealthy(
+      prepared.instance.id,
+      prepared.version.id,
+      snapshot,
+      operatorId,
+      prepared.app.trustLevel === 'developer_restricted',
+    );
   }
 
   async publishCandidate(appCode: string, versionValue: string, operatorId: number) {
@@ -163,7 +175,10 @@ export class AppServiceRuntimeService {
     );
     const retired = await this.dataSource.transaction(async (manager) => {
       const { app, version } = await this.lockAppVersion(manager, appCode, versionValue);
-      this.assertReviewedServiceVersion(app, version);
+      await this.assertReviewedServiceVersion(app, version);
+      if (app.trustLevel === 'developer_restricted') {
+        this.assertIndependentCandidateReview(version);
+      }
       const instances = await this.lockInstances(manager, app.id);
       const candidate = instances.find(
         (item) =>
@@ -256,7 +271,10 @@ export class AppServiceRuntimeService {
         appCode,
         targetVersionValue,
       );
-      this.assertReviewedServiceVersion(app, targetVersion);
+      await this.assertReviewedServiceVersion(app, targetVersion);
+      if (app.trustLevel === 'developer_restricted') {
+        this.assertIndependentCandidateReview(targetVersion);
+      }
       const instances = await this.lockInstances(manager, app.id);
       const target = instances.find(
         (item) =>
@@ -581,7 +599,16 @@ export class AppServiceRuntimeService {
     operatorId: number,
   ): Promise<PreparedCandidate> {
     const { app, version } = await this.lockAppVersion(manager, appCode, versionValue);
-    this.assertReviewedServiceVersion(app, version);
+    await this.assertReviewedServiceVersion(app, version);
+    if (
+      app.trustLevel === 'developer_restricted' &&
+      (Number(version.submittedBy) === Number(operatorId) ||
+        Number(version.reviewerId) === Number(operatorId))
+    ) {
+      throw new BadRequestException(
+        'Candidate review requires a different platform operator',
+      );
+    }
     const instances = await this.lockInstances(manager, app.id);
     if (
       instances.some(
@@ -634,6 +661,10 @@ export class AppServiceRuntimeService {
       candidate.stoppedTime = null;
     }
     version.candidateHealthStatus = 'checking';
+    if (app.trustLevel === 'developer_restricted') {
+      version.candidateReviewedBy = null;
+      version.candidateReviewedTime = null;
+    }
     candidate = await instanceRepo.save(candidate);
     await manager.getRepository(AppPackageVersionEntity).save(version);
     await this.recordEvent(
@@ -685,6 +716,8 @@ export class AppServiceRuntimeService {
     instanceId: number,
     versionId: number,
     snapshot: AppServiceProcessSnapshot,
+    operatorId: number,
+    recordCandidateReview: boolean,
   ) {
     return this.dataSource.transaction(async (manager) => {
       const instanceRepo = manager.getRepository(AppServiceInstanceEntity);
@@ -708,6 +741,10 @@ export class AppServiceRuntimeService {
       instance.lastErrorCode = '';
       instance.lastErrorMessage = '';
       version.candidateHealthStatus = 'healthy';
+      if (recordCandidateReview) {
+        version.candidateReviewedBy = operatorId;
+        version.candidateReviewedTime = new Date();
+      }
       await instanceRepo.save(instance);
       await versionRepo.save(version);
       return instance;
@@ -773,16 +810,12 @@ export class AppServiceRuntimeService {
       .getMany();
   }
 
-  private assertReviewedServiceVersion(
+  private async assertReviewedServiceVersion(
     app: AppPackageEntity,
     version: AppPackageVersionEntity,
   ) {
-    if (
-      app.type !== 'service' ||
-      app.runtimeType !== 'service' ||
-      app.trustLevel !== 'platform_trusted'
-    ) {
-      throw new BadRequestException('Only platform-trusted service apps can run');
+    if (app.type !== 'service' || app.runtimeType !== 'service') {
+      throw new BadRequestException('App is not an executable service runtime');
     }
     if (
       version.reviewStatus !== 'approved' ||
@@ -803,6 +836,28 @@ export class AppServiceRuntimeService {
     }
     if (!version.packagePath || version.entryFile !== 'dist/index.js') {
       throw new BadRequestException('Service version release is unavailable');
+    }
+    if (app.trustLevel === 'platform_trusted') return;
+    if (app.trustLevel !== 'developer_restricted') {
+      throw new BadRequestException('Service trust level is not executable');
+    }
+    if (!app.developerId) {
+      throw new BadRequestException('Developer service owner is unavailable');
+    }
+    await this.certificationService.assertRuntimeApproved(Number(app.developerId), 'service');
+    this.snapshotService.verify(version);
+    await this.packageService.verifyInstalledEntry(version);
+  }
+
+  private assertIndependentCandidateReview(version: AppPackageVersionEntity) {
+    if (
+      version.candidateReviewedBy === null ||
+      version.candidateReviewedBy === undefined ||
+      !version.candidateReviewedTime ||
+      Number(version.candidateReviewedBy) === Number(version.submittedBy) ||
+      Number(version.candidateReviewedBy) === Number(version.reviewerId)
+    ) {
+      throw new BadRequestException('Service candidate requires independent review');
     }
   }
 

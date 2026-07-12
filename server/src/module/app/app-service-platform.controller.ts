@@ -25,7 +25,7 @@ export class AppServicePlatformController {
   ) {}
 
   @Get('instances')
-  @ApiOperation({ summary: 'List administrator service instances' })
+  @ApiOperation({ summary: 'List service runtime instances' })
   @RequirePermission('app:runtime:list')
   listInstances(@Query() query: AppServiceRuntimeListQueryDto, @User() user: UserDto) {
     return this.runOutsideTenant(user, () =>
@@ -34,7 +34,7 @@ export class AppServicePlatformController {
   }
 
   @Get('apps/:code')
-  @ApiOperation({ summary: 'Get administrator service runtime state' })
+  @ApiOperation({ summary: 'Get service runtime state' })
   @RequirePermission('app:runtime:list')
   getAppRuntime(@Param('code') code: string, @User() user: UserDto) {
     return this.runOutsideTenant(user, () =>
@@ -105,7 +105,7 @@ export class AppServicePlatformController {
   }
 
   @Post('apps/:code/probe')
-  @ApiOperation({ summary: 'Probe the active administrator service' })
+  @ApiOperation({ summary: 'Probe the active service' })
   @RequirePermission('app:runtime:probe')
   probe(
     @Param('code') code: string,
@@ -120,7 +120,7 @@ export class AppServicePlatformController {
   }
 
   @Get('apps/:code/logs')
-  @ApiOperation({ summary: 'Read bounded redacted administrator service logs' })
+  @ApiOperation({ summary: 'Read bounded redacted service logs' })
   @RequirePermission('app:runtime:logs')
   logs(
     @Param('code') code: string,
@@ -133,7 +133,7 @@ export class AppServicePlatformController {
   }
 
   @Post('reconcile')
-  @ApiOperation({ summary: 'Reconcile administrator service process state' })
+  @ApiOperation({ summary: 'Reconcile service process state' })
   @RequirePermission('app:runtime:manage')
   reconcile(@User() user: UserDto) {
     return this.runOutsideTenant(user, () =>

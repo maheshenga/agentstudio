@@ -5,7 +5,9 @@
         <div class="app-review-page__header">
           <div>
             <h1 class="app-review-page__title">Review Center</h1>
-            <p class="app-review-page__subtitle">Review, publish, unpublish, and rollback app versions from one operations queue.</p>
+            <p class="app-review-page__subtitle"
+              >Review, publish, unpublish, and rollback app versions from one operations queue.</p
+            >
           </div>
           <ElButton :icon="Refresh" :loading="loading" @click="loadReviews">Refresh</ElButton>
         </div>
@@ -19,29 +21,49 @@
           placeholder="App, version, developer"
           @keyup.enter="loadReviews"
         />
-        <ElSelect v-model="filters.type" clearable class="app-review-page__select" placeholder="Type">
+        <ElSelect
+          v-model="filters.type"
+          clearable
+          class="app-review-page__select"
+          placeholder="Type"
+        >
           <ElOption label="Internal" value="internal" />
           <ElOption label="Static" value="static" />
           <ElOption label="Iframe" value="iframe" />
+          <ElOption label="Service" value="service" />
         </ElSelect>
-        <ElSelect v-model="filters.review_status" clearable class="app-review-page__select" placeholder="Review">
+        <ElSelect
+          v-model="filters.review_status"
+          clearable
+          class="app-review-page__select"
+          placeholder="Review"
+        >
           <ElOption label="Pending" value="pending" />
           <ElOption label="Approved" value="approved" />
           <ElOption label="Rejected" value="rejected" />
         </ElSelect>
-        <ElSelect v-model="filters.publish_status" clearable class="app-review-page__select" placeholder="Publish">
+        <ElSelect
+          v-model="filters.publish_status"
+          clearable
+          class="app-review-page__select"
+          placeholder="Publish"
+        >
           <ElOption label="Unpublished" value="unpublished" />
           <ElOption label="Published" value="published" />
           <ElOption label="Failed" value="failed" />
           <ElOption label="Retired" value="unpublished_retired" />
         </ElSelect>
-        <ElButton type="primary" :icon="Search" :loading="loading" @click="loadReviews">Search</ElButton>
+        <ElButton type="primary" :icon="Search" :loading="loading" @click="loadReviews"
+          >Search</ElButton
+        >
         <ElButton @click="resetFilters">Reset</ElButton>
       </div>
 
       <div v-if="loadError" class="app-review-page__load-error">
         <ElAlert type="error" :title="loadError" show-icon :closable="false" />
-        <ElButton size="small" type="primary" link :loading="loading" @click="loadReviews">Retry</ElButton>
+        <ElButton size="small" type="primary" link :loading="loading" @click="loadReviews"
+          >Retry</ElButton
+        >
       </div>
 
       <ElTable v-loading="loading" :data="records" border>
@@ -61,17 +83,23 @@
         </ElTableColumn>
         <ElTableColumn label="Type" width="110">
           <template #default="{ row }">
-            <ElTag :type="typeTagType(row.app_type)" effect="light">{{ typeText(row.app_type) }}</ElTag>
+            <ElTag :type="typeTagType(row.app_type)" effect="light">{{
+              typeText(row.app_type)
+            }}</ElTag>
           </template>
         </ElTableColumn>
         <ElTableColumn label="Review" width="120">
           <template #default="{ row }">
-            <ElTag :type="reviewTagType(row.review_status)" effect="light">{{ row.review_status }}</ElTag>
+            <ElTag :type="reviewTagType(row.review_status)" effect="light">{{
+              row.review_status
+            }}</ElTag>
           </template>
         </ElTableColumn>
         <ElTableColumn label="Publish" width="140">
           <template #default="{ row }">
-            <ElTag :type="publishTagType(row.publish_status)" effect="light">{{ row.publish_status }}</ElTag>
+            <ElTag :type="publishTagType(row.publish_status)" effect="light">{{
+              row.publish_status
+            }}</ElTag>
           </template>
         </ElTableColumn>
         <ElTableColumn label="Developer" width="150" show-overflow-tooltip>
@@ -80,7 +108,12 @@
         <ElTableColumn label="Capabilities" min-width="180">
           <template #default="{ row }">
             <div v-if="row.requested_capabilities?.length" class="app-review-page__capabilities">
-              <ElTag v-for="capability in row.requested_capabilities" :key="capability" size="small" effect="plain">
+              <ElTag
+                v-for="capability in row.requested_capabilities"
+                :key="capability"
+                size="small"
+                effect="plain"
+              >
                 {{ capabilityLabel(capability) }}
               </ElTag>
             </div>
@@ -89,10 +122,13 @@
         </ElTableColumn>
         <ElTableColumn prop="entry_url" label="Runtime URL" min-width="240" show-overflow-tooltip />
         <ElTableColumn label="Updated" width="170">
-          <template #default="{ row }">{{ formatDateTime(row.update_time || row.create_time) }}</template>
+          <template #default="{ row }">{{
+            formatDateTime(row.update_time || row.create_time)
+          }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Actions" fixed="right" width="420">
+        <ElTableColumn label="Actions" fixed="right" width="500">
           <template #default="{ row }">
+            <ElButton link :icon="View" @click="openEvidence(row)">Evidence</ElButton>
             <ElButton
               link
               type="success"
@@ -115,7 +151,11 @@
               link
               type="primary"
               :loading="actionLoading === `publish:${row.app_code}:${row.version}`"
-              :disabled="row.review_status !== 'approved' || row.publish_status === 'published'"
+              :disabled="
+                row.app_type === 'service' ||
+                row.review_status !== 'approved' ||
+                row.publish_status === 'published'
+              "
               @click="publishVersion(row)"
             >
               Publish
@@ -154,22 +194,169 @@
         show-icon
       />
       <ElCheckboxGroup v-model="approved_capabilities" class="app-review-page__capability-options">
-        <ElCheckbox v-for="capability in approvalRow?.requested_capabilities || []" :key="capability" :value="capability">
+        <ElCheckbox
+          v-for="capability in approvalRow?.requested_capabilities || []"
+          :key="capability"
+          :value="capability"
+        >
           {{ capabilityLabel(capability) }}
         </ElCheckbox>
       </ElCheckboxGroup>
-      <ElInput v-model="approvalMessage" type="textarea" :rows="3" maxlength="500" show-word-limit />
+      <ElInput
+        v-model="approvalMessage"
+        type="textarea"
+        :rows="3"
+        maxlength="500"
+        show-word-limit
+      />
       <template #footer>
         <ElButton @click="approvalDialogVisible = false">Cancel</ElButton>
-        <ElButton type="primary" :loading="Boolean(actionLoading)" @click="confirmCapabilityApproval">Approve</ElButton>
+        <ElButton
+          type="primary"
+          :loading="Boolean(actionLoading)"
+          @click="confirmCapabilityApproval"
+          >Approve</ElButton
+        >
       </template>
     </ElDialog>
+
+    <ElDrawer
+      v-model="evidenceDrawerVisible"
+      :title="evidenceTitle"
+      size="min(760px, 96vw)"
+      destroy-on-close
+    >
+      <ElAlert
+        v-if="!evidenceSnapshot"
+        type="warning"
+        title="Frozen review evidence is unavailable"
+        :closable="false"
+        show-icon
+      />
+      <template v-else>
+        <section class="app-review-page__evidence-section">
+          <h2>Review integrity</h2>
+          <ElDescriptions :column="2" border>
+            <ElDescriptionsItem label="Trust">
+              <ElTag type="warning" effect="light">{{ evidenceRow?.trust_level }}</ElTag>
+            </ElDescriptionsItem>
+            <ElDescriptionsItem label="Submission">{{
+              formatDateTime(evidenceSnapshot.submitted_at)
+            }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="Snapshot SHA-256" :span="2">
+              <code>{{ evidenceRow?.review_snapshot_hash || '-' }}</code>
+            </ElDescriptionsItem>
+            <ElDescriptionsItem label="Package SHA-256" :span="2">
+              <code>{{ evidenceSnapshot.version.package_sha256 }}</code>
+            </ElDescriptionsItem>
+            <ElDescriptionsItem label="Entry SHA-256" :span="2">
+              <code>{{ evidenceSnapshot.version.entry_sha256 }}</code>
+            </ElDescriptionsItem>
+            <ElDescriptionsItem label="Manual review">
+              <ElTag :type="manualReviewTagType">{{ manualReviewStatus }}</ElTag>
+            </ElDescriptionsItem>
+            <ElDescriptionsItem label="Candidate review">
+              <ElTag :type="candidateReviewTagType">{{ candidateReviewStatus }}</ElTag>
+            </ElDescriptionsItem>
+          </ElDescriptions>
+        </section>
+
+        <section class="app-review-page__evidence-section">
+          <h2>Submission snapshot</h2>
+          <ElDescriptions :column="2" border>
+            <ElDescriptionsItem label="Application">{{
+              evidenceSnapshot.app.name
+            }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="Code"
+              ><code>{{ evidenceSnapshot.app.code }}</code></ElDescriptionsItem
+            >
+            <ElDescriptionsItem label="Developer">{{
+              evidenceSnapshot.app.developer_name
+            }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="Profile"
+              ><code>{{ evidenceSnapshot.developer.profile_id }}</code></ElDescriptionsItem
+            >
+            <ElDescriptionsItem label="Risk">{{
+              evidenceSnapshot.developer.risk_level
+            }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="Certification expires">
+              {{ formatDateTime(evidenceSnapshot.developer.certification_expiry) }}
+            </ElDescriptionsItem>
+            <ElDescriptionsItem label="File size">{{
+              formatBytes(evidenceSnapshot.version.file_size)
+            }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="Scanned files">{{
+              evidenceSnapshot.version.scan.scanned_files
+            }}</ElDescriptionsItem>
+          </ElDescriptions>
+        </section>
+
+        <section class="app-review-page__evidence-section">
+          <h2>Capabilities and targets</h2>
+          <div class="app-review-page__evidence-list">
+            <span class="app-review-page__evidence-label">Capabilities</span>
+            <div class="app-review-page__capabilities">
+              <ElTag
+                v-for="capability in evidenceSnapshot.version.requested_capabilities"
+                :key="capability"
+                effect="plain"
+              >
+                {{ capabilityLabel(capability) }}
+              </ElTag>
+              <span
+                v-if="!evidenceSnapshot.version.requested_capabilities.length"
+                class="app-review-page__muted"
+                >None</span
+              >
+            </div>
+          </div>
+          <div class="app-review-page__evidence-list">
+            <span class="app-review-page__evidence-label">Service targets</span>
+            <div class="app-review-page__capabilities">
+              <ElTag
+                v-for="target in evidenceSnapshot.version.service_targets"
+                :key="target"
+                type="info"
+                effect="plain"
+              >
+                {{ target }}
+              </ElTag>
+              <span
+                v-if="!evidenceSnapshot.version.service_targets.length"
+                class="app-review-page__muted"
+                >None</span
+              >
+            </div>
+          </div>
+        </section>
+
+        <section class="app-review-page__evidence-section">
+          <h2>Automated findings</h2>
+          <ElTable :data="evidenceSnapshot.version.scan.findings" border>
+            <ElTableColumn prop="code" label="Code" min-width="220" />
+            <ElTableColumn label="Severity" width="110">
+              <template #default="{ row }">
+                <ElTag :type="row.severity === 'warning' ? 'warning' : 'danger'">{{
+                  row.severity
+                }}</ElTag>
+              </template>
+            </ElTableColumn>
+            <ElTableColumn prop="line" label="Line" width="80" />
+            <ElTableColumn prop="column" label="Column" width="90" />
+            <template #empty>
+              <ElEmpty description="No automated findings" :image-size="72" />
+            </template>
+          </ElTable>
+        </section>
+      </template>
+    </ElDrawer>
   </div>
 </template>
 
 <script setup lang="ts">
+  import { computed, onMounted, reactive, ref } from 'vue'
   import { ElMessage, ElMessageBox } from 'element-plus'
-  import { Refresh, Search } from '@element-plus/icons-vue'
+  import { Refresh, Search, View } from '@element-plus/icons-vue'
   import {
     approvePlatformAppVersion,
     fetchPlatformAppReviews,
@@ -189,7 +376,9 @@
   const loadError = ref('')
   const actionLoading = ref('')
   const approvalDialogVisible = ref(false)
+  const evidenceDrawerVisible = ref(false)
   const approvalRow = ref<AppReviewQueueRecord | null>(null)
+  const evidenceRow = ref<AppReviewQueueRecord | null>(null)
   const approved_capabilities = ref<string[]>([])
   const approvalMessage = ref('Approved from review center')
   const filters = reactive<AppReviewQueueParams>({
@@ -207,18 +396,37 @@
     second: '2-digit',
     hour12: false
   })
+  const evidenceSnapshot = computed(() => evidenceRow.value?.review_snapshot || null)
+  const evidenceTitle = computed(() => {
+    const row = evidenceRow.value
+    return row ? `${row.app_name}@${row.version} evidence` : 'Review evidence'
+  })
+  const manualReviewStatus = computed(() => reviewerSeparationStatus(evidenceRow.value))
+  const manualReviewTagType = computed(() => separationTagType(manualReviewStatus.value))
+  const candidateReviewStatus = computed(() => candidateSeparationStatus(evidenceRow.value))
+  const candidateReviewTagType = computed(() => separationTagType(candidateReviewStatus.value))
 
   function cleanText(value?: string) {
     return String(value || '').trim() || undefined
   }
 
   function typeText(type?: string) {
-    const map: Record<string, string> = { internal: 'Internal', static: 'Static', iframe: 'Iframe' }
+    const map: Record<string, string> = {
+      internal: 'Internal',
+      static: 'Static',
+      iframe: 'Iframe',
+      service: 'Service'
+    }
     return type ? map[type] || type : '-'
   }
 
   function typeTagType(type?: string) {
-    const map: Record<string, 'success' | 'info' | 'warning'> = { internal: 'success', static: 'warning', iframe: 'info' }
+    const map: Record<string, 'success' | 'info' | 'warning' | 'danger'> = {
+      internal: 'success',
+      static: 'warning',
+      iframe: 'info',
+      service: 'danger'
+    }
     return type ? map[type] || 'info' : 'info'
   }
 
@@ -247,6 +455,44 @@
 
   function capabilityLabel(capability: string) {
     return capability === 'context.read' ? 'Read tenant and user context' : capability
+  }
+
+  function formatBytes(value: number) {
+    if (!Number.isFinite(value) || value < 0) return '-'
+    if (value < 1024) return `${value} B`
+    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+    return `${(value / 1024 / 1024).toFixed(1)} MB`
+  }
+
+  function sameOperator(left?: number | null, right?: number | null) {
+    return left != null && right != null && String(left) === String(right)
+  }
+
+  function reviewerSeparationStatus(row: AppReviewQueueRecord | null) {
+    if (!row?.reviewer_id) return 'Pending'
+    return sameOperator(row.reviewer_id, row.submitted_by) ? 'Conflict' : 'Independent'
+  }
+
+  function candidateSeparationStatus(row: AppReviewQueueRecord | null) {
+    if (!row?.candidate_reviewed_by || !row.candidate_reviewed_time) return 'Pending'
+    if (
+      sameOperator(row.candidate_reviewed_by, row.submitted_by) ||
+      sameOperator(row.candidate_reviewed_by, row.reviewer_id)
+    ) {
+      return 'Conflict'
+    }
+    return 'Independent'
+  }
+
+  function separationTagType(status: string) {
+    if (status === 'Independent') return 'success' as const
+    if (status === 'Conflict') return 'danger' as const
+    return 'info' as const
+  }
+
+  function openEvidence(row: AppReviewQueueRecord) {
+    evidenceRow.value = row
+    evidenceDrawerVisible.value = true
   }
 
   async function loadReviews() {
@@ -285,11 +531,16 @@
       return
     }
     const actionText = action === 'approve' ? 'Approve' : 'Reject'
-    const { value } = await ElMessageBox.prompt(`Reason for ${actionText.toLowerCase()} ${row.app_name}@${row.version}`, actionText, {
-      confirmButtonText: actionText,
-      cancelButtonText: 'Cancel',
-      inputValue: action === 'approve' ? 'Approved from review center' : 'Rejected from review center'
-    })
+    const { value } = await ElMessageBox.prompt(
+      `Reason for ${actionText.toLowerCase()} ${row.app_name}@${row.version}`,
+      actionText,
+      {
+        confirmButtonText: actionText,
+        cancelButtonText: 'Cancel',
+        inputValue:
+          action === 'approve' ? 'Approved from review center' : 'Rejected from review center'
+      }
+    )
     actionLoading.value = actionKey(row, action)
     try {
       if (action === 'approve') {
@@ -336,11 +587,15 @@
 
   async function versionGovernance(row: AppReviewQueueRecord, action: 'rollback' | 'unpublish') {
     const actionText = action === 'rollback' ? 'Rollback' : 'Unpublish'
-    const { value } = await ElMessageBox.prompt(`Reason for ${actionText.toLowerCase()} ${row.app_name}@${row.version}`, actionText, {
-      confirmButtonText: actionText,
-      cancelButtonText: 'Cancel',
-      inputValue: action === 'rollback' ? 'Restore stable version' : 'Retire version'
-    })
+    const { value } = await ElMessageBox.prompt(
+      `Reason for ${actionText.toLowerCase()} ${row.app_name}@${row.version}`,
+      actionText,
+      {
+        confirmButtonText: actionText,
+        cancelButtonText: 'Cancel',
+        inputValue: action === 'rollback' ? 'Restore stable version' : 'Retire version'
+      }
+    )
     actionLoading.value = actionKey(row, action)
     try {
       if (action === 'rollback') {
@@ -440,6 +695,37 @@
     margin: 18px 0;
   }
 
+  .app-review-page__evidence-section + .app-review-page__evidence-section {
+    margin-top: 28px;
+  }
+
+  .app-review-page__evidence-section h2 {
+    margin: 0 0 12px;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+
+  .app-review-page__evidence-section code {
+    overflow-wrap: anywhere;
+    color: var(--el-text-color-primary);
+    font-size: 12px;
+  }
+
+  .app-review-page__evidence-list {
+    display: grid;
+    grid-template-columns: 130px minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--el-border-color-lighter);
+  }
+
+  .app-review-page__evidence-label {
+    color: var(--el-text-color-secondary);
+    font-size: 13px;
+  }
+
   @media (max-width: 760px) {
     .app-review-page__header {
       display: grid;
@@ -448,6 +734,11 @@
     .app-review-page__filter-item,
     .app-review-page__select {
       width: 100%;
+    }
+
+    .app-review-page__evidence-list {
+      grid-template-columns: 1fr;
+      gap: 8px;
     }
   }
 </style>

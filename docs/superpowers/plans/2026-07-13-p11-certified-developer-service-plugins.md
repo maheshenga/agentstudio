@@ -498,7 +498,7 @@ git commit -m "feat(app): freeze developer service submissions"
 - Extends: `AppServiceRuntimeService.publishCandidate(appCode, version, operatorId)` to revalidate profile, snapshot, entry checksum, and candidate review
 - Produces: sanitized review queue fields `trust_level`, `review_snapshot`, `review_snapshot_hash`, `candidate_reviewed_by`, and `candidate_reviewed_time`
 
-- [ ] **Step 1: Write failing governance tests**
+- [x] **Step 1: Write failing governance tests**
 
 Cover:
 
@@ -514,7 +514,7 @@ it('revalidates certification, snapshot hash, and entry checksum before publish'
 it('returns no package path, release path, port, environment, command, or source in review responses');
 ```
 
-- [ ] **Step 2: Run governance tests to verify RED**
+- [x] **Step 2: Run governance tests to verify RED**
 
 ```powershell
 pnpm run test -- app-platform.service.spec.ts app-service-runtime.service.spec.ts app-service-platform.controller.spec.ts --runInBand
@@ -522,7 +522,7 @@ pnpm run test -- app-platform.service.spec.ts app-service-runtime.service.spec.t
 
 Expected: FAIL because P10 accepts only `platform_trusted` and has no candidate-review fields.
 
-- [ ] **Step 3: Implement trust-aware review verification**
+- [x] **Step 3: Implement trust-aware review verification**
 
 Use one branch in `assertReviewedServiceVersion`:
 
@@ -541,15 +541,15 @@ if (app.trustLevel === 'platform_trusted') {
 
 Do not broaden iframe/static/native execution.
 
-- [ ] **Step 4: Record independent candidate review**
+- [x] **Step 4: Record independent candidate review**
 
 For developer-restricted candidates, reject if `operatorId` equals `submittedBy` or `reviewerId`. Set `candidateReviewedBy` and `candidateReviewedTime` only after the health-success threshold passes. Candidate failure leaves both fields null and leaves the active instance untouched.
 
-- [ ] **Step 5: Update review UI with immutable evidence**
+- [x] **Step 5: Update review UI with immutable evidence**
 
 The review drawer shows sanitized app/profile snapshot, package and entry hashes, normalized requested capabilities/targets, automated finding codes/severity/line, reviewer separation status, and candidate-review status. It must not show filesystem paths, source snippets, process details, environment, commands, or raw payloads.
 
-- [ ] **Step 6: Run Task 4 tests and frontend type/build checks**
+- [x] **Step 6: Run Task 4 tests and frontend type/build checks**
 
 ```powershell
 pnpm run test -- app-platform.service.spec.ts app-service-runtime.service.spec.ts app-service-platform.controller.spec.ts --runInBand
@@ -561,7 +561,7 @@ pnpm run build
 
 Expected: backend tests and frontend build pass.
 
-- [ ] **Step 7: Commit Task 4**
+- [x] **Step 7: Commit Task 4**
 
 ```powershell
 git add server/src/module/app web/src/api/app-marketplace.ts web/src/views/app-platform/reviews/index.vue

@@ -24,6 +24,7 @@ import {
 import { AppReviewAction, AppReviewLogEntity } from '../entities/app-review-log.entity';
 import { AppManifestService, type StaticAppManifest } from './app-manifest.service';
 import { AppCapabilityPolicyService } from './app-capability-policy.service';
+import { AppDeveloperCertificationService } from './app-developer-certification.service';
 import { AppPackageStorageService } from './app-package-storage.service';
 import { AppReviewSnapshotService } from './app-review-snapshot.service';
 import { AppRuntimeSessionService } from './app-runtime-session.service';
@@ -60,6 +61,7 @@ export class AppPlatformService {
     private readonly capabilityPolicy: AppCapabilityPolicyService,
     private readonly dataSource: DataSource,
     private readonly runtimeSessionService: AppRuntimeSessionService,
+    private readonly certificationService: AppDeveloperCertificationService,
   ) {}
 
   async listApps(query: AppPlatformListQuery = {}) {
@@ -626,6 +628,16 @@ export class AppPlatformService {
     if (app.type === 'service' && appVersion.scanResult?.passed !== true) {
       throw new BadRequestException('Service version requires a passing package scan');
     }
+    if (app.type === 'service' && app.trustLevel === 'developer_restricted') {
+      if (!app.developerId) {
+        throw new BadRequestException('Developer service owner is unavailable');
+      }
+      await this.certificationService.assertRuntimeApproved(Number(app.developerId), 'service');
+      this.reviewSnapshotService.verify(appVersion);
+      await this.servicePackageService.verifyInstalledEntry(appVersion);
+    } else if (app.type === 'service' && app.trustLevel !== 'platform_trusted') {
+      throw new BadRequestException('Service trust level is not reviewable');
+    }
 
     const requestedCapabilities = normalizeAppCapabilities(appVersion.manifest);
     const effectiveApproval = normalizeApprovedCapabilities(
@@ -1087,6 +1099,8 @@ export class AppPlatformService {
       review_message: version.reviewMessage || '',
       reviewer_id: version.reviewerId ?? null,
       submitted_by: version.submittedBy ?? null,
+      candidate_reviewed_by: version.candidateReviewedBy ?? null,
+      candidate_reviewed_time: version.candidateReviewedTime ?? null,
       released_by: version.releasedBy ?? null,
       released_time: version.releasedTime ?? null,
       rollback_from_version_id: version.rollbackFromVersionId ?? null,
@@ -1117,6 +1131,8 @@ export class AppPlatformService {
       review_message: version.reviewMessage || '',
       reviewer_id: version.reviewerId ?? null,
       submitted_by: version.submittedBy ?? null,
+      candidate_reviewed_by: version.candidateReviewedBy ?? null,
+      candidate_reviewed_time: version.candidateReviewedTime ?? null,
       released_by: version.releasedBy ?? null,
       released_time: version.releasedTime ?? null,
       rollback_from_version_id: version.rollbackFromVersionId ?? null,
@@ -1148,6 +1164,7 @@ export class AppPlatformService {
       app_name: app.name,
       app_type: app.type,
       app_status: app.status,
+      trust_level: app.trustLevel || this.trustLevel(app.type),
       category: app.category || '',
       developer_name: app.developerName || '',
     };

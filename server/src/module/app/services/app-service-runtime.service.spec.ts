@@ -27,6 +27,9 @@ describe('AppServiceRuntimeService', () => {
   let transport: Record<string, jest.Mock>;
   let portAllocator: { allocate: jest.Mock };
   let delay: { wait: jest.Mock };
+  let certificationService: { assertRuntimeApproved: jest.Mock };
+  let snapshotService: { verify: jest.Mock };
+  let packageService: { verifyInstalledEntry: jest.Mock };
   let dataSource: { transaction: jest.Mock };
   let service: AppServiceRuntimeService;
 
@@ -96,6 +99,9 @@ describe('AppServiceRuntimeService', () => {
     };
     portAllocator = { allocate: jest.fn(async () => 22001) };
     delay = { wait: jest.fn(async () => undefined) };
+    certificationService = { assertRuntimeApproved: jest.fn(async () => ({ id: 5 })) };
+    snapshotService = { verify: jest.fn() };
+    packageService = { verifyInstalledEntry: jest.fn(async () => undefined) };
     const manager = {
       getRepository: (entity: unknown) => {
         if (entity === AppPackageEntity) return appRepo;
@@ -127,7 +133,96 @@ describe('AppServiceRuntimeService', () => {
       portAllocator as unknown as AppServicePortAllocator,
       delay as unknown as AppServiceDelay,
       new AppServiceLogRedactor(),
+      certificationService as any,
+      snapshotService as any,
+      packageService as any,
     );
+  });
+
+  it('keeps platform-trusted candidate behavior independent of developer certification', async () => {
+    await service.startCandidate('admin_echo_service', '2.0.0', 99);
+
+    expect(certificationService.assertRuntimeApproved).not.toHaveBeenCalled();
+    expect(snapshotService.verify).not.toHaveBeenCalled();
+    expect(packageService.verifyInstalledEntry).not.toHaveBeenCalled();
+    expect(version(12).candidateReviewedBy).toBeUndefined();
+  });
+
+  it('starts a restricted candidate only for a live certification and independent candidate reviewer', async () => {
+    app().trustLevel = 'developer_restricted';
+    app().developerId = 17;
+    Object.assign(version(12), {
+      reviewSnapshot: { schema_version: 1 },
+      reviewSnapshotHash: 'a'.repeat(64),
+      serviceTargets: [],
+    });
+
+    await expect(service.startCandidate('admin_echo_service', '2.0.0', 20)).rejects.toThrow(
+      'Candidate review requires a different platform operator',
+    );
+    await expect(service.startCandidate('admin_echo_service', '2.0.0', 21)).rejects.toThrow(
+      'Candidate review requires a different platform operator',
+    );
+    expect(processManager.start).not.toHaveBeenCalled();
+
+    await service.startCandidate('admin_echo_service', '2.0.0', 99);
+
+    expect(certificationService.assertRuntimeApproved).toHaveBeenCalledWith(17, 'service');
+    expect(snapshotService.verify).toHaveBeenCalledWith(version(12));
+    expect(packageService.verifyInstalledEntry).toHaveBeenCalledWith(version(12));
+    expect(version(12)).toMatchObject({
+      candidateReviewedBy: 99,
+      candidateReviewedTime: expect.any(Date),
+      candidateHealthStatus: 'healthy',
+    });
+  });
+
+  it('records no restricted candidate reviewer when health verification fails', async () => {
+    app().trustLevel = 'developer_restricted';
+    app().developerId = 17;
+    Object.assign(version(12), {
+      reviewSnapshot: { schema_version: 1 },
+      reviewSnapshotHash: 'a'.repeat(64),
+    });
+    transport.health.mockResolvedValue({ statusCode: 503, body: { status: 'starting' } });
+
+    await expect(service.startCandidate('admin_echo_service', '2.0.0', 99)).rejects.toThrow(
+      'Candidate health verification failed',
+    );
+
+    expect(version(12).candidateReviewedBy).toBeNull();
+    expect(version(12).candidateReviewedTime).toBeNull();
+    expect(instance(101)).toMatchObject({ role: 'active', healthStatus: 'healthy' });
+  });
+
+  it('revalidates restricted certification, snapshot, and installed entry before publish', async () => {
+    app().trustLevel = 'developer_restricted';
+    app().developerId = 17;
+    Object.assign(version(12), {
+      reviewSnapshot: { schema_version: 1 },
+      reviewSnapshotHash: 'a'.repeat(64),
+      candidateHealthStatus: 'healthy',
+      candidateReviewedBy: 99,
+      candidateReviewedTime: new Date(),
+    });
+    instances.push(
+      createInstance({
+        id: 102,
+        versionId: 12,
+        processName: 'agentstudio-app-admin-echo-service-2-0-0',
+        loopbackPort: 22001,
+        role: 'candidate',
+        processStatus: 'online',
+        healthStatus: 'healthy',
+      }),
+    );
+
+    await service.publishCandidate('admin_echo_service', '2.0.0', 77);
+
+    expect(certificationService.assertRuntimeApproved).toHaveBeenCalledWith(17, 'service');
+    expect(snapshotService.verify).toHaveBeenCalledWith(version(12));
+    expect(packageService.verifyInstalledEntry).toHaveBeenCalledWith(version(12));
+    expect(instance(102).role).toBe('active');
   });
 
   it('leaves the active instance unchanged when candidate start fails and stores no raw error', async () => {

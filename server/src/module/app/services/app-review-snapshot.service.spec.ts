@@ -140,4 +140,19 @@ describe('AppReviewSnapshotService', () => {
     };
     expect(() => service.verify(stored)).toThrow('Frozen review content integrity check failed');
   });
+
+  it('rejects version fields that no longer match the frozen scanner evidence', () => {
+    const snapshot = service.create(app, version, profile);
+    const stored = {
+      ...version,
+      reviewSnapshot: snapshot,
+      reviewSnapshotHash: service.hash(snapshot),
+      scanResult: {
+        ...version.scanResult,
+        findings: [{ code: 'changed_finding', severity: 'error' }],
+      },
+    } as unknown as AppPackageVersionEntity;
+
+    expect(() => service.verify(stored)).toThrow('Frozen review content integrity check failed');
+  });
 });

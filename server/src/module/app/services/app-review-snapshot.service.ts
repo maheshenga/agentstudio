@@ -128,14 +128,52 @@ export class AppReviewSnapshotService {
       .digest('hex');
   }
 
-  verify(version: Pick<AppPackageVersionEntity, 'reviewSnapshot' | 'reviewSnapshotHash'>) {
+  verify(
+    version: Pick<
+      AppPackageVersionEntity,
+      | 'id'
+      | 'version'
+      | 'manifest'
+      | 'fileHash'
+      | 'fileSize'
+      | 'serviceTargets'
+      | 'scanResult'
+      | 'reviewSnapshot'
+      | 'reviewSnapshotHash'
+    >,
+  ) {
     const storedHash = String(version.reviewSnapshotHash || '');
     if (!version.reviewSnapshot || !/^[a-f0-9]{64}$/.test(storedHash)) {
-      throw new BadRequestException('Frozen review content integrity check failed');
+      this.throwIntegrityFailure();
     }
     const computedHash = this.hash(version.reviewSnapshot);
     if (!timingSafeEqual(Buffer.from(storedHash, 'hex'), Buffer.from(computedHash, 'hex'))) {
-      throw new BadRequestException('Frozen review content integrity check failed');
+      this.throwIntegrityFailure();
+    }
+
+    const snapshot = version.reviewSnapshot as Record<string, unknown>;
+    const frozenVersion = snapshot.version;
+    if (!frozenVersion || typeof frozenVersion !== 'object' || Array.isArray(frozenVersion)) {
+      this.throwIntegrityFailure();
+    }
+    const scan = this.sanitizeScanResult(version.scanResult);
+    const currentEvidence = {
+      id: String(version.id),
+      version: version.version,
+      manifest: this.canonicalize(version.manifest || {}),
+      package_sha256: version.fileHash,
+      entry_sha256: scan.entrySha256,
+      file_size: Math.max(0, Math.trunc(Number(version.fileSize) || 0)),
+      requested_capabilities: normalizeAppCapabilities(version.manifest),
+      service_targets: [...(version.serviceTargets || [])],
+      scan: {
+        passed: scan.passed,
+        scanned_files: scan.scannedFiles,
+        findings: scan.findings,
+      },
+    };
+    if (this.hash(frozenVersion) !== this.hash(currentEvidence)) {
+      this.throwIntegrityFailure();
     }
   }
 
@@ -180,5 +218,9 @@ export class AppReviewSnapshotService {
         if (item !== undefined) result[key] = this.canonicalize(item);
         return result;
       }, {});
+  }
+
+  private throwIntegrityFailure(): never {
+    throw new BadRequestException('Frozen review content integrity check failed');
   }
 }

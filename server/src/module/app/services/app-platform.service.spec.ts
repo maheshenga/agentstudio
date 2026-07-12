@@ -10,6 +10,7 @@ import { AppPackageVersionEntity } from '../entities/app-package-version.entity'
 import { AppReviewLogEntity } from '../entities/app-review-log.entity';
 import { AppManifestService } from './app-manifest.service';
 import { AppCapabilityPolicyService } from './app-capability-policy.service';
+import { AppDeveloperCertificationService } from './app-developer-certification.service';
 import { AppPackageStorageService } from './app-package-storage.service';
 import { AppRuntimeSessionService } from './app-runtime-session.service';
 import { AppReviewSnapshotService } from './app-review-snapshot.service';
@@ -46,6 +47,7 @@ describe('AppPlatformService', () => {
   };
   const servicePackageService = {
     scanAndInstall: jest.fn(),
+    verifyInstalledEntry: jest.fn(),
   };
   const reviewSnapshotService = {
     create: jest.fn(),
@@ -64,6 +66,9 @@ describe('AppPlatformService', () => {
   };
   const capabilityPolicy = {
     approvePlatformCapabilities: jest.fn(),
+  };
+  const certificationService = {
+    assertRuntimeApproved: jest.fn(),
   };
   const runtimeSessionService = { revokeVersion: jest.fn() };
   const grantRepo = {};
@@ -91,6 +96,9 @@ describe('AppPlatformService', () => {
     reviewLogRepo.create.mockImplementation((value) => ({ ...value }));
     reviewLogRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 1, ...value }));
     runtimeSessionService.revokeVersion.mockResolvedValue(1);
+    certificationService.assertRuntimeApproved.mockResolvedValue({ id: 5, userId: 17 });
+    reviewSnapshotService.verify.mockImplementation(() => undefined);
+    servicePackageService.verifyInstalledEntry.mockResolvedValue(undefined);
     reviewSnapshotService.sanitizeScanResult.mockImplementation((value) => ({
       passed: value?.passed === true,
       findings: Array.isArray(value?.findings)
@@ -114,6 +122,7 @@ describe('AppPlatformService', () => {
         { provide: AppPackageStorageService, useValue: storageService },
         { provide: AppManifestService, useValue: manifestService },
         { provide: AppCapabilityPolicyService, useValue: capabilityPolicy },
+        { provide: AppDeveloperCertificationService, useValue: certificationService },
         { provide: AppRuntimeSessionService, useValue: runtimeSessionService },
         { provide: AppReviewSnapshotService, useValue: reviewSnapshotService },
         { provide: AppServicePackageService, useValue: servicePackageService },
@@ -1109,6 +1118,85 @@ describe('AppPlatformService', () => {
     );
   });
 
+  it('approves restricted service content only after live certification and immutable evidence verify', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 9,
+      code: 'workflow_service',
+      type: 'service',
+      runtimeType: 'service',
+      trustLevel: 'developer_restricted',
+      developerId: 17,
+      status: 'pending_review',
+    });
+    const pendingVersion = {
+      id: 12,
+      appId: 9,
+      version: '1.0.0',
+      manifest: { capabilities: ['context.read'] },
+      manifestVersion: 2,
+      packageFormat: 'service_zip',
+      scanResult: { passed: true, findings: [] },
+      reviewSnapshot: { schema_version: 1 },
+      reviewSnapshotHash: 'a'.repeat(64),
+      submittedBy: 17,
+      reviewStatus: 'pending',
+      publishStatus: 'unpublished',
+      packagePath: '/runtime/workflow_service/1.0.0',
+      entryFile: 'dist/index.js',
+    };
+    versionRepo.findOne.mockResolvedValue(pendingVersion);
+    certificationService.assertRuntimeApproved.mockResolvedValue({ id: 5, userId: 17 });
+
+    await service.approveVersion('workflow_service', '1.0.0', 'Verified', 88, [
+      'context.read',
+    ]);
+
+    expect(certificationService.assertRuntimeApproved).toHaveBeenCalledWith(17, 'service');
+    expect(reviewSnapshotService.verify).toHaveBeenCalledWith(pendingVersion);
+    expect(servicePackageService.verifyInstalledEntry).toHaveBeenCalledWith(pendingVersion);
+    expect(versionRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ reviewStatus: 'approved', reviewerId: 88 }),
+    );
+  });
+
+  it('does not approve restricted service content when frozen evidence verification fails', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 9,
+      code: 'workflow_service',
+      type: 'service',
+      runtimeType: 'service',
+      trustLevel: 'developer_restricted',
+      developerId: 17,
+      status: 'pending_review',
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 12,
+      appId: 9,
+      version: '1.0.0',
+      manifest: { capabilities: [] },
+      manifestVersion: 2,
+      packageFormat: 'service_zip',
+      scanResult: { passed: true, findings: [] },
+      reviewSnapshot: { schema_version: 1 },
+      reviewSnapshotHash: 'a'.repeat(64),
+      submittedBy: 17,
+      reviewStatus: 'pending',
+      publishStatus: 'unpublished',
+      packagePath: '/runtime/workflow_service/1.0.0',
+      entryFile: 'dist/index.js',
+    });
+    certificationService.assertRuntimeApproved.mockResolvedValue({ id: 5, userId: 17 });
+    reviewSnapshotService.verify.mockImplementation(() => {
+      throw new BadRequestException('Frozen review content integrity check failed');
+    });
+
+    await expect(
+      service.approveVersion('workflow_service', '1.0.0', 'Verified', 88, []),
+    ).rejects.toThrow('Frozen review content integrity check failed');
+    expect(versionRepo.save).not.toHaveBeenCalled();
+    expect(servicePackageService.verifyInstalledEntry).not.toHaveBeenCalled();
+  });
+
   it('keeps rejected developer service content terminal', async () => {
     appRepo.findOne.mockResolvedValue({
       id: 9,
@@ -1483,6 +1571,68 @@ describe('AppPlatformService', () => {
 
     await expect(service.listReviewQueue({ keyword: 'job', type: 'static' })).resolves.toHaveLength(
       1,
+    );
+  });
+
+  it('returns only sanitized immutable evidence for restricted service reviews', async () => {
+    versionRepo.find.mockResolvedValue([
+      {
+        id: 12,
+        appId: 9,
+        version: '1.0.0',
+        manifest: { capabilities: ['service.invoke'], serviceTargets: ['reporting_service'] },
+        manifestVersion: 2,
+        packageFormat: 'service_zip',
+        scanResult: {
+          passed: true,
+          findings: [{ code: 'warning_only', severity: 'warning', source: 'secret source' }],
+          scannedFiles: 1,
+          entrySha256: 'b'.repeat(64),
+        },
+        reviewSnapshot: {
+          schema_version: 1,
+          app: { code: 'workflow_service' },
+          developer: { profile_id: '5', certification_status: 'certified' },
+        },
+        reviewSnapshotHash: 'c'.repeat(64),
+        serviceTargets: ['reporting_service'],
+        candidateReviewedBy: 99,
+        candidateReviewedTime: new Date('2026-07-13T08:00:00.000Z'),
+        reviewStatus: 'approved',
+        publishStatus: 'unpublished',
+        submittedBy: 17,
+        reviewerId: 88,
+        packagePath: '/runtime/workflow_service/1.0.0',
+        publishPath: '/public/workflow_service/1.0.0',
+        entryFile: 'dist/index.js',
+      },
+    ]);
+    appRepo.find.mockResolvedValue([
+      {
+        id: 9,
+        code: 'workflow_service',
+        name: 'Workflow Service',
+        type: 'service',
+        runtimeType: 'service',
+        trustLevel: 'developer_restricted',
+        status: 'approved',
+        developerName: 'Alice',
+        entryUrl: '',
+      },
+    ]);
+
+    const [record] = await service.listReviewQueue({ type: 'service' });
+
+    expect(record).toMatchObject({
+      trust_level: 'developer_restricted',
+      review_snapshot: expect.objectContaining({ schema_version: 1 }),
+      review_snapshot_hash: 'c'.repeat(64),
+      candidate_reviewed_by: 99,
+      candidate_reviewed_time: new Date('2026-07-13T08:00:00.000Z'),
+      service_targets: ['reporting_service'],
+    });
+    expect(JSON.stringify(record)).not.toMatch(
+      /package_path|publish_path|release_path|loopback_port|environment|command|secret source|\/runtime\//i,
     );
   });
 });
