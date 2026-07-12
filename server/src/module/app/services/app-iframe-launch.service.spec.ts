@@ -95,7 +95,7 @@ describe('AppIframeLaunchService', () => {
     const clock = jest.spyOn(Date, 'now').mockReturnValue(1_000);
     const launch = await service.create(input);
     const launchToken = launch.fragment.slice('#agentstudio_launch='.length);
-    const tampered = `${launchToken.slice(0, -1)}${launchToken.endsWith('a') ? 'b' : 'a'}`;
+    const tampered = createNonCanonicalSignatureAlias(launchToken);
 
     await expect(
       service.exchange({ tenantId: 23, userId: 91, launchToken: tampered }),
@@ -193,4 +193,15 @@ function signClaims(claims: Record<string, unknown>) {
     .digest();
   const signature = createHmac('sha256', key).update(payload, 'utf8').digest('base64url');
   return `${payload}.${signature}`;
+}
+
+function createNonCanonicalSignatureAlias(token: string) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const [payload, signature] = token.split('.');
+  const lastIndex = alphabet.indexOf(signature.at(-1) || '');
+  const aliasIndex = (lastIndex & 0b111100) | 1;
+  const alias = `${signature.slice(0, -1)}${alphabet[aliasIndex]}`;
+  expect(Buffer.from(alias, 'base64url')).toEqual(Buffer.from(signature, 'base64url'));
+  expect(alias).not.toBe(signature);
+  return `${payload}.${alias}`;
 }

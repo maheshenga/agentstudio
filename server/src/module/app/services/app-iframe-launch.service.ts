@@ -165,7 +165,11 @@ export class AppIframeLaunchService {
     } catch {
       throw this.invalidLaunch();
     }
-    if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
+    if (
+      supplied.toString('base64url') !== parts[1] ||
+      supplied.length !== expected.length ||
+      !timingSafeEqual(supplied, expected)
+    ) {
       throw this.invalidLaunch();
     }
 
