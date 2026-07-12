@@ -8,6 +8,7 @@ describe('AppRuntimeController', () => {
   const contextService = { buildAuthorizedContext: jest.fn() };
   const kvService = { get: jest.fn(), set: jest.fn(), delete: jest.fn() };
   const fileService = { upload: jest.fn(), open: jest.fn(), delete: jest.fn() };
+  const httpService = { request: jest.fn(), emitWebhook: jest.fn() };
   let controller: AppRuntimeController;
 
   beforeEach(() => {
@@ -17,6 +18,7 @@ describe('AppRuntimeController', () => {
       contextService as any,
       kvService as any,
       fileService as any,
+      httpService as any,
     );
   });
 
@@ -111,6 +113,38 @@ describe('AppRuntimeController', () => {
         'theme',
         ...(body ? [body] : []),
       );
+    },
+  );
+
+  it.each([
+    [
+      'httpRequest',
+      'http.request',
+      'request',
+      { url: 'https://api.example.com/data', method: 'GET' },
+    ],
+    [
+      'webhookEmit',
+      'webhook.emit',
+      'emitWebhook',
+      { url: 'https://hooks.example.com/events', event: 'candidate.created', payload: { id: 42 } },
+    ],
+  ])(
+    'authorizes %s with its dedicated capability',
+    async (method, capability, serviceMethod, body) => {
+      const session = { id: 1, tenantId: 23, userId: 91, appId: 10, versionId: 20 };
+      sessionService.authorize.mockResolvedValue(session);
+      httpService[serviceMethod].mockResolvedValue({ status: 202 });
+
+      await expect(controller[method](runtimeRequest('req-http'), body)).resolves.toMatchObject({
+        data: { status: 202 },
+      });
+      expect(sessionService.authorize).toHaveBeenCalledWith(
+        'runtime-token',
+        capability,
+        expect.objectContaining({ requestId: 'req-http' }),
+      );
+      expect(httpService[serviceMethod]).toHaveBeenCalledWith(session, body);
     },
   );
 

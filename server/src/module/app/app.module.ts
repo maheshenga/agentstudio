@@ -38,6 +38,10 @@ import { AppPlatformService } from './services/app-platform.service';
 import { AppRuntimeContextService } from './services/app-runtime-context.service';
 import { AppRuntimeFileService } from './services/app-runtime-file.service';
 import { AppRuntimeKvService } from './services/app-runtime-kv.service';
+import {
+  AppRuntimeHttpService,
+  UndiciAppRuntimeHttpTransport,
+} from './services/app-runtime-http.service';
 import { AppRuntimeSessionService } from './services/app-runtime-session.service';
 import { AppTenantService } from './services/app-tenant.service';
 
@@ -84,6 +88,8 @@ import { AppTenantService } from './services/app-tenant.service';
     AppRuntimeContextService,
     AppRuntimeFileService,
     AppRuntimeKvService,
+    AppRuntimeHttpService,
+    UndiciAppRuntimeHttpTransport,
     AppRuntimeSessionService,
     AppTenantService,
     AppFactoryService,

@@ -26,9 +26,11 @@ import { ResultData } from '../../common/utils/result';
 import { AppRuntimeHttpExceptionFilter } from './app-runtime-http-exception.filter';
 import { SetAppRuntimeKvDto } from './dto/app-runtime-kv.dto';
 import { AppRuntimeFileParamsDto } from './dto/app-runtime-file.dto';
+import { AppRuntimeHttpRequestDto, AppRuntimeWebhookDto } from './dto/app-runtime-http.dto';
 import { AppRuntimeContextService } from './services/app-runtime-context.service';
 import { AppRuntimeFileService } from './services/app-runtime-file.service';
 import { AppRuntimeKvService } from './services/app-runtime-kv.service';
+import { AppRuntimeHttpService } from './services/app-runtime-http.service';
 import { AppRuntimeSessionService } from './services/app-runtime-session.service';
 
 @ApiTags('App Runtime')
@@ -40,6 +42,7 @@ export class AppRuntimeController {
     private readonly contextService: AppRuntimeContextService,
     private readonly kvService: AppRuntimeKvService,
     private readonly fileService: AppRuntimeFileService,
+    private readonly httpService: AppRuntimeHttpService,
   ) {}
 
   @Get('context')
@@ -130,9 +133,30 @@ export class AppRuntimeController {
     return ResultData.ok(await this.kvService.delete(session, namespace, key));
   }
 
+  @Post('http')
+  @Public()
+  async httpRequest(@Req() request: Request, @Body() body: AppRuntimeHttpRequestDto) {
+    const session = await this.authorize(request, 'http.request');
+    return ResultData.ok(await this.httpService.request(session, body));
+  }
+
+  @Post('webhooks')
+  @Public()
+  async webhookEmit(@Req() request: Request, @Body() body: AppRuntimeWebhookDto) {
+    const session = await this.authorize(request, 'webhook.emit');
+    return ResultData.ok(await this.httpService.emitWebhook(session, body));
+  }
+
   private authorize(
     request: Request,
-    capability: 'kv.read' | 'kv.write' | 'kv.delete' | 'files.read' | 'files.write',
+    capability:
+      | 'kv.read'
+      | 'kv.write'
+      | 'kv.delete'
+      | 'files.read'
+      | 'files.write'
+      | 'http.request'
+      | 'webhook.emit',
   ) {
     return this.sessionService.authorize(this.getRuntimeToken(request), capability, {
       requestId: this.header(request, 'x-request-id', 100),
