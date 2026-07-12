@@ -84,6 +84,13 @@ export interface ReconcileSummary {
   failed: number;
 }
 
+export interface AppServiceRuntimeListQuery {
+  app_code?: string;
+  role?: AppServiceInstanceEntity['role'];
+  process_status?: AppServiceInstanceEntity['processStatus'];
+  health_status?: AppServiceInstanceEntity['healthStatus'];
+}
+
 @Injectable()
 export class AppServiceRuntimeService {
   constructor(
@@ -225,7 +232,7 @@ export class AppServiceRuntimeService {
     });
 
     await this.cleanupRetired(retired);
-    return this.getRuntimeState(appCode);
+    return this.getRuntimeApp(appCode);
   }
 
   async rollback(
@@ -312,7 +319,7 @@ export class AppServiceRuntimeService {
     });
 
     await this.cleanupRetired(retired);
-    return this.getRuntimeState(appCode);
+    return this.getRuntimeApp(appCode);
   }
 
   async stopCandidate(
@@ -364,11 +371,12 @@ export class AppServiceRuntimeService {
         lastErrorMessage: '',
       },
     );
-    return this.getRuntimeState(appCode);
+    return this.getRuntimeApp(appCode);
   }
 
-  async reconcile(): Promise<ReconcileSummary> {
+  async reconcile(operatorId?: number): Promise<ReconcileSummary> {
     this.assertEnabled();
+    if (operatorId !== undefined) this.assertOperator(operatorId);
     const instances = await this.instanceRepo.find({ order: { id: 'ASC' } });
     const versions = await this.versionRepo.find();
     const versionById = new Map(versions.map((version) => [Number(version.id), version]));
@@ -473,8 +481,13 @@ export class AppServiceRuntimeService {
     return summary;
   }
 
-  async probeActive(appCode: string, input: unknown): Promise<AppServiceLoopbackResponse> {
+  async probeActive(
+    appCode: string,
+    input: unknown,
+    operatorId?: number,
+  ): Promise<AppServiceLoopbackResponse> {
     this.assertEnabled();
+    if (operatorId !== undefined) this.assertOperator(operatorId);
     const app = await this.findApp(appCode);
     const instances = await this.instanceRepo.find({ where: { appId: app.id } });
     const active = instances.filter((item) => item.role === 'active');
@@ -485,16 +498,80 @@ export class AppServiceRuntimeService {
     ) {
       throw new ServiceUnavailableException('Service requires one healthy active instance');
     }
-    return this.loopbackTransport.invoke(active[0].loopbackPort, input);
+    const response = await this.loopbackTransport.invoke(active[0].loopbackPort, input);
+    await this.reviewLogRepo.save(
+      this.reviewLogRepo.create({
+        appId: app.id,
+        versionId: active[0].versionId,
+        action: 'probe',
+        message: 'Probed active service instance',
+        operatorId: operatorId ?? null,
+        metadata: { statusCode: response.statusCode },
+      }),
+    );
+    return response;
   }
 
-  async getRuntimeState(appCode: string) {
+  async listRuntimeInstances(query: AppServiceRuntimeListQuery = {}) {
+    const [apps, versions, instances] = await Promise.all([
+      this.appRepo.find(),
+      this.versionRepo.find(),
+      this.instanceRepo.find({ order: { id: 'DESC' } }),
+    ]);
+    const appById = new Map(apps.map((app) => [Number(app.id), app]));
+    const versionById = new Map(versions.map((version) => [Number(version.id), version]));
+    return instances
+      .map((instance) => {
+        const app = appById.get(Number(instance.appId));
+        const version = versionById.get(Number(instance.versionId));
+        if (!app || !version || app.type !== 'service') return null;
+        return this.toInstanceResponse(app, version, instance);
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .filter((item) => {
+        if (query.app_code && item.app_code !== query.app_code) return false;
+        if (query.role && item.role !== query.role) return false;
+        if (query.process_status && item.process_status !== query.process_status) return false;
+        if (query.health_status && item.health_status !== query.health_status) return false;
+        return true;
+      });
+  }
+
+  async getRuntimeApp(appCode: string) {
     const app = await this.findApp(appCode);
+    if (app.type !== 'service') throw new BadRequestException('App is not a service runtime');
+    const instances = await this.listRuntimeInstances({ app_code: app.code });
+    return {
+      app_code: app.code,
+      app_name: app.name,
+      app_status: app.status,
+      active_version: instances.find((item) => item.role === 'active')?.version || '',
+      candidate_version: instances.find((item) => item.role === 'candidate')?.version || '',
+      standby_version: instances.find((item) => item.role === 'standby')?.version || '',
+      instances,
+    };
+  }
+
+  async getRuntimeLogs(appCode: string, lines = 100) {
+    const app = await this.findApp(appCode);
+    if (app.type !== 'service') throw new BadRequestException('App is not a service runtime');
     const instances = await this.instanceRepo.find({
       where: { appId: app.id },
       order: { id: 'DESC' },
     });
-    return { app, instances };
+    const instance =
+      instances.find((item) => item.role === 'active') ||
+      instances.find((item) => item.role === 'candidate') ||
+      instances.find((item) => item.role === 'standby');
+    if (!instance) throw new NotFoundException('Service runtime instance not found');
+    const logs = await this.processManager.logs(instance.processName, lines);
+    return {
+      app_code: app.code,
+      process_name: instance.processName,
+      role: instance.role,
+      stdout: logs.stdout,
+      stderr: logs.stderr,
+    };
   }
 
   private async prepareCandidate(
@@ -839,6 +916,27 @@ export class AppServiceRuntimeService {
       throw new BadRequestException(errorMessage);
     }
     return instance.id;
+  }
+
+  private toInstanceResponse(
+    app: AppPackageEntity,
+    version: AppPackageVersionEntity,
+    instance: AppServiceInstanceEntity,
+  ) {
+    return {
+      id: String(instance.id),
+      app_code: app.code,
+      version: version.version,
+      process_name: instance.processName,
+      loopback_port: Number(instance.loopbackPort),
+      role: instance.role,
+      process_status: instance.processStatus,
+      health_status: instance.healthStatus,
+      restart_count: Number(instance.restartCount) || 0,
+      last_health_at: instance.lastHealthTime?.toISOString?.() || null,
+      diagnostic_code: instance.lastErrorCode || '',
+      diagnostic_message: this.fixedDiagnostic(instance.lastErrorMessage || ''),
+    };
   }
 
   private recordEvent(

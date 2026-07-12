@@ -80,6 +80,26 @@ export class AppPlatformController {
     );
   }
 
+  @Post(':code/versions/service-upload')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { files: 1, fileSize: 50 * 1024 * 1024 },
+    }),
+  )
+  @ApiOperation({ summary: 'Upload administrator service version package' })
+  @RequirePermission('app:runtime:manage')
+  uploadServiceVersion(
+    @Param('code') code: string,
+    @UploadedFile() file: Express.Multer.File,
+    @User() user: UserDto,
+  ) {
+    return this.runOutsideTenant(user, () =>
+      this.appPlatformService
+        .uploadServiceVersion(code, file, user?.userId)
+        .then((data) => ResultData.ok(data)),
+    );
+  }
+
   @Post(':code/versions/:version/approve')
   @ApiOperation({ summary: 'Approve app version' })
   @RequirePermission('app:platform:review')

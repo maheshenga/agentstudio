@@ -13,6 +13,7 @@ import { AppFactoryController } from './app-factory.controller';
 import { AppPlatformReviewController } from './app-platform-review.controller';
 import { AppPlatformController } from './app-platform.controller';
 import { AppRuntimeController } from './app-runtime.controller';
+import { AppServicePlatformController } from './app-service-platform.controller';
 import { AppTenantController } from './app-tenant.controller';
 import { AppFactoryModuleEntity } from './entities/app-factory-module.entity';
 import { AppFactoryPublishLogEntity } from './entities/app-factory-publish-log.entity';
@@ -93,6 +94,7 @@ import { AppTenantService } from './services/app-tenant.service';
     AppPlatformController,
     AppPlatformReviewController,
     AppRuntimeController,
+    AppServicePlatformController,
     AppTenantController,
     AppFactoryController,
     AppDeveloperController,

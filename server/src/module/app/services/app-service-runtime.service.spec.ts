@@ -448,6 +448,37 @@ describe('AppServiceRuntimeService', () => {
     await expect(service.probeActive('admin_echo_service', {})).rejects.toThrow('healthy active');
   });
 
+  it('returns stable runtime responses without release paths, commands, or environment values', async () => {
+    const list = await service.listRuntimeInstances({ role: 'active' });
+    const detail = await service.getRuntimeApp('admin_echo_service');
+    processManager.logs.mockResolvedValue({ stdout: 'ok', stderr: '' });
+    const logs = await service.getRuntimeLogs('admin_echo_service', 100);
+
+    expect(list).toEqual([
+      expect.objectContaining({
+        id: '101',
+        app_code: 'admin_echo_service',
+        version: '1.0.0',
+        role: 'active',
+        process_status: 'online',
+        health_status: 'healthy',
+      }),
+    ]);
+    expect(detail).toMatchObject({ app_code: 'admin_echo_service', active_version: '1.0.0' });
+    expect(logs).toMatchObject({
+      app_code: 'admin_echo_service',
+      process_name: instance(101).processName,
+      stdout: 'ok',
+      stderr: '',
+    });
+    for (const value of [list, detail, logs]) {
+      expect(JSON.stringify(value)).not.toMatch(
+        /releaseDir|release_dir|packagePath|package_path|pm2Home|environment|command/i,
+      );
+      expect(JSON.stringify(value)).not.toContain('/runtime/admin_echo_service');
+    }
+  });
+
   it('allocates only an unused loopback port from the configured range', async () => {
     const blocker = createServer();
     await new Promise<void>((resolve) => blocker.listen(0, '127.0.0.1', resolve));

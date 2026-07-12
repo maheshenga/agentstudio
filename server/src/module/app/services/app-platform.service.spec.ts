@@ -53,6 +53,7 @@ describe('AppPlatformService', () => {
     stopCandidate: jest.fn(),
     reconcile: jest.fn(),
     probeActive: jest.fn(),
+    getRuntimeApp: jest.fn(),
   };
   const capabilityPolicy = {
     approvePlatformCapabilities: jest.fn(),
@@ -160,6 +161,11 @@ describe('AppPlatformService', () => {
     serviceRuntimeService.stopCandidate.mockResolvedValue({ stopped: true });
     serviceRuntimeService.reconcile.mockResolvedValue({ restarted: 1 });
     serviceRuntimeService.probeActive.mockResolvedValue({ body: { ok: true } });
+    serviceRuntimeService.getRuntimeApp
+      .mockResolvedValueOnce({ role: 'candidate' })
+      .mockResolvedValueOnce({ active: '2.0.0' })
+      .mockResolvedValueOnce({ active: '1.0.0' })
+      .mockResolvedValueOnce({ stopped: true });
 
     await expect(service.startServiceCandidate('svc', '2.0.0', 9)).resolves.toEqual({
       role: 'candidate',
@@ -173,8 +179,8 @@ describe('AppPlatformService', () => {
     await expect(service.stopServiceCandidate('svc', '2.0.0', 'cancel', 9)).resolves.toEqual({
       stopped: true,
     });
-    await expect(service.reconcileServiceRuntime()).resolves.toEqual({ restarted: 1 });
-    await expect(service.probeActiveService('svc', { ping: true })).resolves.toEqual({
+    await expect(service.reconcileServiceRuntime(9)).resolves.toEqual({ restarted: 1 });
+    await expect(service.probeActiveService('svc', { ping: true }, 9)).resolves.toEqual({
       body: { ok: true },
     });
   });
@@ -312,19 +318,27 @@ describe('AppPlatformService', () => {
       packageSha256: 'a'.repeat(64),
       scanResult: {
         passed: true,
-        findings: [],
+        findings: [
+          {
+            code: 'warning_only',
+            severity: 'warning',
+            line: 1,
+            column: 2,
+            snippet: 'process.env.SECRET',
+          },
+        ],
         scannedFiles: 1,
         entrySha256: 'b'.repeat(64),
+        source: 'raw uploaded source',
       },
     });
 
-    await expect(
-      service.uploadServiceVersion(
-        'admin_echo_service',
-        { buffer: Buffer.from('zip'), size: 3 } as Express.Multer.File,
-        88,
-      ),
-    ).resolves.toMatchObject({
+    const response = await service.uploadServiceVersion(
+      'admin_echo_service',
+      { buffer: Buffer.from('zip'), size: 3 } as Express.Multer.File,
+      88,
+    );
+    expect(response).toMatchObject({
       version: '1.0.0',
       manifest_version: 2,
       package_format: 'service_zip',
@@ -333,6 +347,11 @@ describe('AppPlatformService', () => {
       submitted_by: 88,
       scan_result: expect.objectContaining({ passed: true }),
     });
+    expect(JSON.stringify(response)).not.toContain('/runtime/admin_echo_service');
+    expect(response).not.toHaveProperty('package_path');
+    expect(response).not.toHaveProperty('publish_path');
+    expect(JSON.stringify(response)).not.toContain('raw uploaded source');
+    expect(JSON.stringify(response)).not.toContain('process.env.SECRET');
     expect(versionRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
         appId: 9,
@@ -372,6 +391,29 @@ describe('AppPlatformService', () => {
     await expect(service.approveVersion('admin_echo_service', '1.0.0', '', 88, [])).rejects.toThrow(
       'Service version requires review by a different platform operator',
     );
+  });
+
+  it('rejects the legacy static publish flow for service versions', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 9,
+      code: 'admin_echo_service',
+      type: 'service',
+      status: 'approved',
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 12,
+      appId: 9,
+      version: '1.0.0',
+      reviewStatus: 'approved',
+      publishStatus: 'unpublished',
+      packagePath: '/runtime/admin_echo_service/1.0.0',
+      entryFile: 'dist/index.js',
+    });
+
+    await expect(service.publishVersion('admin_echo_service', '1.0.0', 9)).rejects.toThrow(
+      'Only static app versions can be governed',
+    );
+    expect(storageService.publishVersion).not.toHaveBeenCalled();
   });
 
   it('fails closed when a service review has no authenticated operator identity', async () => {

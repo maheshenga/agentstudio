@@ -347,37 +347,43 @@ export class AppPlatformService {
     });
     return {
       ...this.toResponse(app),
-      versions: versions.map((version) => this.toVersionResponse(version, app.code, app.entryUrl)),
+      versions: versions.map((version) =>
+        this.toGovernedVersionResponse(app, version, app.entryUrl),
+      ),
     };
   }
 
-  startServiceCandidate(code: string, version: string, operatorId: number) {
-    return this.serviceRuntimeService.startCandidate(code, version, operatorId);
+  async startServiceCandidate(code: string, version: string, operatorId: number) {
+    await this.serviceRuntimeService.startCandidate(code, version, operatorId);
+    return this.serviceRuntimeService.getRuntimeApp(code);
   }
 
-  publishServiceCandidate(code: string, version: string, operatorId: number) {
-    return this.serviceRuntimeService.publishCandidate(code, version, operatorId);
+  async publishServiceCandidate(code: string, version: string, operatorId: number) {
+    await this.serviceRuntimeService.publishCandidate(code, version, operatorId);
+    return this.serviceRuntimeService.getRuntimeApp(code);
   }
 
-  rollbackServiceVersion(
+  async rollbackServiceVersion(
     code: string,
     version: string,
     reason: string,
     operatorId: number,
   ) {
-    return this.serviceRuntimeService.rollback(code, version, reason, operatorId);
+    await this.serviceRuntimeService.rollback(code, version, reason, operatorId);
+    return this.serviceRuntimeService.getRuntimeApp(code);
   }
 
-  stopServiceCandidate(code: string, version: string, reason: string, operatorId: number) {
-    return this.serviceRuntimeService.stopCandidate(code, version, reason, operatorId);
+  async stopServiceCandidate(code: string, version: string, reason: string, operatorId: number) {
+    await this.serviceRuntimeService.stopCandidate(code, version, reason, operatorId);
+    return this.serviceRuntimeService.getRuntimeApp(code);
   }
 
-  reconcileServiceRuntime() {
-    return this.serviceRuntimeService.reconcile();
+  reconcileServiceRuntime(operatorId: number) {
+    return this.serviceRuntimeService.reconcile(operatorId);
   }
 
-  probeActiveService(code: string, input: unknown) {
-    return this.serviceRuntimeService.probeActive(code, input);
+  probeActiveService(code: string, input: unknown, operatorId: number) {
+    return this.serviceRuntimeService.probeActive(code, input, operatorId);
   }
 
   async uploadStaticVersion(code: string, file: Express.Multer.File, operatorId?: number) {
@@ -521,7 +527,7 @@ export class AppPlatformService {
       },
     );
 
-    return this.toVersionResponse(savedVersion);
+    return this.toGovernedVersionResponse(app, savedVersion);
   }
 
   async submitVersion(code: string, version: string, operatorId?: number) {
@@ -544,7 +550,7 @@ export class AppPlatformService {
       `Submitted version ${version} for review`,
       operatorId,
     );
-    return this.toVersionResponse(savedVersion);
+    return this.toGovernedVersionResponse(app, savedVersion);
   }
 
   async approveVersion(
@@ -607,7 +613,7 @@ export class AppPlatformService {
       message || `Approved version ${version}`,
       operatorId,
     );
-    return this.toVersionResponse(savedVersion);
+    return this.toGovernedVersionResponse(app, savedVersion);
   }
 
   async rejectVersion(code: string, version: string, message = '', operatorId?: number) {
@@ -632,11 +638,12 @@ export class AppPlatformService {
       message || `Rejected version ${version}`,
       operatorId,
     );
-    return this.toVersionResponse(savedVersion);
+    return this.toGovernedVersionResponse(app, savedVersion);
   }
 
   async publishVersion(code: string, version: string, operatorId?: number) {
     const app = await this.findApp(code);
+    this.assertStaticApp(app);
     const appVersion = await this.findVersion(app.id, version);
     if (appVersion.reviewStatus !== 'approved') {
       throw new BadRequestException('Only approved versions can be published');
@@ -1041,9 +1048,74 @@ export class AppPlatformService {
     };
   }
 
+  private toServiceVersionResponse(version: Partial<AppPackageVersionEntity>) {
+    return {
+      id: version.id,
+      app_id: version.appId,
+      version: version.version,
+      manifest: version.manifest || null,
+      requested_capabilities: normalizeAppCapabilities(version.manifest),
+      approved_capabilities: version.approvedCapabilities || [],
+      manifest_version: Number(version.manifestVersion) || 2,
+      package_format: version.packageFormat || 'service_zip',
+      scan_result: this.sanitizeServiceScanResult(version.scanResult),
+      candidate_health_status: version.candidateHealthStatus || 'unknown',
+      review_status: version.reviewStatus,
+      publish_status: version.publishStatus,
+      review_message: version.reviewMessage || '',
+      reviewer_id: version.reviewerId ?? null,
+      submitted_by: version.submittedBy ?? null,
+      released_by: version.releasedBy ?? null,
+      released_time: version.releasedTime ?? null,
+      rollback_from_version_id: version.rollbackFromVersionId ?? null,
+      review_time: version.reviewTime,
+      create_time: version.createTime,
+      update_time: version.updateTime,
+    };
+  }
+
+  private toGovernedVersionResponse(
+    app: AppPackageEntity,
+    version: Partial<AppPackageVersionEntity>,
+    activeEntryUrl?: string,
+  ) {
+    return app.type === 'service'
+      ? this.toServiceVersionResponse(version)
+      : this.toVersionResponse(version, app.code, activeEntryUrl);
+  }
+
+  private sanitizeServiceScanResult(value: Record<string, unknown> | null | undefined) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const findings = Array.isArray(value.findings)
+      ? value.findings
+          .filter(
+            (finding): finding is Record<string, unknown> =>
+              Boolean(finding) && typeof finding === 'object' && !Array.isArray(finding),
+          )
+          .slice(0, 50)
+          .map((finding) => ({
+            code: String(finding.code || '').slice(0, 80),
+            severity: finding.severity === 'warning' ? 'warning' : 'error',
+            ...(Number.isInteger(Number(finding.line))
+              ? { line: Math.max(1, Number(finding.line)) }
+              : {}),
+            ...(Number.isInteger(Number(finding.column))
+              ? { column: Math.max(0, Number(finding.column)) }
+              : {}),
+          }))
+      : [];
+    const entrySha256 = String(value.entrySha256 || '');
+    return {
+      passed: value.passed === true,
+      findings,
+      scannedFiles: Math.max(0, Math.trunc(Number(value.scannedFiles) || 0)),
+      entrySha256: /^[a-f0-9]{64}$/.test(entrySha256) ? entrySha256 : '',
+    };
+  }
+
   private toReviewQueueResponse(app: AppPackageEntity, version: AppPackageVersionEntity) {
     return {
-      ...this.toVersionResponse(version, app.code, app.entryUrl),
+      ...this.toGovernedVersionResponse(app, version, app.entryUrl),
       app_code: app.code,
       app_name: app.name,
       app_type: app.type,
