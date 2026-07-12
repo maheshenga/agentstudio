@@ -51,6 +51,8 @@ export interface AppPackageVersionRecord {
   app_id: number
   version: string
   manifest?: Record<string, unknown> | null
+  requested_capabilities?: string[]
+  approved_capabilities?: string[]
   package_path?: string
   publish_path?: string
   entry_file?: string
@@ -112,6 +114,10 @@ export interface SaveAppPackageParams {
 
 export interface TenantMarketplaceAppRecord extends AppPackageRecord {
   installed: boolean
+  requested_capabilities: string[]
+  platform_approved_capabilities: string[]
+  tenant_approved_capabilities: string[]
+  effective_capabilities: string[]
 }
 
 export interface TenantAppInstallRecord {
@@ -126,6 +132,10 @@ export interface TenantAppInstallRecord {
   create_time?: string | Date | null
   update_time?: string | Date | null
   app?: AppPackageRecord | null
+  requested_capabilities: string[]
+  platform_approved_capabilities: string[]
+  tenant_approved_capabilities: string[]
+  effective_capabilities: string[]
 }
 
 export interface AppOpenMetadata {
@@ -176,10 +186,15 @@ export function uploadPlatformStaticAppVersion(code: string, file: File) {
   })
 }
 
-export function approvePlatformAppVersion(code: string, version: string, message?: string) {
+export function approvePlatformAppVersion(
+  code: string,
+  version: string,
+  message?: string,
+  approvedCapabilities?: string[]
+) {
   return request.post<AppPackageVersionRecord>({
     url: `/api/app-platform/apps/${code}/versions/${version}/approve`,
-    data: { message }
+    data: { message, approved_capabilities: approvedCapabilities }
   })
 }
 
@@ -218,8 +233,32 @@ export function fetchTenantInstalledApps() {
   return request.get<TenantAppInstallRecord[]>({ url: '/api/app-tenant/installed' })
 }
 
-export function installTenantApp(code: string) {
-  return request.post<TenantAppInstallRecord>({ url: `/api/app-tenant/apps/${code}/install` })
+export function installTenantApp(code: string, capabilities: string[] = []) {
+  return request.post<TenantAppInstallRecord>({
+    url: `/api/app-tenant/apps/${code}/install`,
+    data: { capabilities }
+  })
+}
+
+export function fetchTenantAppCapabilities(code: string) {
+  return request.get<{
+    requested: string[]
+    platform_approved: string[]
+    tenant_approved: string[]
+    effective: string[]
+  }>({ url: `/api/app-tenant/apps/${code}/capabilities` })
+}
+
+export function updateTenantAppCapabilities(code: string, capabilities: string[]) {
+  return request.put<{
+    requested: string[]
+    platform_approved: string[]
+    tenant_approved: string[]
+    effective: string[]
+  }>({
+    url: `/api/app-tenant/apps/${code}/capabilities`,
+    data: { capabilities }
+  })
 }
 
 export function uninstallTenantApp(code: string) {

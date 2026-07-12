@@ -23,6 +23,7 @@ describe('AppTenantService', () => {
     findOne: jest.fn(),
   };
   const versionRepo = {
+    find: jest.fn(),
     findOne: jest.fn(),
   };
   const installRepo = {
@@ -70,6 +71,7 @@ describe('AppTenantService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     installRepo.create.mockImplementation((value) => ({ ...value }));
+    versionRepo.find.mockResolvedValue([]);
     installRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 1, ...value }));
     openLogRepo.create.mockImplementation((value) => ({ ...value }));
     openLogRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 1, ...value }));
@@ -152,6 +154,46 @@ describe('AppTenantService', () => {
       expect.objectContaining({ code: 'job_board', installed: true }),
       expect.objectContaining({ code: 'supplier_portal', installed: false }),
     ]);
+  });
+
+  it('exposes authoritative capability state in marketplace records', async () => {
+    appRepo.find.mockResolvedValue([
+      {
+        id: 1,
+        code: 'job_board',
+        name: 'Job Board',
+        type: 'static',
+        status: 'published',
+        visibility: 'marketplace',
+      },
+    ]);
+    installRepo.find.mockResolvedValue([]);
+    versionRepo.find.mockResolvedValue([
+      {
+        id: 9,
+        appId: 1,
+        version: '1.0.0',
+        publishStatus: 'published',
+        reviewStatus: 'approved',
+        manifest: { permissions: ['runtime:context:read'] },
+      },
+    ]);
+    capabilityPolicy.getCapabilityState.mockResolvedValue({
+      requested: ['context.read'],
+      platform_approved: ['context.read'],
+      tenant_approved: [],
+      effective: [],
+    });
+
+    await expect(service.listMarketplace(23)).resolves.toEqual([
+      expect.objectContaining({
+        requested_capabilities: ['context.read'],
+        platform_approved_capabilities: ['context.read'],
+        tenant_approved_capabilities: [],
+        effective_capabilities: [],
+      }),
+    ]);
+    expect(capabilityPolicy.getCapabilityState).toHaveBeenCalledWith(23, 9, ['context.read']);
   });
 
   it('marks marketplace apps unavailable when the SaaS plan does not include the required module', async () => {
@@ -263,11 +305,31 @@ describe('AppTenantService', () => {
         entryUrl: '/apps-static/job_board/1.0.0/dist/index.html',
       },
     ]);
+    versionRepo.find.mockResolvedValue([
+      {
+        id: 9,
+        appId: 1,
+        version: '1.0.0',
+        publishStatus: 'published',
+        reviewStatus: 'approved',
+        manifest: { permissions: ['runtime:context:read'] },
+      },
+    ]);
+    capabilityPolicy.getCapabilityState.mockResolvedValue({
+      requested: ['context.read'],
+      platform_approved: ['context.read'],
+      tenant_approved: ['context.read'],
+      effective: ['context.read'],
+    });
 
     await expect(service.listInstalled(23)).resolves.toEqual([
       expect.objectContaining({
         id: 6,
         enabled: true,
+        requested_capabilities: ['context.read'],
+        platform_approved_capabilities: ['context.read'],
+        tenant_approved_capabilities: ['context.read'],
+        effective_capabilities: ['context.read'],
         app: expect.objectContaining({
           code: 'job_board',
           name: 'Job Board',

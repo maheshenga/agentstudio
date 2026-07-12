@@ -47,6 +47,16 @@
         <ElTableColumn prop="summary" label="Summary" min-width="260" show-overflow-tooltip>
           <template #default="{ row }">{{ row.summary || row.description || '-' }}</template>
         </ElTableColumn>
+        <ElTableColumn label="Capabilities" min-width="190">
+          <template #default="{ row }">
+            <div v-if="row.requested_capabilities?.length" class="app-marketplace-page__capabilities">
+              <ElTag v-for="capability in row.requested_capabilities" :key="capability" size="small" effect="plain">
+                {{ capabilityLabel(capability) }}
+              </ElTag>
+            </div>
+            <span v-else>-</span>
+          </template>
+        </ElTableColumn>
         <ElTableColumn label="Actions" fixed="right" width="260">
           <template #default="{ row }">
             <ElButton
@@ -64,7 +74,7 @@
               :icon="ShoppingCart"
               :disabled="!row.available"
               :loading="operatingCode === row.code"
-              @click="installApp(row.code)"
+              @click="installApp(row)"
             >
               Install
             </ElButton>
@@ -86,6 +96,25 @@
         </template>
       </ElTable>
     </ElCard>
+
+    <ElDialog v-model="consentDialogVisible" title="App permissions" width="520px">
+      <ElAlert
+        type="info"
+        title="Choose which approved capabilities this app may use."
+        :closable="false"
+        show-icon
+      />
+      <ElAlert v-if="consentError" type="error" :title="consentError" :closable="false" show-icon />
+      <ElCheckboxGroup v-model="selectedCapabilities" class="app-marketplace-page__consent-options">
+        <ElCheckbox v-for="capability in consentApp?.platform_approved_capabilities || []" :key="capability" :value="capability">
+          {{ capabilityLabel(capability) }}
+        </ElCheckbox>
+      </ElCheckboxGroup>
+      <template #footer>
+        <ElButton @click="consentDialogVisible = false">Cancel</ElButton>
+        <ElButton type="primary" :loading="Boolean(operatingCode)" @click="confirmInstall">Install</ElButton>
+      </template>
+    </ElDialog>
   </div>
 </template>
 
@@ -106,6 +135,10 @@
   const loading = ref(false)
   const loadError = ref('')
   const operatingCode = ref('')
+  const consentDialogVisible = ref(false)
+  const consentApp = ref<TenantMarketplaceAppRecord | null>(null)
+  const selectedCapabilities = ref<string[]>([])
+  const consentError = ref('')
 
   function typeText(type?: AppPackageType) {
     const map: Record<string, string> = { internal: 'Internal', static: 'Static', iframe: 'Iframe' }
@@ -127,6 +160,10 @@
     return status ? map[status] || status : 'Ready'
   }
 
+  function capabilityLabel(capability: string) {
+    return capability === 'context.read' ? 'Read tenant and user context' : capability
+  }
+
   async function loadApps() {
     loading.value = true
     loadError.value = ''
@@ -141,14 +178,40 @@
     }
   }
 
-  async function installApp(code: string) {
-    operatingCode.value = code
+  async function installApp(row: TenantMarketplaceAppRecord) {
+    if (row.requested_capabilities?.length) {
+      consentApp.value = row
+      selectedCapabilities.value = [...row.platform_approved_capabilities]
+      consentError.value = ''
+      consentDialogVisible.value = true
+      return
+    }
+    await submitInstall(row, [])
+  }
+
+  async function submitConsent(consentApp: TenantMarketplaceAppRecord, selectedCapabilities: string[]) {
+    await installTenantApp(consentApp.code, selectedCapabilities)
+  }
+
+  async function submitInstall(app: TenantMarketplaceAppRecord, capabilities: string[]) {
+    operatingCode.value = app.code
     try {
-      await installTenantApp(code)
+      await submitConsent(app, capabilities)
       ElMessage.success('App installed')
+      consentDialogVisible.value = false
       await loadApps()
     } finally {
       operatingCode.value = ''
+    }
+  }
+
+  async function confirmInstall() {
+    if (!consentApp.value) return
+    consentError.value = ''
+    try {
+      await submitInstall(consentApp.value, selectedCapabilities.value)
+    } catch {
+      consentError.value = 'Permission consent could not be saved. Try again.'
     }
   }
 
@@ -197,6 +260,17 @@
     align-items: center;
     gap: 12px;
     margin-bottom: 16px;
+  }
+
+  .app-marketplace-page__capabilities,
+  .app-marketplace-page__consent-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .app-marketplace-page__consent-options {
+    margin: 18px 0;
   }
 
   .app-marketplace-page__app-name {

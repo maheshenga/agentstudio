@@ -73,6 +73,7 @@ export class AppTenantService {
       this.installRepo.find({ where: { tenantId, deleteTime: IsNull() }, order: { id: 'ASC' } }),
     ]);
     const installByAppId = new Map(installs.map((install) => [Number(install.appId), install]));
+    const capabilityStateByAppId = await this.loadCapabilityStates(tenantId, apps, installByAppId);
 
     return Promise.all(
       apps
@@ -80,10 +81,12 @@ export class AppTenantService {
         .filter((app) => ['marketplace', 'tenant', 'platform'].includes(app.visibility || 'marketplace'))
         .map(async (app) => {
         const install = installByAppId.get(Number(app.id));
+        const capabilityState = capabilityStateByAppId.get(Number(app.id)) || this.emptyCapabilityState();
         return {
           ...this.toAppResponse(app),
           ...(await this.getAppAvailability(tenantId, app)),
           installed: Boolean(install && Number(install.enabled) === 1),
+          ...this.toCapabilityResponse(capabilityState),
         };
         }),
     );
@@ -98,12 +101,16 @@ export class AppTenantService {
         } as any)
       : [];
     const appById = new Map(apps.map((app) => [Number(app.id), app]));
+    const installByAppId = new Map(installs.map((install) => [Number(install.appId), install]));
+    const capabilityStateByAppId = await this.loadCapabilityStates(tenantId, apps, installByAppId);
 
     return Promise.all(
       installs.map(async (install) => {
         const app = appById.get(Number(install.appId));
+        const capabilityState = capabilityStateByAppId.get(Number(install.appId)) || this.emptyCapabilityState();
         return {
           ...this.toInstallResponse(install),
+          ...this.toCapabilityResponse(capabilityState),
           app: app
             ? {
                 ...this.toAppResponse(app),
@@ -479,6 +486,67 @@ export class AppTenantService {
       ? await this.findVersionById(app.id, Number(install.versionId))
       : await this.findPublishedVersion(app.id);
     return { app, install, version };
+  }
+
+  private async loadCapabilityStates(
+    tenantId: number,
+    apps: AppPackageEntity[],
+    installByAppId: Map<number, TenantAppInstallEntity>,
+  ) {
+    const staticAppIds = apps
+      .filter((app) => app.type === 'static')
+      .map((app) => Number(app.id))
+      .filter(Boolean);
+    if (!staticAppIds.length) return new Map<number, ReturnType<AppTenantService['emptyCapabilityState']>>();
+
+    const versions = await this.versionRepo.find({
+      where: {
+        appId: In(staticAppIds),
+        reviewStatus: 'approved',
+        publishStatus: 'published',
+        deleteTime: IsNull(),
+      } as any,
+      order: { id: 'DESC' },
+    });
+    const versionById = new Map(versions.map((version) => [Number(version.id), version]));
+    const latestByAppId = new Map<number, AppPackageVersionEntity>();
+    for (const version of versions) {
+      const appId = Number(version.appId);
+      if (!latestByAppId.has(appId)) latestByAppId.set(appId, version);
+    }
+
+    const entries = await Promise.all(
+      staticAppIds.map(async (appId) => {
+        const installedVersionId = Number(installByAppId.get(appId)?.versionId || 0);
+        const version = versionById.get(installedVersionId) || latestByAppId.get(appId);
+        if (!version) return [appId, this.emptyCapabilityState()] as const;
+        const state = await this.capabilityPolicy.getCapabilityState(
+          tenantId,
+          version.id,
+          normalizeAppCapabilities(version.manifest),
+        );
+        return [appId, state] as const;
+      }),
+    );
+    return new Map(entries);
+  }
+
+  private emptyCapabilityState() {
+    return {
+      requested: [] as string[],
+      platform_approved: [] as string[],
+      tenant_approved: [] as string[],
+      effective: [] as string[],
+    };
+  }
+
+  private toCapabilityResponse(state: ReturnType<AppTenantService['emptyCapabilityState']>) {
+    return {
+      requested_capabilities: state.requested,
+      platform_approved_capabilities: state.platform_approved,
+      tenant_approved_capabilities: state.tenant_approved,
+      effective_capabilities: state.effective,
+    };
   }
 
   private async resolveOpenVersion(app: AppPackageEntity, install: TenantAppInstallEntity) {

@@ -77,6 +77,16 @@
         <ElTableColumn label="Developer" width="150" show-overflow-tooltip>
           <template #default="{ row }">{{ row.developer_name || '-' }}</template>
         </ElTableColumn>
+        <ElTableColumn label="Capabilities" min-width="180">
+          <template #default="{ row }">
+            <div v-if="row.requested_capabilities?.length" class="app-review-page__capabilities">
+              <ElTag v-for="capability in row.requested_capabilities" :key="capability" size="small" effect="plain">
+                {{ capabilityLabel(capability) }}
+              </ElTag>
+            </div>
+            <span v-else class="app-review-page__muted">None</span>
+          </template>
+        </ElTableColumn>
         <ElTableColumn prop="entry_url" label="Runtime URL" min-width="240" show-overflow-tooltip />
         <ElTableColumn label="Updated" width="170">
           <template #default="{ row }">{{ formatDateTime(row.update_time || row.create_time) }}</template>
@@ -135,6 +145,25 @@
         </template>
       </ElTable>
     </ElCard>
+
+    <ElDialog v-model="approvalDialogVisible" title="Approve capabilities" width="520px">
+      <ElAlert
+        type="info"
+        title="Only selected capabilities will be available for tenant consent."
+        :closable="false"
+        show-icon
+      />
+      <ElCheckboxGroup v-model="approved_capabilities" class="app-review-page__capability-options">
+        <ElCheckbox v-for="capability in approvalRow?.requested_capabilities || []" :key="capability" :value="capability">
+          {{ capabilityLabel(capability) }}
+        </ElCheckbox>
+      </ElCheckboxGroup>
+      <ElInput v-model="approvalMessage" type="textarea" :rows="3" maxlength="500" show-word-limit />
+      <template #footer>
+        <ElButton @click="approvalDialogVisible = false">Cancel</ElButton>
+        <ElButton type="primary" :loading="Boolean(actionLoading)" @click="confirmCapabilityApproval">Approve</ElButton>
+      </template>
+    </ElDialog>
   </div>
 </template>
 
@@ -159,6 +188,10 @@
   const loading = ref(false)
   const loadError = ref('')
   const actionLoading = ref('')
+  const approvalDialogVisible = ref(false)
+  const approvalRow = ref<AppReviewQueueRecord | null>(null)
+  const approved_capabilities = ref<string[]>([])
+  const approvalMessage = ref('Approved from review center')
   const filters = reactive<AppReviewQueueParams>({
     keyword: '',
     type: '',
@@ -212,6 +245,10 @@
     return `${action}:${row.app_code}:${row.version}`
   }
 
+  function capabilityLabel(capability: string) {
+    return capability === 'context.read' ? 'Read tenant and user context' : capability
+  }
+
   async function loadReviews() {
     loading.value = true
     loadError.value = ''
@@ -240,6 +277,13 @@
   }
 
   async function reviewVersion(row: AppReviewQueueRecord, action: 'approve' | 'reject') {
+    if (action === 'approve' && row.requested_capabilities?.length) {
+      approvalRow.value = row
+      approved_capabilities.value = [...row.requested_capabilities]
+      approvalMessage.value = 'Approved from review center'
+      approvalDialogVisible.value = true
+      return
+    }
     const actionText = action === 'approve' ? 'Approve' : 'Reject'
     const { value } = await ElMessageBox.prompt(`Reason for ${actionText.toLowerCase()} ${row.app_name}@${row.version}`, actionText, {
       confirmButtonText: actionText,
@@ -249,11 +293,30 @@
     actionLoading.value = actionKey(row, action)
     try {
       if (action === 'approve') {
-        await approvePlatformAppVersion(row.app_code, row.version, String(value || ''))
+        await approvePlatformAppVersion(row.app_code, row.version, String(value || ''), [])
       } else {
         await rejectPlatformAppVersion(row.app_code, row.version, String(value || ''))
       }
       ElMessage.success(`${actionText} completed`)
+      await loadReviews()
+    } finally {
+      actionLoading.value = ''
+    }
+  }
+
+  async function confirmCapabilityApproval() {
+    const row = approvalRow.value
+    if (!row) return
+    actionLoading.value = actionKey(row, 'approve')
+    try {
+      await approvePlatformAppVersion(
+        row.app_code,
+        row.version,
+        approvalMessage.value,
+        approved_capabilities.value
+      )
+      ElMessage.success('Approve completed')
+      approvalDialogVisible.value = false
       await loadReviews()
     } finally {
       actionLoading.value = ''
@@ -364,6 +427,17 @@
     min-width: 0;
     align-items: center;
     gap: 8px;
+  }
+
+  .app-review-page__capabilities,
+  .app-review-page__capability-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .app-review-page__capability-options {
+    margin: 18px 0;
   }
 
   @media (max-width: 760px) {

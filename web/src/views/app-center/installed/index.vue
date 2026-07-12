@@ -52,7 +52,18 @@
         <ElTableColumn label="Summary" min-width="260" show-overflow-tooltip>
           <template #default="{ row }">{{ row.app?.summary || row.app?.description || '-' }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Actions" fixed="right" width="190">
+        <ElTableColumn label="Capabilities" min-width="180">
+          <template #default="{ row }">
+            <div v-if="row.effective_capabilities?.length" class="app-installed-page__capabilities">
+              <ElTag v-for="capability in row.effective_capabilities" :key="capability" size="small" type="success" effect="plain">
+                {{ capabilityLabel(capability) }}
+              </ElTag>
+            </div>
+            <span v-else-if="row.tenant_approved_capabilities?.length">Consent inactive</span>
+            <span v-else>None granted</span>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="Actions" fixed="right" width="270">
           <template #default="{ row }">
             <ElButton
               link
@@ -62,6 +73,14 @@
               @click="openApp(row.app?.code)"
             >
               Open
+            </ElButton>
+            <ElButton
+              link
+              type="primary"
+              :disabled="!row.app?.code || !row.requested_capabilities?.length"
+              @click="openPermissions(row)"
+            >
+              Permissions
             </ElButton>
             <ElButton
               link
@@ -80,6 +99,44 @@
         </template>
       </ElTable>
     </ElCard>
+
+    <ElDialog v-model="permissionDialogVisible" title="App permissions" width="520px">
+      <div v-loading="permissionLoading" class="app-installed-page__permission-body">
+        <ElAlert v-if="permissionError" type="error" :title="permissionError" :closable="false" show-icon />
+        <ElAlert
+          v-else-if="!permissionLoading && !platformApprovedCapabilities.length"
+          type="warning"
+          title="No capabilities are currently approved by the platform."
+          :closable="false"
+          show-icon
+        />
+        <ElCheckboxGroup v-else v-model="selectedCapabilities" class="app-installed-page__permission-options">
+          <ElCheckbox v-for="capability in platformApprovedCapabilities" :key="capability" :value="capability">
+            {{ capabilityLabel(capability) }}
+          </ElCheckbox>
+        </ElCheckboxGroup>
+      </div>
+      <template #footer>
+        <ElButton :disabled="permissionSaving || permissionLoading" @click="permissionDialogVisible = false">Cancel</ElButton>
+        <ElButton
+          type="danger"
+          plain
+          :disabled="permissionLoading || Boolean(permissionError)"
+          :loading="permissionSaving"
+          @click="revokeAllCapabilities"
+        >
+          Revoke all
+        </ElButton>
+        <ElButton
+          type="primary"
+          :disabled="permissionLoading || Boolean(permissionError)"
+          :loading="permissionSaving"
+          @click="savePermissions"
+        >
+          Save
+        </ElButton>
+      </template>
+    </ElDialog>
   </div>
 </template>
 
@@ -88,6 +145,8 @@
   import { Delete, Link, Refresh } from '@element-plus/icons-vue'
   import {
     fetchTenantInstalledApps,
+    fetchTenantAppCapabilities,
+    updateTenantAppCapabilities,
     uninstallTenantApp,
     type AppPackageType,
     type TenantAppInstallRecord
@@ -100,6 +159,13 @@
   const loading = ref(false)
   const loadError = ref('')
   const operatingCode = ref('')
+  const permissionDialogVisible = ref(false)
+  const permissionLoading = ref(false)
+  const permissionSaving = ref(false)
+  const permissionError = ref('')
+  const permissionAppCode = ref('')
+  const platformApprovedCapabilities = ref<string[]>([])
+  const selectedCapabilities = ref<string[]>([])
   const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
     year: 'numeric',
     month: '2-digit',
@@ -137,6 +203,10 @@
 
   function isOpenDisabled(row: TenantAppInstallRecord) {
     return row.app?.available === false || !row.enabled || !row.app?.code
+  }
+
+  function capabilityLabel(capability: string) {
+    return capability === 'context.read' ? 'Read tenant and user context' : capability
   }
 
   function formatDateTime(value: unknown) {
@@ -180,6 +250,52 @@
     } finally {
       operatingCode.value = ''
     }
+  }
+
+  async function openPermissions(row: TenantAppInstallRecord) {
+    const code = row.app?.code
+    if (!code) return
+    permissionDialogVisible.value = true
+    permissionLoading.value = true
+    permissionError.value = ''
+    permissionAppCode.value = code
+    platformApprovedCapabilities.value = []
+    selectedCapabilities.value = []
+    try {
+      const state = await fetchTenantAppCapabilities(code)
+      platformApprovedCapabilities.value = state.platform_approved
+      selectedCapabilities.value = state.tenant_approved.filter((capability) =>
+        state.platform_approved.includes(capability)
+      )
+    } catch {
+      permissionError.value = 'Permissions failed to load. Close and try again.'
+    } finally {
+      permissionLoading.value = false
+    }
+  }
+
+  async function persistPermissions(capabilities: string[]) {
+    if (!permissionAppCode.value) return
+    permissionSaving.value = true
+    permissionError.value = ''
+    try {
+      await updateTenantAppCapabilities(permissionAppCode.value, capabilities)
+      ElMessage.success('App permissions updated')
+      permissionDialogVisible.value = false
+      await loadInstalled()
+    } catch {
+      permissionError.value = 'Permissions could not be saved. Try again.'
+    } finally {
+      permissionSaving.value = false
+    }
+  }
+
+  function savePermissions() {
+    return persistPermissions(selectedCapabilities.value)
+  }
+
+  function revokeAllCapabilities() {
+    return persistPermissions([])
   }
 
   onMounted(() => {
@@ -230,6 +346,21 @@
     margin-top: 2px;
     color: var(--el-text-color-secondary);
     font-size: 12px;
+  }
+
+  .app-installed-page__capabilities,
+  .app-installed-page__permission-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .app-installed-page__permission-body {
+    min-height: 100px;
+  }
+
+  .app-installed-page__permission-options {
+    margin: 12px 0;
   }
 
   @media (max-width: 640px) {

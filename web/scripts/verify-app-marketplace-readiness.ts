@@ -104,7 +104,11 @@ for (const token of [
   'rollbackPlatformAppVersion',
   'unpublishPlatformAppVersion',
   'ElTable',
-  'ElMessageBox'
+  'ElMessageBox',
+  'requested_capabilities',
+  'approved_capabilities',
+  'ElCheckboxGroup',
+  'capabilityLabel'
 ]) {
   assertIncludes(reviewPage, token, 'platform review center page')
 }
@@ -117,7 +121,11 @@ for (const token of [
   'ElTable',
   'availability_reason',
   ':disabled="!row.available"',
-  'Upgrade'
+  'Upgrade',
+  'requested_capabilities',
+  'consentDialogVisible',
+  'ElCheckboxGroup',
+  'installTenantApp(consentApp.code, selectedCapabilities)'
 ]) {
   assertIncludes(marketplacePage, token, 'tenant marketplace page')
 }
@@ -130,7 +138,12 @@ for (const token of [
   'row.app?.name',
   'availability_reason',
   ':disabled="isOpenDisabled(row)"',
-  'row.app?.available === false'
+  'row.app?.available === false',
+  'permissionDialogVisible',
+  'updateTenantAppCapabilities',
+  'tenant_approved_capabilities',
+  'ElCheckboxGroup',
+  'Revoke all'
 ]) {
   assertIncludes(installedPage, token, 'tenant installed page')
 }
