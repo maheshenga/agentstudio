@@ -8,6 +8,7 @@ import type {
   AppRuntimeHttpResponse,
   AppRuntimeJsonValue,
   AppRuntimeKvRecord,
+  AppRuntimeServiceInvokeResult,
   AppRuntimeWebhookRequest
 } from './types'
 
@@ -76,6 +77,7 @@ export interface RuntimeOperationPayloads {
   'files.delete': { id: string }
   'http.request': AppRuntimeHttpRequest
   'webhooks.emit': AppRuntimeWebhookRequest
+  'services.invoke': { target_code: string; input: AppRuntimeJsonValue }
 }
 
 export interface RuntimeOperationResults {
@@ -89,6 +91,7 @@ export interface RuntimeOperationResults {
   'files.delete': AppRuntimeDeleteResult
   'http.request': AppRuntimeHttpResponse
   'webhooks.emit': AppRuntimeHttpResponse
+  'services.invoke': AppRuntimeServiceInvokeResult
 }
 
 export type RuntimeOperation = keyof RuntimeOperationPayloads
@@ -117,6 +120,19 @@ function isJsonValue(value: unknown, depth = 0): value is AppRuntimeJsonValue {
   if (Array.isArray(value)) return value.every((item) => isJsonValue(item, depth + 1))
   if (!isPlainRecord(value)) return false
   return Object.values(value).every((item) => isJsonValue(item, depth + 1))
+}
+
+export function isBoundedRuntimeJson(value: unknown): value is AppRuntimeJsonValue {
+  if (!isJsonValue(value)) return false
+  try {
+    return new TextEncoder().encode(JSON.stringify(value)).byteLength <= 2 * 1024 * 1024
+  } catch {
+    return false
+  }
+}
+
+export function isRuntimeServiceTargetCode(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-z][a-z0-9_]{2,79}$/.test(value)
 }
 
 function sanitizeKvRecord(value: unknown): AppRuntimeKvRecord | null {
@@ -194,6 +210,32 @@ function sanitizeHttpResponse(value: unknown): AppRuntimeHttpResponse | null {
   }
 }
 
+function sanitizeServiceInvokeResult(value: unknown): AppRuntimeServiceInvokeResult | null {
+  const allowedHeaders = new Set(['content-type', 'retry-after', 'x-request-id'])
+  if (
+    !isPlainRecord(value) ||
+    !Number.isInteger(value.status) ||
+    Number(value.status) < 100 ||
+    Number(value.status) > 599 ||
+    !isPlainRecord(value.headers) ||
+    Object.keys(value.headers).length > 100 ||
+    Object.entries(value.headers).some(
+      ([name, headerValue]) =>
+        !allowedHeaders.has(name.toLowerCase()) ||
+        typeof headerValue !== 'string' ||
+        headerValue.length > 8192
+    ) ||
+    !isBoundedRuntimeJson(value.data)
+  ) {
+    return null
+  }
+  return {
+    status: Number(value.status),
+    headers: value.headers as Record<string, string>,
+    data: value.data
+  }
+}
+
 export const runtimeResultValidators: {
   [K in RuntimeOperation]: RuntimeResultValidator<K>
 } = {
@@ -207,7 +249,8 @@ export const runtimeResultValidators: {
   'files.read': sanitizeFileRead,
   'files.delete': sanitizeDeleteResult,
   'http.request': sanitizeHttpResponse,
-  'webhooks.emit': sanitizeHttpResponse
+  'webhooks.emit': sanitizeHttpResponse,
+  'services.invoke': sanitizeServiceInvokeResult
 }
 
 export function parseRuntimeOperationResponse<K extends RuntimeOperation>(

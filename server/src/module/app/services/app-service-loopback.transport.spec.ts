@@ -8,6 +8,7 @@ import { AddressInfo } from 'net';
 import { createServer, type RequestListener, type Server } from 'http';
 
 import { AppServiceLoopbackTransport } from './app-service-loopback.transport';
+import { APP_SERVICE_HOST_SOURCE } from '../runtime/app-service-host';
 
 describe('AppServiceLoopbackTransport', () => {
   let server: Server;
@@ -32,6 +33,12 @@ describe('AppServiceLoopbackTransport', () => {
     if (server?.listening) {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+
+  it('keeps direct probe input while reserved gateway envelopes pass context separately', () => {
+    expect(APP_SERVICE_HOST_SOURCE).toContain("body.__agentstudio_runtime === 1");
+    expect(APP_SERVICE_HOST_SOURCE).toContain('service.invoke(body.input, body.context)');
+    expect(APP_SERVICE_HOST_SOURCE).toContain('service.invoke(body, {})');
   });
 
   it('pins health and invoke requests to loopback and returns only allowlisted headers', async () => {

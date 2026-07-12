@@ -599,7 +599,7 @@ git commit -m "feat(app): govern restricted service candidates"
 - Produces: `AppServiceRuntimeService.invokeAuthorized(targetApp, targetVersion, context, input)`
 - Produces: SDK `runtime.services.invoke(targetCode: string, input: AppRuntimeJsonValue, options?: AppRuntimeRequestOptions)`
 
-- [ ] **Step 1: Write failing authorization, quota, and circuit tests**
+- [x] **Step 1: Write failing authorization, quota, and circuit tests**
 
 Cover:
 
@@ -618,7 +618,7 @@ it('records payload-free success/failure/rejected metrics');
 it('preserves P10 direct probe input while gateway envelopes pass sanitized context separately');
 ```
 
-- [ ] **Step 2: Run invocation tests to verify RED**
+- [x] **Step 2: Run invocation tests to verify RED**
 
 ```powershell
 pnpm run test -- app-runtime.constants.spec.ts app-runtime.controller.spec.ts app-service-invocation-policy.service.spec.ts app-service-runtime.service.spec.ts app-service-loopback.transport.spec.ts --runInBand
@@ -626,7 +626,7 @@ pnpm run test -- app-runtime.constants.spec.ts app-runtime.controller.spec.ts ap
 
 Expected: FAIL because `service.invoke`, policy service, and circuit behavior do not exist.
 
-- [ ] **Step 3: Add bounded DTO and capability route**
+- [x] **Step 3: Add bounded DTO and capability route**
 
 `POST /api/app-runtime/services/:code/invoke` is `@Public()` only in the same sense as other runtime-token routes: it requires exactly one `x-app-runtime-token`, authorizes `service.invoke`, validates target code with `^[a-z][a-z0-9_]{2,79}$`, and rejects JSON over 2 MB or nesting deeper than 20.
 
@@ -640,7 +640,7 @@ interface AppRuntimeServiceInvokeResult {
 }
 ```
 
-- [ ] **Step 4: Implement target policy and Redis state**
+- [x] **Step 4: Implement target policy and Redis state**
 
 Target resolution must join authoritative rows for:
 
@@ -652,11 +652,11 @@ Target resolution must join authoritative rows for:
 
 Use server-generated Redis keys containing numeric tenant and target app IDs. Lua scripts atomically acquire/release concurrency, increment minute rate with TTL, read/open/reset circuit state, and return bounded numeric results. No key contains token, username, app display name, payload, or secret.
 
-- [ ] **Step 5: Implement outcome and circuit semantics**
+- [x] **Step 5: Implement outcome and circuit semantics**
 
 Count as service failures: timeout, loopback connection failure, invalid/oversized response, and target HTTP status `500..599`. Success is a valid bounded response with status below 500. Circuit state is mirrored to the instance row for operations/UI, but Redis is the runtime authority. The circuit-open response is HTTP 503 with stable code `service_circuit_open` and `retry_after`.
 
-- [ ] **Step 6: Preserve host compatibility with a reserved envelope**
+- [x] **Step 6: Preserve host compatibility with a reserved envelope**
 
 Gateway transport sends:
 
@@ -674,11 +674,11 @@ Gateway transport sends:
 
 The generated host unwraps only when `__agentstudio_runtime === 1`, then calls `service.invoke(input, context)`. P10 probes without the marker continue to call `service.invoke(body, {})`. Never include tokens, installation IDs, roles, emails, phone numbers, cookies, headers, environment values, paths, or process details.
 
-- [ ] **Step 7: Add SDK and parent bridge support**
+- [x] **Step 7: Add SDK and parent bridge support**
 
 Add `service.invoke` to backend and SDK capability unions. Add protocol operation `services.invoke` with `{ target_code, input }` and the bounded result validator. The parent bridge maps it to `/api/app-runtime/services/${encodeURIComponent(target_code)}/invoke` using the in-memory runtime token header and maps 401/403/409/429/503 to existing stable runtime error codes without returning server messages.
 
-- [ ] **Step 8: Run Task 5 backend and SDK gates**
+- [x] **Step 8: Run Task 5 backend and SDK gates**
 
 ```powershell
 pnpm run test -- app-runtime.constants.spec.ts app-runtime.controller.spec.ts app-service-invocation-policy.service.spec.ts app-service-runtime.service.spec.ts app-service-loopback.transport.spec.ts --runInBand
@@ -691,7 +691,7 @@ pnpm run verify:app-runtime-readiness
 
 Expected: all tests/gates pass.
 
-- [ ] **Step 9: Commit Task 5**
+- [x] **Step 9: Commit Task 5**
 
 ```powershell
 git add server/src/module/app web/src/utils/app-runtime.ts web/packages/app-runtime-sdk

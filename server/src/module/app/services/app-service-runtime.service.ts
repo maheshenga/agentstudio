@@ -94,6 +94,12 @@ export interface AppServiceRuntimeListQuery {
   health_status?: AppServiceInstanceEntity['healthStatus'];
 }
 
+export interface AppServiceInvocationContext {
+  tenant: { id: string };
+  user: { id: string };
+  caller: { app_id: string; version_id: string };
+}
+
 @Injectable()
 export class AppServiceRuntimeService {
   constructor(
@@ -528,6 +534,32 @@ export class AppServiceRuntimeService {
       }),
     );
     return response;
+  }
+
+  async invokeAuthorized(
+    app: AppPackageEntity,
+    version: AppPackageVersionEntity,
+    context: AppServiceInvocationContext,
+    input: unknown,
+  ): Promise<AppServiceLoopbackResponse> {
+    this.assertEnabled();
+    await this.assertReviewedServiceVersion(app, version);
+    const instances = await this.instanceRepo.find({ where: { appId: app.id } });
+    const active = instances.filter(
+      (item) => item.role === 'active' && Number(item.versionId) === Number(version.id),
+    );
+    if (
+      active.length !== 1 ||
+      active[0].processStatus !== 'online' ||
+      active[0].healthStatus !== 'healthy'
+    ) {
+      throw new ServiceUnavailableException('Service requires one healthy active instance');
+    }
+    return this.loopbackTransport.invoke(active[0].loopbackPort, {
+      __agentstudio_runtime: 1,
+      input,
+      context,
+    });
   }
 
   async listRuntimeInstances(query: AppServiceRuntimeListQuery = {}) {

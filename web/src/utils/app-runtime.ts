@@ -44,6 +44,12 @@ export interface AppRuntimeHttpResponse {
   truncated: boolean
 }
 
+export interface AppRuntimeServiceInvokeResult {
+  status: number
+  headers: Record<string, string>
+  data: AppRuntimeJsonValue
+}
+
 export interface AppRuntimeBootstrap {
   protocol_version: typeof APP_RUNTIME_PROTOCOL_VERSION
   scopes: Array<typeof APP_RUNTIME_CONTEXT_SCOPE>
@@ -88,6 +94,7 @@ export type AppRuntimeOperation =
   | 'files.delete'
   | 'http.request'
   | 'webhooks.emit'
+  | 'services.invoke'
 
 export interface AppRuntimeOperationSuccessResponse {
   channel: typeof APP_RUNTIME_CHANNEL
@@ -155,7 +162,8 @@ const RUNTIME_OPERATIONS = new Set<AppRuntimeOperation>([
   'files.read',
   'files.delete',
   'http.request',
-  'webhooks.emit'
+  'webhooks.emit',
+  'services.invoke'
 ])
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -244,6 +252,15 @@ function isJsonValue(value: unknown, depth = 0): value is AppRuntimeJsonValue {
   return Object.values(value).every((item) => isJsonValue(item, depth + 1))
 }
 
+function isBoundedJsonValue(value: unknown): value is AppRuntimeJsonValue {
+  if (!isJsonValue(value)) return false
+  try {
+    return new TextEncoder().encode(JSON.stringify(value)).byteLength <= 2 * 1024 * 1024
+  } catch {
+    return false
+  }
+}
+
 function normalizeOperationData(
   operation: AppRuntimeOperation,
   value: unknown
@@ -287,6 +304,13 @@ function normalizeOperationData(
       typeof data.event === 'string' &&
       isJsonValue(data.payload)
       ? data
+      : null
+  }
+  if (operation === 'services.invoke') {
+    return typeof data.target_code === 'string' &&
+      /^[a-z][a-z0-9_]{2,79}$/.test(data.target_code) &&
+      isBoundedJsonValue(data.input)
+      ? { target_code: data.target_code, input: data.input }
       : null
   }
   return null

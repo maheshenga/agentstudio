@@ -5,7 +5,8 @@ import type {
   AppRuntimeFileMetadata,
   AppRuntimeHttpResponse,
   AppRuntimeJsonValue,
-  AppRuntimeKvRecord
+  AppRuntimeKvRecord,
+  AppRuntimeServiceInvokeResult
 } from '@/utils/app-runtime'
 
 const runtimeHeaders = (token: string) => ({ 'X-App-Runtime-Token': token })
@@ -127,6 +128,21 @@ export function emitAppRuntimeWebhook(
     url: '/api/app-runtime/webhooks',
     headers: runtimeHeaders(token),
     data,
+    signal,
+    showErrorMessage: false
+  })
+}
+
+export function invokeAppRuntimeService(
+  token: string,
+  targetCode: string,
+  input: AppRuntimeJsonValue,
+  signal?: AbortSignal
+) {
+  return request.post<AppRuntimeServiceInvokeResult>({
+    url: `/api/app-runtime/services/${encodeURIComponent(targetCode)}/invoke`,
+    headers: runtimeHeaders(token),
+    data: { input },
     signal,
     showErrorMessage: false
   })

@@ -47,4 +47,26 @@ describe('AppRuntimeHttpExceptionFilter', () => {
     });
     expect(JSON.stringify(response.json.mock.calls)).not.toContain('must-not-leak');
   });
+
+  it('returns bounded retry_after for an open service circuit', () => {
+    const exception = new HttpException(
+      {
+        message: 'service_circuit_open',
+        retry_after: 120,
+        environment: 'must-not-leak',
+      },
+      503,
+    );
+
+    new AppRuntimeHttpExceptionFilter().catch(exception, host);
+
+    expect(response.json).toHaveBeenCalledWith({
+      code: 503,
+      msg: 'service_circuit_open',
+      message: 'service_circuit_open',
+      data: null,
+      retry_after: 120,
+    });
+    expect(JSON.stringify(response.json.mock.calls)).not.toContain('must-not-leak');
+  });
 });

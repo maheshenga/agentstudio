@@ -9,6 +9,7 @@ describe('AppRuntimeController', () => {
   const kvService = { get: jest.fn(), set: jest.fn(), delete: jest.fn() };
   const fileService = { upload: jest.fn(), open: jest.fn(), delete: jest.fn() };
   const httpService = { request: jest.fn(), emitWebhook: jest.fn() };
+  const invocationPolicy = { invoke: jest.fn() };
   let controller: AppRuntimeController;
 
   beforeEach(() => {
@@ -19,7 +20,62 @@ describe('AppRuntimeController', () => {
       kvService as any,
       fileService as any,
       httpService as any,
+      invocationPolicy as any,
     );
+  });
+
+  it('authorizes service.invoke and delegates only the authorized session and bounded input', async () => {
+    const session = { id: 1, tenantId: 23, userId: 91, appId: 10, versionId: 20 };
+    sessionService.authorize.mockResolvedValue(session);
+    invocationPolicy.invoke.mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      data: { ok: true },
+    });
+
+    await expect(
+      controller.invokeService(
+        runtimeRequest('req-service'),
+        'workflow_service',
+        { input: { job: 'run' } },
+      ),
+    ).resolves.toMatchObject({ data: { status: 200, data: { ok: true } } });
+
+    expect(sessionService.authorize).toHaveBeenCalledWith(
+      'runtime-token',
+      'service.invoke',
+      expect.objectContaining({ requestId: 'req-service' }),
+    );
+    expect(invocationPolicy.invoke).toHaveBeenCalledWith(
+      session,
+      'workflow_service',
+      { job: 'run' },
+    );
+    expect(
+      Reflect.getMetadata(IS_PUBLIC_KEY, AppRuntimeController.prototype.invokeService),
+    ).toBe(true);
+  });
+
+  it('rejects malformed target codes and deeply nested runtime input', async () => {
+    sessionService.authorize.mockResolvedValue({
+      id: 1,
+      tenantId: 23,
+      userId: 91,
+      appId: 10,
+      versionId: 20,
+    });
+    await expect(
+      controller.invokeService(runtimeRequest('req-service'), '../target', { input: {} }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    let input: unknown = 'leaf';
+    for (let index = 0; index < 21; index += 1) input = { child: input };
+    await expect(
+      controller.invokeService(runtimeRequest('req-service'), 'workflow_service', {
+        input: input as any,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(invocationPolicy.invoke).not.toHaveBeenCalled();
   });
 
   it('authorizes file upload with files.write and never returns a storage path', async () => {

@@ -23,6 +23,7 @@ export type AppRuntimeCapability =
   | 'files.write'
   | 'http.request'
   | 'webhook.emit'
+  | 'service.invoke'
 
 export interface AppRuntimeCapabilityMetadata {
   requested: AppRuntimeCapability[]
@@ -99,6 +100,12 @@ export interface AppRuntimeWebhookRequest {
   url: string
   event: string
   payload: AppRuntimeJsonValue
+}
+
+export interface AppRuntimeServiceInvokeResult {
+  status: number
+  headers: Record<string, string>
+  data: AppRuntimeJsonValue
 }
 
 export type AppRuntimeErrorCode =

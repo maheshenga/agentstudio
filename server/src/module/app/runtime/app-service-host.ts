@@ -65,7 +65,16 @@ const server = http.createServer(async (request, response) => {
       return;
     }
     if (request.method === 'POST' && request.url === '/invoke') {
-      respond(response, 200, await service.invoke(await readJson(request), {}));
+      const body = await readJson(request);
+      if (body && typeof body === 'object' && body.__agentstudio_runtime === 1) {
+        if (body.context && typeof body.context === 'object' && !Array.isArray(body.context)) {
+          respond(response, 200, await service.invoke(body.input, body.context));
+        } else {
+          respond(response, 200, await service.invoke(body.input, {}));
+        }
+      } else {
+        respond(response, 200, await service.invoke(body, {}));
+      }
       return;
     }
     respond(response, 404, { error: 'not_found' });

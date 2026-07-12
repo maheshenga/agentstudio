@@ -2,6 +2,8 @@ import { AppRuntimeError } from './errors'
 import {
   APP_RUNTIME_CHANNEL,
   APP_RUNTIME_PROTOCOL_VERSION,
+  isBoundedRuntimeJson,
+  isRuntimeServiceTargetCode,
   normalizeTimeout,
   parseRuntimeOperationResponse,
   parseRuntimeResponse,
@@ -316,6 +318,16 @@ export function createRuntimeClient(resolveWindow: () => RuntimeWindow | undefin
     webhooks: {
       emit: (input: AppRuntimeWebhookRequest, options: AppRuntimeRequestOptions = {}) =>
         request('webhooks.emit', input, options)
+    },
+    services: {
+      invoke: (
+        targetCode: string,
+        input: AppRuntimeJsonValue,
+        options: AppRuntimeRequestOptions = {}
+      ) =>
+        isRuntimeServiceTargetCode(targetCode) && isBoundedRuntimeJson(input)
+          ? request('services.invoke', { target_code: targetCode, input }, options)
+          : Promise.reject(new AppRuntimeError('request_failed'))
     }
   }
 }

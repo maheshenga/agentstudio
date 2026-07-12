@@ -15,7 +15,7 @@ export class AppRuntimeHttpExceptionFilter implements ExceptionFilter {
     ).slice(0, 200);
     const rawRetryAfter = Number((body as { retry_after?: unknown }).retry_after);
     const retryAfter = Number.isFinite(rawRetryAfter)
-      ? Math.min(60, Math.max(1, Math.trunc(rawRetryAfter)))
+      ? Math.min(status === 503 ? 3600 : 60, Math.max(1, Math.trunc(rawRetryAfter)))
       : undefined;
 
     response.status(status).json({
@@ -23,7 +23,9 @@ export class AppRuntimeHttpExceptionFilter implements ExceptionFilter {
       msg: message,
       message,
       data: null,
-      ...(status === 429 && retryAfter ? { retry_after: retryAfter } : {}),
+      ...((status === 429 || status === 503) && retryAfter
+        ? { retry_after: retryAfter }
+        : {}),
     });
   }
 }

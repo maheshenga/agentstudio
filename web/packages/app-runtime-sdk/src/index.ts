@@ -15,6 +15,7 @@ export type {
   AppRuntimeKvRecord,
   AppRuntimeKvSetOptions,
   AppRuntimeRequestOptions,
+  AppRuntimeServiceInvokeResult,
   AppRuntimeWebhookRequest,
   GetContextOptions
 } from './types'

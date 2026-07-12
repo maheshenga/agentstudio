@@ -543,6 +543,29 @@ describe('AppServiceRuntimeService', () => {
     await expect(service.probeActive('admin_echo_service', {})).rejects.toThrow('healthy active');
   });
 
+  it('invokes an authorized target through the reserved gateway envelope', async () => {
+    const context = {
+      tenant: { id: '23' },
+      user: { id: '91' },
+      caller: { app_id: '10', version_id: '20' },
+    };
+    transport.invoke.mockResolvedValue({
+      statusCode: 201,
+      headers: { 'content-type': 'application/json' },
+      body: { accepted: true },
+    });
+
+    await expect(
+      service.invokeAuthorized(app(), version(11), context, { job: 'run' }),
+    ).resolves.toMatchObject({ statusCode: 201, body: { accepted: true } });
+
+    expect(transport.invoke).toHaveBeenCalledWith(21001, {
+      __agentstudio_runtime: 1,
+      input: { job: 'run' },
+      context,
+    });
+  });
+
   it('returns stable runtime responses without release paths, commands, or environment values', async () => {
     const list = await service.listRuntimeInstances({ role: 'active' });
     const detail = await service.getRuntimeApp('admin_echo_service');

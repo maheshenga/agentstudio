@@ -70,6 +70,7 @@
     emitAppRuntimeWebhook,
     fetchAppRuntimeContext,
     fetchAppRuntimeKv,
+    invokeAppRuntimeService,
     readAppRuntimeFile,
     requestAppRuntimeHttp,
     setAppRuntimeKv,
@@ -234,6 +235,13 @@
         return requestAppRuntimeHttp(token, data, signal)
       case 'webhooks.emit':
         return emitAppRuntimeWebhook(token, data, signal)
+      case 'services.invoke':
+        return invokeAppRuntimeService(
+          token,
+          String(data.target_code),
+          data.input as AppRuntimeJsonValue,
+          signal
+        )
       default:
         throw new Error('Runtime operation is not supported')
     }
@@ -241,7 +249,9 @@
 
   function runtimeErrorCode(error: unknown) {
     const status = Number((error as { code?: unknown })?.code)
-    return status === 401 || status === 403 ? 'capability_denied' : 'request_failed'
+    if (status === 401 || status === 403) return 'capability_denied'
+    if ([409, 429, 503].includes(status)) return 'request_failed'
+    return 'request_failed'
   }
 
   async function handleRuntimeMessage(event: MessageEvent<unknown>) {

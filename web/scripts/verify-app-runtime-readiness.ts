@@ -42,6 +42,38 @@ assert.deepEqual(
 assert.deepEqual(
   parseAppRuntimeRequest({
     channel: APP_RUNTIME_CHANNEL,
+    version: 1,
+    type: 'services.invoke.request',
+    request_id: 'request-service',
+    data: { target_code: 'search_service', input: { query: 'open roles' } }
+  }),
+  {
+    request: {
+      request_id: 'request-service',
+      operation: 'services.invoke',
+      data: { target_code: 'search_service', input: { query: 'open roles' } },
+      legacy: false
+    }
+  }
+)
+
+for (const data of [
+  { target_code: 'Search-Service', input: null },
+  { target_code: 'search_service', input: Number.POSITIVE_INFINITY }
+]) {
+  const parsed = parseAppRuntimeRequest({
+    channel: APP_RUNTIME_CHANNEL,
+    version: 1,
+    type: 'services.invoke.request',
+    request_id: 'request-invalid-service',
+    data
+  })
+  assert.equal(parsed && 'response' in parsed ? parsed.response.error.code : '', 'request_failed')
+}
+
+assert.deepEqual(
+  parseAppRuntimeRequest({
+    channel: APP_RUNTIME_CHANNEL,
     version: 2,
     type: 'kv.get.request',
     request_id: 'request-versioned-kv',
@@ -358,6 +390,8 @@ for (const [source, token, label] of [
   [runnerSource, 'exchangeIframeLaunch', 'one-time iframe launch exchange'],
   [runnerSource, 'runtimeSession', 'host-only in-memory runtime bearer'],
   [runnerSource, 'dispatchRuntimeCapability', 'explicit capability dispatch'],
+  [runnerSource, "case 'services.invoke'", 'service invocation dispatch'],
+  [runnerSource, 'invokeAppRuntimeService', 'service invocation API bridge'],
   [runnerSource, 'parseAppRuntimeRequest', 'synchronous runtime request validation'],
   [runnerSource, 'createAppRuntimeContextResponse', 'correlated runtime success response'],
   [runnerSource, 'runtimeSession = data.runtime?.session', 'optional runtime session branch'],
@@ -369,6 +403,7 @@ for (const [source, token, label] of [
   [runtimeApiSource, "url: '/api/app-runtime/context'", 'dedicated runtime endpoint'],
   [runtimeApiSource, "url: '/api/app-runtime/http'", 'runtime HTTP endpoint'],
   [runtimeApiSource, "url: '/api/app-runtime/webhooks'", 'runtime webhook endpoint'],
+  [runtimeApiSource, '/api/app-runtime/services/', 'runtime service invocation endpoint'],
   [runtimeApiSource, '/api/app-runtime/kv/', 'runtime KV endpoints'],
   [runtimeApiSource, '/api/app-runtime/files', 'runtime file endpoints'],
   [runtimeApiSource, "'X-App-Runtime-Token': token", 'dedicated runtime header'],

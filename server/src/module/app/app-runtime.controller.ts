@@ -27,11 +27,16 @@ import { AppRuntimeHttpExceptionFilter } from './app-runtime-http-exception.filt
 import { SetAppRuntimeKvDto } from './dto/app-runtime-kv.dto';
 import { AppRuntimeFileParamsDto } from './dto/app-runtime-file.dto';
 import { AppRuntimeHttpRequestDto, AppRuntimeWebhookDto } from './dto/app-runtime-http.dto';
+import {
+  AppServiceInvokeDto,
+  assertBoundedAppRuntimeJson,
+} from './dto/app-service-invoke.dto';
 import { AppRuntimeContextService } from './services/app-runtime-context.service';
 import { AppRuntimeFileService } from './services/app-runtime-file.service';
 import { AppRuntimeKvService } from './services/app-runtime-kv.service';
 import { AppRuntimeHttpService } from './services/app-runtime-http.service';
 import { AppRuntimeSessionService } from './services/app-runtime-session.service';
+import { AppServiceInvocationPolicyService } from './services/app-service-invocation-policy.service';
 
 @ApiTags('App Runtime')
 @Controller('api/app-runtime')
@@ -43,6 +48,7 @@ export class AppRuntimeController {
     private readonly kvService: AppRuntimeKvService,
     private readonly fileService: AppRuntimeFileService,
     private readonly httpService: AppRuntimeHttpService,
+    private readonly invocationPolicy: AppServiceInvocationPolicyService,
   ) {}
 
   @Get('context')
@@ -147,6 +153,23 @@ export class AppRuntimeController {
     return ResultData.ok(await this.httpService.emitWebhook(session, body));
   }
 
+  @Post('services/:code/invoke')
+  @Public()
+  @ApiOperation({ summary: 'Invoke an authorized tenant service' })
+  async invokeService(
+    @Req() request: Request,
+    @Param('code') code: string,
+    @Body() body: AppServiceInvokeDto,
+  ) {
+    const targetCode = String(code || '').trim();
+    if (!/^[a-z][a-z0-9_]{2,79}$/.test(targetCode)) {
+      throw new BadRequestException('Invalid service target code');
+    }
+    const session = await this.authorize(request, 'service.invoke');
+    assertBoundedAppRuntimeJson(body?.input);
+    return ResultData.ok(await this.invocationPolicy.invoke(session, targetCode, body.input));
+  }
+
   private authorize(
     request: Request,
     capability:
@@ -156,7 +179,8 @@ export class AppRuntimeController {
       | 'files.read'
       | 'files.write'
       | 'http.request'
-      | 'webhook.emit',
+      | 'webhook.emit'
+      | 'service.invoke',
   ) {
     return this.sessionService.authorize(this.getRuntimeToken(request), capability, {
       requestId: this.header(request, 'x-request-id', 100),

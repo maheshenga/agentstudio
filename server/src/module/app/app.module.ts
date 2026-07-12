@@ -53,6 +53,7 @@ import {
 import { AppRuntimeSessionService } from './services/app-runtime-session.service';
 import { AppReviewSnapshotService } from './services/app-review-snapshot.service';
 import { AppServiceLogRedactor } from './services/app-service-log-redactor';
+import { AppServiceInvocationPolicyService } from './services/app-service-invocation-policy.service';
 import { AppServiceLoopbackTransport } from './services/app-service-loopback.transport';
 import { AppServicePackageService } from './services/app-service-package.service';
 import {
@@ -118,6 +119,7 @@ import { AppTenantService } from './services/app-tenant.service';
     AppPackageStorageService,
     AppReviewSnapshotService,
     AppServicePackageService,
+    AppServiceInvocationPolicyService,
     AppServiceLogRedactor,
     AppServiceHostEnvironment,
     AppServiceProcessManager,

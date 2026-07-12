@@ -24,7 +24,8 @@ import type {
   AppRuntimeErrorCode,
   AppRuntimeHttpResponse,
   AppRuntimeKvRecord,
-  AppRuntimeFileMetadata
+  AppRuntimeFileMetadata,
+  AppRuntimeServiceInvokeResult
 } from '../src/types'
 
 const approvedContext: AppRuntimeContext = {
@@ -34,13 +35,14 @@ const approvedContext: AppRuntimeContext = {
 }
 
 const capability: AppRuntimeCapability = 'context.read'
+const serviceCapability: AppRuntimeCapability = 'service.invoke'
 const capabilityMetadata: AppRuntimeCapabilityMetadata = {
-  requested: [capability],
-  platform_approved: [capability],
-  tenant_approved: [capability],
-  effective: [capability]
+  requested: [capability, serviceCapability],
+  platform_approved: [capability, serviceCapability],
+  tenant_approved: [capability, serviceCapability],
+  effective: [capability, serviceCapability]
 }
-assert.deepEqual(capabilityMetadata.effective, ['context.read'])
+assert.deepEqual(capabilityMetadata.effective, ['context.read', 'service.invoke'])
 assert.doesNotMatch(JSON.stringify(capabilityMetadata), /token|authorization|cookie/i)
 
 function assertError(result: ReturnType<typeof parseRuntimeResponse>, code: AppRuntimeErrorCode) {
@@ -365,6 +367,41 @@ async function verifyClientLifecycle() {
   capabilityWindow.emit(operationResponse('kv.get', 'request-1', kv))
   assert.deepEqual(await kvPromise, kv)
 
+  const servicePromise = runtime.services.invoke('search_service', { query: 'open roles' })
+  await Promise.resolve()
+  assert.deepEqual(capabilityWindow.posts[1], {
+    message: {
+      channel: APP_RUNTIME_CHANNEL,
+      version: 1,
+      type: 'services.invoke.request',
+      request_id: 'request-2',
+      data: { target_code: 'search_service', input: { query: 'open roles' } }
+    },
+    targetOrigin: '*'
+  })
+  const serviceResult: AppRuntimeServiceInvokeResult = {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+    data: { matches: 2 }
+  }
+  capabilityWindow.emit(operationResponse('services.invoke', 'request-2', serviceResult))
+  assert.deepEqual(await servicePromise, serviceResult)
+  await expectRuntimeError(runtime.services.invoke('Search-Service', null), 'request_failed')
+  assert.equal(capabilityWindow.posts.length, 2)
+
+  const malformedServiceWindow = new FakeRuntimeWindow()
+  const malformedServiceRuntime = createRuntimeClient(() => malformedServiceWindow)
+  const malformedServicePromise = malformedServiceRuntime.services.invoke('search_service', null)
+  await Promise.resolve()
+  malformedServiceWindow.emit(
+    operationResponse('services.invoke', 'request-1', {
+      status: 200,
+      headers: { authorization: 'Bearer forbidden' },
+      data: { ok: true }
+    })
+  )
+  await expectRuntimeError(malformedServicePromise, 'invalid_response')
+
   const launchWindow = new FakeRuntimeWindow()
   launchWindow.location.hash = '#agentstudio_launch=signed-launch.token'
   const externalRuntime = createRuntimeClient(() => launchWindow)
@@ -454,6 +491,7 @@ async function verifyBuiltOutputs() {
     'AppRuntimeKvRecord',
     'AppRuntimeFileMetadata',
     'AppRuntimeHttpResponse',
+    'AppRuntimeServiceInvokeResult',
     'runtime'
   ]) {
     assert.ok(declarations.includes(symbol), `declarations must contain ${symbol}`)
@@ -487,6 +525,7 @@ async function verifyBuiltOutputs() {
   assert.deepEqual(Object.keys(esm).sort(), expectedRuntimeExports)
   assert.equal(typeof esm.getContext, 'function')
   assert.equal(typeof esm.runtime?.kv?.get, 'function')
+  assert.equal(typeof esm.runtime?.services?.invoke, 'function')
 
   const sandbox: Record<string, unknown> = {}
   vm.runInNewContext(readFileSync(iifePath, 'utf8'), sandbox)
@@ -494,6 +533,7 @@ async function verifyBuiltOutputs() {
   assert.deepEqual(Object.keys(globalApi).sort(), expectedRuntimeExports)
   assert.equal(typeof globalApi?.getContext, 'function')
   assert.equal(typeof (globalApi?.runtime as any)?.http?.request, 'function')
+  assert.equal(typeof (globalApi?.runtime as any)?.services?.invoke, 'function')
   assert.equal(globalApi?.APP_RUNTIME_PROTOCOL_VERSION, 1)
 }
 
