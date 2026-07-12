@@ -250,7 +250,7 @@ git commit -m "feat(app): add certified developer runtime schema"
 - Produces: `AppDeveloperCertificationService.setDisabled(profileId: number, operatorId: number, dto: SetDeveloperCertificationDisabledDto)`
 - Produces: `AppDeveloperCertificationService.assertRuntimeApproved(userId: number, runtimeType: AppDeveloperRuntimeType): Promise<AppDeveloperProfileEntity>`
 
-- [ ] **Step 1: Write failing certification lifecycle tests**
+- [x] **Step 1: Write failing certification lifecycle tests**
 
 Cover:
 
@@ -267,7 +267,7 @@ it('never creates, removes, or broadens user roles when certification changes');
 
 Use repository mocks for profile and user; use a transaction mock for the certification decision and assert that no role or menu repository participates in profile state changes.
 
-- [ ] **Step 2: Run certification tests to verify RED**
+- [x] **Step 2: Run certification tests to verify RED**
 
 ```powershell
 pnpm run test -- app-developer-certification.service.spec.ts app-developer-profile.controller.spec.ts app-developer-certification.controller.spec.ts --runInBand
@@ -275,7 +275,7 @@ pnpm run test -- app-developer-certification.service.spec.ts app-developer-profi
 
 Expected: FAIL because P11 certification services/controllers do not exist.
 
-- [ ] **Step 3: Implement DTOs and certification service**
+- [x] **Step 3: Implement DTOs and certification service**
 
 Use these DTO bounds:
 
@@ -300,7 +300,7 @@ export class DecideDeveloperCertificationDto {
 
 Certification defaults to a 365-day expiry when approved. `assertRuntimeApproved` computes expiry at read time, never trusts a client-supplied status, and returns only after user ownership, status, approved runtime, disabled state, and expiry all pass.
 
-- [ ] **Step 4: Implement authenticated controllers and permissions**
+- [x] **Step 4: Implement authenticated controllers and permissions**
 
 Routes:
 
@@ -315,7 +315,7 @@ POST /api/app-platform/developers/:id/disabled
 
 The self routes require authentication but no platform permission. Platform routes require `app:developer-certification:list` or `app:developer-certification:manage` and run outside tenant context. Decision operator ID always comes from `@User()`.
 
-- [ ] **Step 5: Seed role, menus, permissions, and grants**
+- [x] **Step 5: Seed menus, permissions, and tenant-role grants**
 
 The migration must:
 
@@ -326,7 +326,7 @@ The migration must:
 5. rely on `AppDeveloperCertificationService.assertRuntimeApproved` for every service create/upload/candidate/publish transition, so menu permission alone never authorizes service code;
 6. remove only the P11 menu rows and grants on `down()` and leave tenant roles untouched.
 
-- [ ] **Step 6: Run Task 2 tests to verify GREEN**
+- [x] **Step 6: Run Task 2 tests to verify GREEN**
 
 ```powershell
 pnpm run test -- app-developer-certification.service.spec.ts app-developer-profile.controller.spec.ts app-developer-certification.controller.spec.ts seed-certified-developer-service-menus.spec.ts --runInBand
@@ -334,7 +334,7 @@ pnpm run test -- app-developer-certification.service.spec.ts app-developer-profi
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit Task 2**
+- [x] **Step 7: Commit Task 2**
 
 ```powershell
 git add server/src/module/app server/src/migrations/1760000000043-SeedCertifiedDeveloperServiceMenus.ts
