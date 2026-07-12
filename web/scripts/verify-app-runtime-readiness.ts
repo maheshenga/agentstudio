@@ -5,6 +5,8 @@ import { resolve } from 'node:path'
 import {
   APP_RUNTIME_CHANNEL,
   APP_RUNTIME_PROTOCOL_VERSION,
+  createAppRuntimeOperationSuccessResponse,
+  parseAppRuntimeRequest,
   resolveAppRuntimeRequest,
   type AppRuntimeBootstrap
 } from '../src/utils/app-runtime'
@@ -18,6 +20,76 @@ const bootstrap: AppRuntimeBootstrap = {
     app: { code: 'job_board', name: 'Job Board', version: '1.2.0' }
   }
 }
+
+assert.deepEqual(
+  parseAppRuntimeRequest({
+    channel: APP_RUNTIME_CHANNEL,
+    version: 1,
+    type: 'kv.set.request',
+    request_id: 'request-kv',
+    data: { namespace: 'settings', key: 'theme', value: { dark: true } }
+  }),
+  {
+    request: {
+      request_id: 'request-kv',
+      operation: 'kv.set',
+      data: { namespace: 'settings', key: 'theme', value: { dark: true } },
+      legacy: false
+    }
+  }
+)
+
+assert.deepEqual(
+  parseAppRuntimeRequest({
+    channel: APP_RUNTIME_CHANNEL,
+    version: 2,
+    type: 'kv.get.request',
+    request_id: 'request-versioned-kv',
+    data: { namespace: 'settings', key: 'theme' }
+  }),
+  {
+    response: {
+      channel: APP_RUNTIME_CHANNEL,
+      version: 1,
+      type: 'kv.get.error',
+      request_id: 'request-versioned-kv',
+      ok: false,
+      error: { code: 'unsupported_protocol', message: 'Runtime protocol is not supported' }
+    }
+  }
+)
+
+assert.deepEqual(
+  parseAppRuntimeRequest({
+    channel: APP_RUNTIME_CHANNEL,
+    version: 1,
+    type: 'files.read.request',
+    request_id: 'request-file',
+    data: { id: 42 }
+  }),
+  {
+    response: {
+      channel: APP_RUNTIME_CHANNEL,
+      version: 1,
+      type: 'files.read.error',
+      request_id: 'request-file',
+      ok: false,
+      error: { code: 'request_failed', message: 'Runtime request failed' }
+    }
+  }
+)
+
+assert.deepEqual(
+  createAppRuntimeOperationSuccessResponse('request-ready', 'launch.exchange', { ready: true }),
+  {
+    channel: APP_RUNTIME_CHANNEL,
+    version: 1,
+    type: 'launch.exchange.result',
+    request_id: 'request-ready',
+    ok: true,
+    data: { ready: true }
+  }
+)
 
 assert.deepEqual(
   resolveAppRuntimeRequest(
@@ -266,9 +338,10 @@ const runtimeApiSource = readFileSync(resolve(webRoot, 'src/api/app-runtime.ts')
 
 for (const [source, token, label] of [
   [runnerSource, 'ref="appFrame"', 'app runner iframe binding'],
+  [runnerSource, ':src="appFrameSrc"', 'signed iframe fragment source'],
   [runnerSource, 'event.source !== frameWindow', 'runtime source validation'],
-  [runnerSource, "metadata.value?.type !== 'static'", 'static-only runtime bridge'],
-  [runnerSource, "frameWindow.postMessage(response, '*')", 'opaque-origin response'],
+  [runnerSource, 'event.origin !== runtimeTargetOrigin.value', 'external exact-origin validation'],
+  [runnerSource, 'frameWindow.postMessage(response, targetOrigin)', 'bounded response target'],
   [
     runnerSource,
     "window.addEventListener('message', handleRuntimeMessage)",
@@ -282,22 +355,37 @@ for (const [source, token, label] of [
   [runnerSource, 'loadSequence', 'stale metadata response guard'],
   [runnerSource, 'runtimeAbortController', 'runtime request cancellation'],
   [runnerSource, 'fetchAppRuntimeContext', 'session-backed runtime context'],
+  [runnerSource, 'exchangeIframeLaunch', 'one-time iframe launch exchange'],
+  [runnerSource, 'runtimeSession', 'host-only in-memory runtime bearer'],
+  [runnerSource, 'dispatchRuntimeCapability', 'explicit capability dispatch'],
   [runnerSource, 'parseAppRuntimeRequest', 'synchronous runtime request validation'],
   [runnerSource, 'createAppRuntimeContextResponse', 'correlated runtime success response'],
-  [runnerSource, 'metadata.value.runtime?.session', 'optional runtime session branch'],
+  [runnerSource, 'runtimeSession = data.runtime?.session', 'optional runtime session branch'],
   [runnerSource, 'resolveAppRuntimeRequest', 'legacy inline bootstrap fallback'],
-  [runnerSource, "item !== 'allow-same-origin'", 'same-origin sandbox rejection'],
+  [runnerSource, "metadata.value?.type === 'static'", 'static same-origin sandbox rejection'],
   [apiSource, 'runtime: AppRuntimeBootstrap | null', 'open metadata runtime contract'],
+  [apiSource, 'launch?: AppIframeLaunchMetadata | null', 'iframe launch metadata contract'],
+  [apiSource, "url: '/api/app-tenant/runtime/iframe/exchange'", 'protected launch exchange API'],
   [runtimeApiSource, "url: '/api/app-runtime/context'", 'dedicated runtime endpoint'],
-  [runtimeApiSource, "headers: { 'X-App-Runtime-Token': token }", 'dedicated runtime header'],
+  [runtimeApiSource, "url: '/api/app-runtime/http'", 'runtime HTTP endpoint'],
+  [runtimeApiSource, "url: '/api/app-runtime/webhooks'", 'runtime webhook endpoint'],
+  [runtimeApiSource, '/api/app-runtime/kv/', 'runtime KV endpoints'],
+  [runtimeApiSource, '/api/app-runtime/files', 'runtime file endpoints'],
+  [runtimeApiSource, "'X-App-Runtime-Token': token", 'dedicated runtime header'],
   [runtimeApiSource, 'signal', 'runtime abort signal']
 ] as const) {
   assert.ok(source.includes(token), `${label} must include ${token}`)
 }
 
 for (const forbidden of ['localStorage', 'sessionStorage', 'document.cookie', 'URLSearchParams']) {
-  assert.ok(!runnerSource.includes(forbidden), `runtime runner must not persist tokens via ${forbidden}`)
-  assert.ok(!runtimeApiSource.includes(forbidden), `runtime API must not persist tokens via ${forbidden}`)
+  assert.ok(
+    !runnerSource.includes(forbidden),
+    `runtime runner must not persist tokens via ${forbidden}`
+  )
+  assert.ok(
+    !runtimeApiSource.includes(forbidden),
+    `runtime API must not persist tokens via ${forbidden}`
+  )
 }
 
 console.log('App runtime readiness verified.')

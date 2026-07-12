@@ -4,12 +4,25 @@ export type {
   AppRuntimeCapability,
   AppRuntimeCapabilityMetadata,
   AppRuntimeContext,
+  AppRuntimeDeleteResult,
   AppRuntimeErrorCode,
+  AppRuntimeFileMetadata,
+  AppRuntimeFileReadResult,
+  AppRuntimeFileUploadOptions,
+  AppRuntimeHttpRequest,
+  AppRuntimeHttpResponse,
+  AppRuntimeJsonValue,
+  AppRuntimeKvRecord,
+  AppRuntimeKvSetOptions,
+  AppRuntimeRequestOptions,
+  AppRuntimeWebhookRequest,
   GetContextOptions
 } from './types'
 
-import { createGetContext, type RuntimeWindow } from './client'
+import { createGetContext, createRuntimeClient, type RuntimeWindow } from './client'
 
-export const getContext = createGetContext(() =>
+const resolveRuntimeWindow = () =>
   typeof window === 'undefined' ? undefined : (window as unknown as RuntimeWindow)
-)
+
+export const getContext = createGetContext(resolveRuntimeWindow)
+export const runtime = createRuntimeClient(resolveRuntimeWindow)

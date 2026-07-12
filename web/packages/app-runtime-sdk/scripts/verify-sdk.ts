@@ -4,7 +4,12 @@ import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import vm from 'node:vm'
 
-import { createGetContext, type RuntimeMessageEvent, type RuntimeWindow } from '../src/client'
+import {
+  createGetContext,
+  createRuntimeClient,
+  type RuntimeMessageEvent,
+  type RuntimeWindow
+} from '../src/client'
 import { APP_RUNTIME_ERROR_CODES, AppRuntimeError } from '../src/errors'
 import {
   APP_RUNTIME_CHANNEL,
@@ -16,7 +21,10 @@ import type {
   AppRuntimeCapability,
   AppRuntimeCapabilityMetadata,
   AppRuntimeContext,
-  AppRuntimeErrorCode
+  AppRuntimeErrorCode,
+  AppRuntimeHttpResponse,
+  AppRuntimeKvRecord,
+  AppRuntimeFileMetadata
 } from '../src/types'
 
 const approvedContext: AppRuntimeContext = {
@@ -57,6 +65,7 @@ class FakeRuntimeWindow implements RuntimeWindow {
   removedMessageListeners = 0
   clearedTimers = 0
   postError: Error | null = null
+  location = { hash: '' }
   private nextTimer = 1
   private nextRequest = 1
 
@@ -135,6 +144,17 @@ function errorResponse(requestId: string, code: string, message = 'host-controll
   }
 }
 
+function operationResponse(operation: string, requestId: string, data: unknown) {
+  return {
+    channel: APP_RUNTIME_CHANNEL,
+    version: APP_RUNTIME_PROTOCOL_VERSION,
+    type: `${operation}.result`,
+    request_id: requestId,
+    ok: true,
+    data
+  }
+}
+
 function verifyPureContracts() {
   assert.equal(APP_RUNTIME_CHANNEL, 'agentstudio:app-runtime')
   assert.equal(APP_RUNTIME_PROTOCOL_VERSION, 1)
@@ -143,6 +163,8 @@ function verifyPureContracts() {
     'unsupported_request',
     'scope_denied',
     'context_unavailable',
+    'capability_denied',
+    'request_failed',
     'timeout',
     'aborted',
     'host_unavailable',
@@ -207,7 +229,7 @@ function verifyPureContracts() {
     'unsupported_protocol'
   )
 
-  for (const code of APP_RUNTIME_ERROR_CODES.slice(0, 4)) {
+  for (const code of APP_RUNTIME_ERROR_CODES.slice(0, 6)) {
     const parsed = parseRuntimeResponse(errorResponse('request-1', code), 'request-1')
     assertError(parsed, code)
     if (parsed.kind === 'error') assert.doesNotMatch(parsed.error.message, /host-controlled/)
@@ -273,7 +295,7 @@ async function verifyClientLifecycle() {
   assert.equal((await second).tenant.id, '24')
   assert.equal(concurrentWindow.messageListeners.size, 0)
 
-  for (const code of APP_RUNTIME_ERROR_CODES.slice(0, 4)) {
+  for (const code of APP_RUNTIME_ERROR_CODES.slice(0, 6)) {
     const runtimeWindow = new FakeRuntimeWindow()
     const promise = createGetContext(() => runtimeWindow)()
     runtimeWindow.emit(errorResponse(runtimeWindow.request().request_id, code))
@@ -318,6 +340,83 @@ async function verifyClientLifecycle() {
   await expectRuntimeError(createGetContext(() => throwingWindow)(), 'host_unavailable')
   assert.equal(throwingWindow.messageListeners.size, 0)
   assert.equal(throwingWindow.timers.size, 0)
+
+  const capabilityWindow = new FakeRuntimeWindow()
+  const runtime = createRuntimeClient(() => capabilityWindow)
+  const kvPromise = runtime.kv.get('settings', 'theme')
+  await Promise.resolve()
+  assert.deepEqual(capabilityWindow.posts[0], {
+    message: {
+      channel: APP_RUNTIME_CHANNEL,
+      version: 1,
+      type: 'kv.get.request',
+      request_id: 'request-1',
+      data: { namespace: 'settings', key: 'theme' }
+    },
+    targetOrigin: '*'
+  })
+  const kv: AppRuntimeKvRecord = {
+    namespace: 'settings',
+    key: 'theme',
+    value: { dark: true },
+    version: 1,
+    expires_at: null
+  }
+  capabilityWindow.emit(operationResponse('kv.get', 'request-1', kv))
+  assert.deepEqual(await kvPromise, kv)
+
+  const launchWindow = new FakeRuntimeWindow()
+  launchWindow.location.hash = '#agentstudio_launch=signed-launch.token'
+  const externalRuntime = createRuntimeClient(() => launchWindow)
+  const httpPromise = externalRuntime.http.request({
+    url: 'https://api.example.com/data',
+    method: 'GET'
+  })
+  assert.equal((launchWindow.posts[0].message as any).type, 'launch.exchange.request')
+  assert.deepEqual((launchWindow.posts[0].message as any).data, {
+    launch_token: 'signed-launch.token'
+  })
+  launchWindow.emit(operationResponse('launch.exchange', 'request-1', { ready: true }))
+  await Promise.resolve()
+  await Promise.resolve()
+  assert.equal((launchWindow.posts[1].message as any).type, 'http.request.request')
+  const http: AppRuntimeHttpResponse = {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+    body: '{"ok":true}',
+    truncated: false
+  }
+  launchWindow.emit(operationResponse('http.request', 'request-2', http))
+  assert.deepEqual(await httpPromise, http)
+  assert.equal(launchWindow.posts.length, 2)
+
+  const sharedLaunchWindow = new FakeRuntimeWindow()
+  sharedLaunchWindow.location.hash = '#agentstudio_launch=shared.launch'
+  const sharedRuntime = createRuntimeClient(() => sharedLaunchWindow)
+  const cancelled = new AbortController()
+  const cancelledRequest = sharedRuntime.kv.get('settings', 'first', {
+    signal: cancelled.signal
+  })
+  const survivingRequest = sharedRuntime.kv.get('settings', 'second')
+  assert.equal(sharedLaunchWindow.posts.length, 1)
+  cancelled.abort()
+  sharedLaunchWindow.emit(operationResponse('launch.exchange', 'request-1', { ready: true }))
+  await Promise.resolve()
+  await Promise.resolve()
+  await expectRuntimeError(cancelledRequest, 'aborted')
+  assert.equal((sharedLaunchWindow.posts[1].message as any).type, 'kv.get.request')
+  sharedLaunchWindow.emit(operationResponse('kv.get', 'request-2', kv))
+  assert.deepEqual(await survivingRequest, kv)
+
+  const fileMetadata: AppRuntimeFileMetadata = {
+    id: 'a'.repeat(43),
+    name: 'notes.txt',
+    mime_type: 'text/plain',
+    size: 5,
+    checksum: 'b'.repeat(64),
+    expires_at: null
+  }
+  assert.equal(fileMetadata.size, 5)
 }
 
 async function verifyBuiltOutputs() {
@@ -338,8 +437,8 @@ async function verifyBuiltOutputs() {
   for (const target of [metadata.module, metadata.types, metadata.exports['.'].import]) {
     assert.ok(existsSync(resolve(packageRoot, target)))
   }
-  assert.ok(statSync(esmPath).size <= 10 * 1024)
-  assert.ok(statSync(iifePath).size <= 10 * 1024)
+  assert.ok(statSync(esmPath).size <= 16 * 1024)
+  assert.ok(statSync(iifePath).size <= 16 * 1024)
   assert.ok(existsSync(declarationPath))
   assert.equal(existsSync(`${esmPath}.map`), false)
   assert.equal(existsSync(`${iifePath}.map`), false)
@@ -351,7 +450,11 @@ async function verifyBuiltOutputs() {
     'AppRuntimeContext',
     'AppRuntimeError',
     'AppRuntimeCapability',
-    'AppRuntimeCapabilityMetadata'
+    'AppRuntimeCapabilityMetadata',
+    'AppRuntimeKvRecord',
+    'AppRuntimeFileMetadata',
+    'AppRuntimeHttpResponse',
+    'runtime'
   ]) {
     assert.ok(declarations.includes(symbol), `declarations must contain ${symbol}`)
   }
@@ -378,16 +481,19 @@ async function verifyBuiltOutputs() {
     'APP_RUNTIME_ERROR_CODES',
     'APP_RUNTIME_PROTOCOL_VERSION',
     'AppRuntimeError',
-    'getContext'
+    'getContext',
+    'runtime'
   ]
   assert.deepEqual(Object.keys(esm).sort(), expectedRuntimeExports)
   assert.equal(typeof esm.getContext, 'function')
+  assert.equal(typeof esm.runtime?.kv?.get, 'function')
 
   const sandbox: Record<string, unknown> = {}
   vm.runInNewContext(readFileSync(iifePath, 'utf8'), sandbox)
   const globalApi = sandbox.AgentStudioRuntime as Record<string, unknown>
   assert.deepEqual(Object.keys(globalApi).sort(), expectedRuntimeExports)
   assert.equal(typeof globalApi?.getContext, 'function')
+  assert.equal(typeof (globalApi?.runtime as any)?.http?.request, 'function')
   assert.equal(globalApi?.APP_RUNTIME_PROTOCOL_VERSION, 1)
 }
 

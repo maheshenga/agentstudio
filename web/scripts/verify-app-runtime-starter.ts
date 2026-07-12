@@ -90,6 +90,7 @@ async function main() {
   assert.ok(html.indexOf('./vendor/agentstudio-runtime.global.js') < html.indexOf('./app.js'))
   assert.doesNotMatch(html, /<script[^>]+src="https?:/i)
   assert.doesNotMatch(app, /innerHTML|console\./)
+  assert.match(app, /runtime\.context\.get/)
 
   const first = await buildRuntimeStarter()
   assert.deepEqual(first.files, allowedFiles)

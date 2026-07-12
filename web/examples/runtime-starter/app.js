@@ -56,9 +56,11 @@
 
     let runtime = window.AgentStudioRuntime
     let request =
-      runtime && typeof runtime.getContext === 'function'
-        ? runtime.getContext()
-        : Promise.reject({ code: 'host_unavailable' })
+      runtime && runtime.runtime && runtime.runtime.context
+        ? runtime.runtime.context.get()
+        : runtime && typeof runtime.getContext === 'function'
+          ? runtime.getContext()
+          : Promise.reject({ code: 'host_unavailable' })
 
     Promise.resolve(request).then(
       function (context) {

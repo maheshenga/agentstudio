@@ -5,6 +5,8 @@ export const APP_RUNTIME_ERROR_CODES = Object.freeze([
   'unsupported_request',
   'scope_denied',
   'context_unavailable',
+  'capability_denied',
+  'request_failed',
   'timeout',
   'aborted',
   'host_unavailable',
@@ -15,7 +17,9 @@ const HOST_RUNTIME_ERROR_CODES = new Set<AppRuntimeErrorCode>([
   'unsupported_protocol',
   'unsupported_request',
   'scope_denied',
-  'context_unavailable'
+  'context_unavailable',
+  'capability_denied',
+  'request_failed'
 ])
 
 const ERROR_MESSAGES: Record<AppRuntimeErrorCode, string> = {
@@ -23,6 +27,8 @@ const ERROR_MESSAGES: Record<AppRuntimeErrorCode, string> = {
   unsupported_request: 'Runtime request is not supported',
   scope_denied: 'Runtime scope is not available',
   context_unavailable: 'Runtime context is unavailable',
+  capability_denied: 'Runtime capability is not available',
+  request_failed: 'Runtime request failed',
   timeout: 'Runtime request timed out',
   aborted: 'Runtime request was aborted',
   host_unavailable: 'Runtime host is unavailable',

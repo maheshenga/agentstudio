@@ -34,7 +34,7 @@
         v-if="metadata.open_mode === 'iframe'"
         ref="appFrame"
         class="app-runner-page__iframe"
-        :src="metadata.entry_url"
+        :src="appFrameSrc"
         :title="metadata.name"
         :sandbox="safeSandbox"
         referrerpolicy="no-referrer"
@@ -58,13 +58,32 @@
 <script setup lang="ts">
   import { ElMessage } from 'element-plus'
   import { Back, Loading, Refresh } from '@element-plus/icons-vue'
-  import { fetchTenantAppOpenMetadata, type AppOpenMetadata } from '@/api/app-marketplace'
-  import { fetchAppRuntimeContext } from '@/api/app-runtime'
+  import {
+    exchangeIframeLaunch,
+    fetchTenantAppOpenMetadata,
+    type AppOpenMetadata,
+    type AppRuntimeSessionMetadata
+  } from '@/api/app-marketplace'
+  import {
+    deleteAppRuntimeFile,
+    deleteAppRuntimeKv,
+    emitAppRuntimeWebhook,
+    fetchAppRuntimeContext,
+    fetchAppRuntimeKv,
+    readAppRuntimeFile,
+    requestAppRuntimeHttp,
+    setAppRuntimeKv,
+    uploadAppRuntimeFile
+  } from '@/api/app-runtime'
   import {
     createAppRuntimeContextResponse,
     createAppRuntimeErrorResponse,
+    createAppRuntimeOperationErrorResponse,
+    createAppRuntimeOperationSuccessResponse,
     parseAppRuntimeRequest,
-    resolveAppRuntimeRequest
+    resolveAppRuntimeRequest,
+    type AppRuntimeJsonValue,
+    type ParsedAppRuntimeRequest
   } from '@/utils/app-runtime'
 
   defineOptions({ name: 'AppCenterOpenPage' })
@@ -75,13 +94,35 @@
   const loadError = ref('')
   const metadata = ref<AppOpenMetadata | null>(null)
   const appFrame = ref<HTMLIFrameElement | null>(null)
+  let runtimeSession: AppRuntimeSessionMetadata | null = null
   let loadSequence = 0
+  let launchExchangePromise: Promise<AppRuntimeSessionMetadata> | null = null
   const runtimeAbortControllers = new Set<AbortController>()
+  const appFrameSrc = computed(() => {
+    const value = metadata.value
+    if (!value) return ''
+    return value.type === 'iframe' && value.launch?.fragment
+      ? `${value.entry_url}${value.launch.fragment}`
+      : value.entry_url
+  })
+  const runtimeTargetOrigin = computed(() =>
+    metadata.value?.type === 'iframe' ? metadata.value.launch?.origin || '' : '*'
+  )
   const safeSandbox = computed(() => {
     const raw = metadata.value?.sandbox || 'allow-scripts allow-forms allow-popups allow-downloads'
+    const allowed = new Set([
+      'allow-scripts',
+      'allow-forms',
+      'allow-popups',
+      'allow-downloads',
+      'allow-same-origin'
+    ])
     return raw
       .split(/\s+/)
-      .filter((item) => item && item !== 'allow-same-origin')
+      .filter(
+        (item) =>
+          allowed.has(item) && !(metadata.value?.type === 'static' && item === 'allow-same-origin')
+      )
       .join(' ')
   })
 
@@ -95,6 +136,8 @@
     const code = currentCode()
     abortRuntimeRequests()
     metadata.value = null
+    runtimeSession = null
+    launchExchangePromise = null
     loadError.value = ''
     if (!code) {
       loading.value = false
@@ -110,6 +153,7 @@
         return
       }
       metadata.value = data
+      runtimeSession = data.runtime?.session || null
     } catch (error: any) {
       if (sequence !== loadSequence) return
       console.error('[AppCenterOpenPage] open app failed:', error)
@@ -120,37 +164,170 @@
     }
   }
 
+  function launchTokenFromMetadata() {
+    const fragment = metadata.value?.launch?.fragment || ''
+    const prefix = '#agentstudio_launch='
+    return fragment.startsWith(prefix) ? fragment.slice(prefix.length) : ''
+  }
+
+  function exchangeLaunchToken(launchToken: string, signal: AbortSignal) {
+    if (runtimeSession) return Promise.resolve(runtimeSession)
+    if (!launchToken || launchToken !== launchTokenFromMetadata()) {
+      return Promise.reject(new Error('Iframe launch is invalid'))
+    }
+    if (!launchExchangePromise) {
+      launchExchangePromise = exchangeIframeLaunch(launchToken, signal).then((session) => {
+        runtimeSession = session
+        return session
+      })
+      launchExchangePromise.catch(() => {
+        launchExchangePromise = null
+      })
+    }
+    return launchExchangePromise
+  }
+
+  async function dispatchRuntimeCapability(
+    request: ParsedAppRuntimeRequest,
+    token: string,
+    signal: AbortSignal
+  ) {
+    const data = request.data
+    switch (request.operation) {
+      case 'context.get':
+        return fetchAppRuntimeContext(token, signal)
+      case 'kv.get':
+        return fetchAppRuntimeKv(token, String(data.namespace), String(data.key), signal)
+      case 'kv.set':
+        return setAppRuntimeKv(
+          token,
+          String(data.namespace),
+          String(data.key),
+          {
+            value: data.value as AppRuntimeJsonValue,
+            ...(data.expected_version === undefined
+              ? {}
+              : { expected_version: Number(data.expected_version) }),
+            ...(data.ttl_seconds === undefined ? {} : { ttl_seconds: Number(data.ttl_seconds) })
+          },
+          signal
+        )
+      case 'kv.delete':
+        return deleteAppRuntimeKv(token, String(data.namespace), String(data.key), signal)
+      case 'files.upload':
+        return uploadAppRuntimeFile(
+          token,
+          data.file as Blob,
+          typeof data.name === 'string' ? data.name : undefined,
+          signal
+        )
+      case 'files.read': {
+        const file = await readAppRuntimeFile(token, String(data.id), signal)
+        return {
+          data: await file.arrayBuffer(),
+          mime_type: file.type || 'application/octet-stream'
+        }
+      }
+      case 'files.delete':
+        return deleteAppRuntimeFile(token, String(data.id), signal)
+      case 'http.request':
+        return requestAppRuntimeHttp(token, data, signal)
+      case 'webhooks.emit':
+        return emitAppRuntimeWebhook(token, data, signal)
+      default:
+        throw new Error('Runtime operation is not supported')
+    }
+  }
+
+  function runtimeErrorCode(error: unknown) {
+    const status = Number((error as { code?: unknown })?.code)
+    return status === 401 || status === 403 ? 'capability_denied' : 'request_failed'
+  }
+
   async function handleRuntimeMessage(event: MessageEvent<unknown>) {
     const frameWindow = appFrame.value?.contentWindow
-    if (!frameWindow || event.source !== frameWindow || metadata.value?.type !== 'static') return
+    const activeMetadata = metadata.value
+    if (!frameWindow || !activeMetadata || event.source !== frameWindow) return
+    const targetOrigin = activeMetadata.type === 'iframe' ? runtimeTargetOrigin.value : '*'
+    if (activeMetadata.type === 'iframe' && event.origin !== runtimeTargetOrigin.value) return
 
     const parsed = parseAppRuntimeRequest(event.data)
     if (!parsed) return
     if (parsed.response) {
-      frameWindow.postMessage(parsed.response, '*')
+      frameWindow.postMessage(parsed.response, targetOrigin)
       return
     }
 
-    const session = metadata.value.runtime?.session
-    if (!session) {
-      const response = resolveAppRuntimeRequest(event.data, metadata.value.runtime)
-      if (response) frameWindow.postMessage(response, '*')
-      return
-    }
-
+    const sequence = loadSequence
     const runtimeAbortController = new AbortController()
     runtimeAbortControllers.add(runtimeAbortController)
     try {
-      const context = await fetchAppRuntimeContext(session.token, runtimeAbortController.signal)
-      if (runtimeAbortController.signal.aborted || event.source !== appFrame.value?.contentWindow) return
-      frameWindow.postMessage(
-        createAppRuntimeContextResponse(parsed.request.request_id, context),
-        '*'
+      const request = parsed.request
+      if (request.operation === 'launch.exchange') {
+        await exchangeLaunchToken(
+          String(request.data.launch_token || ''),
+          runtimeAbortController.signal
+        )
+        if (sequence !== loadSequence || event.source !== appFrame.value?.contentWindow) return
+        const response = createAppRuntimeOperationSuccessResponse(
+          request.request_id,
+          'launch.exchange',
+          { ready: true }
+        )
+        frameWindow.postMessage(response, targetOrigin)
+        return
+      }
+
+      const session = runtimeSession
+      if (!session) {
+        const response =
+          request.operation === 'context.get'
+            ? resolveAppRuntimeRequest(event.data, activeMetadata.runtime)
+            : createAppRuntimeOperationErrorResponse(
+                request.request_id,
+                request.operation,
+                'capability_denied'
+              )
+        if (response) frameWindow.postMessage(response, targetOrigin)
+        return
+      }
+
+      const data = await dispatchRuntimeCapability(
+        request,
+        session.token,
+        runtimeAbortController.signal
       )
-    } catch (error: any) {
-      if (runtimeAbortController.signal.aborted || event.source !== appFrame.value?.contentWindow) return
-      const code = Number(error?.code) === 403 ? 'scope_denied' : 'context_unavailable'
-      frameWindow.postMessage(createAppRuntimeErrorResponse(parsed.request.request_id, code), '*')
+      if (
+        runtimeAbortController.signal.aborted ||
+        sequence !== loadSequence ||
+        event.source !== appFrame.value?.contentWindow
+      ) {
+        return
+      }
+      const response = request.legacy
+        ? createAppRuntimeContextResponse(request.request_id, data)
+        : createAppRuntimeOperationSuccessResponse(request.request_id, request.operation, data)
+      frameWindow.postMessage(response, targetOrigin)
+    } catch (error: unknown) {
+      if (
+        runtimeAbortController.signal.aborted ||
+        sequence !== loadSequence ||
+        event.source !== appFrame.value?.contentWindow
+      ) {
+        return
+      }
+      const request = parsed.request
+      const response = request.legacy
+        ? createAppRuntimeErrorResponse(
+            request.request_id,
+            runtimeErrorCode(error) === 'capability_denied' ? 'scope_denied' : 'context_unavailable'
+          )
+        : createAppRuntimeOperationErrorResponse(
+            request.request_id,
+            request.operation,
+            runtimeErrorCode(error)
+          )
+      frameWindow.postMessage(response, targetOrigin)
     } finally {
       runtimeAbortControllers.delete(runtimeAbortController)
     }
@@ -185,6 +362,8 @@
     loadSequence += 1
     abortRuntimeRequests()
     metadata.value = null
+    runtimeSession = null
+    launchExchangePromise = null
     window.removeEventListener('message', handleRuntimeMessage)
   })
 </script>

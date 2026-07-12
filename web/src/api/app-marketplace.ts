@@ -105,11 +105,26 @@ export interface SaveAppPackageParams {
   description?: string
   visibility?: AppPackageVisibility
   entry_url?: string
+  version?: string
+  allowed_origins?: string[]
+  requested_capabilities?: string[]
   developer_name?: string
   system_module_code?: string
   saas_module_code?: string
   sort?: number
   remark?: string
+}
+
+export interface AppIframeLaunchMetadata {
+  fragment: string
+  expires_at: string
+  origin: string
+}
+
+export interface AppRuntimeSessionMetadata {
+  token: string
+  expires_at: string
+  capabilities?: string[]
 }
 
 export interface TenantMarketplaceAppRecord extends AppPackageRecord {
@@ -147,6 +162,7 @@ export interface AppOpenMetadata {
   sandbox: string
   version?: string
   runtime: AppRuntimeBootstrap | null
+  launch?: AppIframeLaunchMetadata | null
 }
 
 export function fetchPlatformApps(params: AppPlatformListParams = {}) {
@@ -269,4 +285,13 @@ export function uninstallTenantApp(code: string) {
 
 export function fetchTenantAppOpenMetadata(code: string) {
   return request.get<AppOpenMetadata>({ url: `/api/app-tenant/apps/${code}/open` })
+}
+
+export function exchangeIframeLaunch(launchToken: string, signal?: AbortSignal) {
+  return request.post<AppRuntimeSessionMetadata>({
+    url: '/api/app-tenant/runtime/iframe/exchange',
+    data: { launch_token: launchToken },
+    signal,
+    showErrorMessage: false
+  })
 }
