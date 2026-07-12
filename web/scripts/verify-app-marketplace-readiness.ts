@@ -24,6 +24,7 @@ function assertIncludes(source: string, token: string, label: string) {
 
 const expectedFiles = [
   'web/src/api/app-marketplace.ts',
+  'web/src/api/app-runtime.ts',
   'web/src/views/app-platform/apps/index.vue',
   'web/src/views/app-platform/reviews/index.vue',
   'web/src/views/app-center/marketplace/index.vue',
@@ -53,6 +54,8 @@ for (const token of [
   '/api/app-tenant/installed',
   '/api/app-tenant/apps/${code}/install',
   '/api/app-tenant/apps/${code}/open',
+  '/api/app-tenant/runtime/iframe/exchange',
+  '/api/app-tenant/apps/${code}/capabilities',
   'multipart/form-data',
   'available',
   'availability_status',
@@ -63,7 +66,10 @@ for (const token of [
   'rollbackPlatformAppVersion',
   'fetchPlatformAppReviews',
   'is_active',
-  'entry_url'
+  'entry_url',
+  'launch',
+  'allowed_origins',
+  'requested_capabilities'
 ]) {
   assertIncludes(apiSource, token, 'app marketplace API')
 }
@@ -151,12 +157,31 @@ for (const token of [
 const runnerPage = readFile('web/src/views/app-center/open/index.vue')
 for (const token of [
   'fetchTenantAppOpenMetadata',
+  'exchangeIframeLaunch',
+  'dispatchRuntimeCapability',
+  'event.source !== frameWindow',
+  'event.origin !== runtimeTargetOrigin.value',
+  'frameWindow.postMessage(response, targetOrigin)',
+  "metadata.value?.type === 'static'",
+  "metadata.value?.type === 'iframe'",
   'router.replace(data.entry_url)',
   'sandbox',
   'allow-scripts allow-forms allow-popups allow-downloads',
-  "item !== 'allow-same-origin'"
+  'allow-same-origin'
 ]) {
   assertIncludes(runnerPage, token, 'app runner page')
+}
+
+const runtimeApi = readFile('web/src/api/app-runtime.ts')
+for (const token of [
+  'X-App-Runtime-Token',
+  '/api/app-runtime/context',
+  '/api/app-runtime/kv/',
+  '/api/app-runtime/files',
+  '/api/app-runtime/http',
+  '/api/app-runtime/webhooks'
+]) {
+  assertIncludes(runtimeApi, token, 'app runtime API')
 }
 
 const menuMigration = readFile('server/src/migrations/1760000000029-SeedAppMarketplaceMenus.ts')
@@ -181,18 +206,16 @@ for (const token of [
   assertIncludes(menuMigration, token, 'app marketplace menu migration')
 }
 
-const reviewMenuMigration = readFile('server/src/migrations/1760000000034-SeedAppReviewCenterMenus.ts')
-for (const token of [
-  'AppReviewCenter',
-  '/app-platform/reviews',
-  'app:platform:review'
-]) {
+const reviewMenuMigration = readFile(
+  'server/src/migrations/1760000000034-SeedAppReviewCenterMenus.ts'
+)
+for (const token of ['AppReviewCenter', '/app-platform/reviews', 'app:platform:review']) {
   assertIncludes(reviewMenuMigration, token, 'app review center menu migration')
 }
 
 const mainSource = readFile('server/src/main.ts')
-assertIncludes(mainSource, "appMarketplace.publicDir", 'server main')
-assertIncludes(mainSource, "appMarketplace.publicPrefix", 'server main')
+assertIncludes(mainSource, 'appMarketplace.publicDir', 'server main')
+assertIncludes(mainSource, 'appMarketplace.publicPrefix', 'server main')
 assertIncludes(mainSource, 'app.useStaticAssets(appPublicPath', 'server main')
 assertIncludes(mainSource, 'req.path.startsWith(appPublicPrefix)', 'server main')
 
@@ -212,14 +235,27 @@ assertIncludes(storageService, 'getMaxPackageFiles', 'app package storage servic
 
 const packageJson = JSON.parse(readFile('web/package.json'))
 assert(
-  packageJson.scripts?.['verify:app-marketplace-readiness'] === 'tsx scripts/verify-app-marketplace-readiness.ts',
+  packageJson.scripts?.['verify:app-marketplace-readiness'] ===
+    'tsx scripts/verify-app-marketplace-readiness.ts',
   'web/package.json must define verify:app-marketplace-readiness'
 )
 
 const checklist = readFile('docs/saas-launch-readiness-checklist.md')
-assertIncludes(checklist, 'pnpm.cmd run verify:app-marketplace-readiness', 'launch readiness checklist')
+assertIncludes(
+  checklist,
+  'pnpm.cmd run verify:app-marketplace-readiness',
+  'launch readiness checklist'
+)
 assertIncludes(checklist, '/#/app-center/marketplace', 'launch readiness checklist')
 assertIncludes(checklist, '/#/app-platform/apps', 'launch readiness checklist')
+assertIncludes(
+  checklist,
+  'P9-C Shared Runtime Capability Verification',
+  'launch readiness checklist'
+)
+assertIncludes(checklist, 'APP_RUNTIME_E2E_HTTP_URL', 'launch readiness checklist')
+assertIncludes(checklist, 'APP_RUNTIME_E2E_WEBHOOK_URL', 'launch readiness checklist')
+assertIncludes(checklist, 'APP_RUNTIME_E2E_REDIRECT_PRIVATE_URL', 'launch readiness checklist')
 
 if (failures.length) {
   console.error(failures.join('\n'))

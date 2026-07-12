@@ -316,6 +316,7 @@ Then run:
 cd web
 pnpm.cmd run verify:app-runtime-live-e2e
 ```
+
 10. Change the app route or click Reload while an earlier metadata request is still pending and confirm the older response cannot remount stale app metadata or runtime context.
 11. Inspect the open metadata and iframe response and confirm they contain no username, tenant code, email, phone, avatar, department, role, permission list, access token, refresh token, authorization value, cookie, IP address, user agent, request object, or raw exception.
 12. Confirm the static app never receives a platform token or direct authenticated backend API client.
@@ -451,6 +452,32 @@ Environment-dependent verification:
 
 - Run `pnpm.cmd run verify:app-runtime-live-e2e` only with explicitly isolated `APP_RUNTIME_E2E_*` MySQL and Redis targets. The script refuses Redis DB `0`, leases an empty isolated DB, creates and drops its disposable MySQL database, and never prints credentials or raw runtime tokens.
 - Keep `APP_RUNTIME_CAPABILITIES_ENABLED` disabled by default until the P9-B migration, Redis connectivity, and authenticated platform/tenant smoke flow have passed in the target environment.
+
+## P9-C Shared Runtime Capability Verification - 2026-07-12
+
+Deterministic repository gates:
+
+- `pnpm.cmd run verify:app-runtime-sdk` verifies the additive protocol-v1 SDK surface for context, KV, files, HTTP, and webhooks without exposing a runtime bearer, authenticated API client, Cookie, or browser-storage dependency.
+- `pnpm.cmd run verify:app-runtime-readiness` verifies exact source/origin binding, explicit host capability dispatch, one-time iframe launch exchange, static opaque-origin isolation, and external iframe exact-origin responses.
+- `pnpm.cmd run verify:app-runtime-live-e2e-contract` verifies the disposable lifecycle script covers positive and negative KV/file/HTTP/webhook flows, cross-tenant isolation, private and redirected-private address rejection, iframe replay/origin denial, capability revocation, uninstall invalidation, redaction, and complete cleanup.
+- Backend focused Jest, frontend/backend production builds, the SaaS readiness runner, and `git diff --check` remain required before integration.
+
+Environment-dependent live verification:
+
+- Run `pnpm.cmd run verify:app-runtime-live-e2e` only against a disposable MySQL target and an explicitly isolated, empty Redis logical database. The gate refuses Redis DB `0`, claims the selected DB atomically, and drops its generated MySQL database after the backend exits.
+- In addition to the existing database, platform login, and Redis variables, provide `APP_RUNTIME_E2E_HTTP_URL`, `APP_RUNTIME_E2E_WEBHOOK_URL`, and `APP_RUNTIME_E2E_REDIRECT_PRIVATE_URL` through the local secret environment. These must be credential-free HTTPS URLs owned for testing; the redirect URL must return a redirect to a private or loopback destination so redirect revalidation can be proven.
+- The external iframe fixture uses `https://runtime-e2e.invalid` only inside Playwright route interception. Production DNS, HTTPS, origin, and private-address validation remain unchanged and receive no test bypass.
+- File verification points `APP_RUNTIME_STORAGE_DIR` at disposable local inert storage, confirms object responses expose no storage path, and removes object bytes during cleanup.
+- Generated runtime sessions and iframe launch tokens are registered with the diagnostic redactor before assertions, screenshots, browser console output, or process tails can include them.
+- A successful run must leave zero keys in the leased Redis DB, no generated MySQL database, and no package, public, upload, or runtime-storage directories owned by the run.
+
+Feature flags remain disabled by default. Enable `APP_RUNTIME_CAPABILITIES_ENABLED` and `APP_RUNTIME_IFRAME_LAUNCH_ENABLED` in a target environment only after migrations, Redis, runtime storage, approved public upstreams, and authenticated tenant lifecycle smoke tests pass there.
+
+Current local environment evidence on 2026-07-12:
+
+- MySQL and Redis CLI executables are available.
+- The required `APP_RUNTIME_E2E_*` database, seeded platform identity, isolated Redis, HTTP, webhook, and redirect fixture variables are not configured in this worktree session.
+- The live E2E was therefore not started. No database name, credential, Redis DB, or public upstream was guessed, and no shared resource was touched.
 
 ## Known Out-of-Scope Items
 

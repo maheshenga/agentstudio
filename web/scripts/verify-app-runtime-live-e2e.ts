@@ -50,9 +50,16 @@ type SignupData = {
 }
 
 type RequestOptions = {
-  method?: 'GET' | 'POST' | 'PUT'
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
   token?: string
   body?: Record<string, unknown>
+}
+
+type RuntimeResponse<T = unknown> = {
+  status: number
+  envelope?: ApiEnvelope<T>
+  body: Buffer
+  headers: Headers
 }
 
 type RuntimeSessionMetadata = {
@@ -72,6 +79,9 @@ type E2EConfig = {
   redisPassword: string
   redisDb: string
   redisIsolated: boolean
+  httpUrl: string
+  webhookUrl: string
+  redirectPrivateUrl: string
   keep: boolean
 }
 
@@ -89,6 +99,25 @@ const serverRoot = resolve(repoRoot, 'server')
 const zipPath = resolve(webRoot, '.artifacts/runtime-starter.zip')
 const viteCli = resolve(webRoot, 'node_modules/vite/bin/vite.js')
 const serverEntry = resolve(serverRoot, 'dist/main.js')
+const runtimeSdkBundle = resolve(
+  webRoot,
+  'packages/app-runtime-sdk/dist/agentstudio-runtime.global.js'
+)
+const iframeFixtureOrigin = 'https://runtime-e2e.invalid'
+const iframeFixtureUrl = `${iframeFixtureOrigin}/app`
+const iframeFixturePattern = `${iframeFixtureOrigin}/**`
+const iframeAttackerOrigin = 'https://runtime-e2e-attacker.invalid'
+const iframeAttackerPattern = `${iframeAttackerOrigin}/**`
+const sharedRuntimeCapabilities = [
+  'context.read',
+  'kv.read',
+  'kv.write',
+  'kv.delete',
+  'files.read',
+  'files.write',
+  'http.request',
+  'webhook.emit'
+] as const
 const sensitiveValues = new Set<string>()
 const processLogs = new Map<ChildProcess, { label: string; output: string }>()
 const safeSteps: Array<{ label: string; at: string }> = []
@@ -131,7 +160,10 @@ function loadConfig(): E2EConfig {
     'APP_RUNTIME_E2E_PLATFORM_USERNAME',
     'APP_RUNTIME_E2E_PLATFORM_PASSWORD',
     'APP_RUNTIME_E2E_REDIS_DB',
-    'APP_RUNTIME_E2E_REDIS_ISOLATED'
+    'APP_RUNTIME_E2E_REDIS_ISOLATED',
+    'APP_RUNTIME_E2E_HTTP_URL',
+    'APP_RUNTIME_E2E_WEBHOOK_URL',
+    'APP_RUNTIME_E2E_REDIRECT_PRIVATE_URL'
   ]
   const missing = required.filter((name) => !requiredEnv(name))
   if (missing.length) {
@@ -150,6 +182,9 @@ function loadConfig(): E2EConfig {
     redisPassword: requiredEnv('APP_RUNTIME_E2E_REDIS_PASSWORD'),
     redisDb: requiredEnv('APP_RUNTIME_E2E_REDIS_DB'),
     redisIsolated: requiredEnv('APP_RUNTIME_E2E_REDIS_ISOLATED') === '1',
+    httpUrl: requiredEnv('APP_RUNTIME_E2E_HTTP_URL'),
+    webhookUrl: requiredEnv('APP_RUNTIME_E2E_WEBHOOK_URL'),
+    redirectPrivateUrl: requiredEnv('APP_RUNTIME_E2E_REDIRECT_PRIVATE_URL'),
     keep: requiredEnv('APP_RUNTIME_E2E_KEEP') === '1'
   }
   const redisDb = Number(result.redisDb)
@@ -157,6 +192,21 @@ function loadConfig(): E2EConfig {
     throw new Error(
       'App Runtime E2E requires an explicitly isolated Redis DB from 1 to 15 and APP_RUNTIME_E2E_REDIS_ISOLATED=1'
     )
+  }
+  for (const [label, value] of [
+    ['APP_RUNTIME_E2E_HTTP_URL', result.httpUrl],
+    ['APP_RUNTIME_E2E_WEBHOOK_URL', result.webhookUrl],
+    ['APP_RUNTIME_E2E_REDIRECT_PRIVATE_URL', result.redirectPrivateUrl]
+  ] as const) {
+    let parsed: URL
+    try {
+      parsed = new URL(value)
+    } catch {
+      throw new Error(`${label} must be a valid HTTPS URL`)
+    }
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+      throw new Error(`${label} must be a credential-free HTTPS URL`)
+    }
   }
   for (const value of [result.dbPassword, result.platformPassword, result.redisPassword]) {
     if (value) sensitiveValues.add(value)
@@ -388,6 +438,8 @@ function claimRedisDatabase() {
 
 function releaseRedisDatabase() {
   if (!redisLeaseAcquired) return
+  const launchNonceKeys = redisCommand('KEYS', 'app-runtime:iframe-launch:*')
+  if (launchNonceKeys) addStep('cleanup iframe launch nonces')
   const remaining = Number(
     redisCommand('EVAL', releaseRedisScript, '1', redisOwnerKey, databaseName)
   )
@@ -406,6 +458,49 @@ function dropDatabase() {
     mysqlArgs(['--execute', `DROP DATABASE IF EXISTS \`${databaseName}\`;`]),
     { cwd: serverRoot, env: databaseEnv() }
   )
+}
+
+function mysqlAdminQuery(sql: string) {
+  const result = spawnSync(
+    'mysql',
+    mysqlArgs(['--batch', '--skip-column-names', '--execute', sql]),
+    {
+      cwd: serverRoot,
+      env: databaseEnv(),
+      encoding: 'utf8',
+      stdio: 'pipe'
+    }
+  )
+  if (result.error)
+    throw new Error(`MySQL admin query failed to start: ${redact(result.error.message)}`)
+  if (result.status !== 0) {
+    throw new Error(
+      `MySQL admin query failed with exit code ${result.status}: ${tail(result.stderr || '')}`
+    )
+  }
+  return String(result.stdout || '').trim()
+}
+
+function assertDatabaseRemoved() {
+  if (!databaseName || config.keep) return
+  const escaped = databaseName.replace(/'/g, "''")
+  const remaining = Number(
+    mysqlAdminQuery(
+      `SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name='${escaped}';`
+    )
+  )
+  assert.equal(remaining, 0, 'disposable App Runtime database cleanup must be complete')
+}
+
+function assertArtifactCleanup() {
+  if (!artifactRoot || config.keep) return
+  for (const path of ['packages', 'public', 'uploads', 'runtime-storage']) {
+    assert.equal(
+      existsSync(resolve(artifactRoot, path)),
+      false,
+      `App Runtime E2E artifact cleanup must remove ${path}`
+    )
+  }
 }
 
 function mysqlQuery(sql: string) {
@@ -466,6 +561,84 @@ async function requestRuntimeContext(baseUrl: string, token: string) {
   return { status: response.status, envelope }
 }
 
+async function requestRuntime<T>(
+  baseUrl: string,
+  path: string,
+  token: string,
+  options: {
+    method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+    body?: unknown
+    form?: FormData
+  } = {}
+): Promise<RuntimeResponse<T>> {
+  const response = await fetch(new URL(path, `${baseUrl}/`), {
+    method: options.method || 'GET',
+    headers: {
+      accept: 'application/json',
+      'x-app-runtime-token': token,
+      ...(options.body === undefined ? {} : { 'content-type': 'application/json' })
+    },
+    body: options.form || (options.body === undefined ? undefined : JSON.stringify(options.body)),
+    signal: terminationController.signal
+  })
+  const body = Buffer.from(await response.arrayBuffer())
+  let envelope: ApiEnvelope<T> | undefined
+  try {
+    envelope = body.length ? (JSON.parse(body.toString('utf8')) as ApiEnvelope<T>) : undefined
+  } catch {
+    envelope = undefined
+  }
+  return { status: response.status, envelope, body, headers: response.headers }
+}
+
+function assertRuntimeSuccess<T>(response: RuntimeResponse<T>, label: string): T {
+  assert.equal(response.status, 200, `${label} must return HTTP 200`)
+  assert.equal(Number(response.envelope?.code), 200, `${label} must return business success`)
+  return response.envelope?.data as T
+}
+
+function assertRuntimeDenied(response: RuntimeResponse, label: string, expectedStatuses: number[]) {
+  assert.ok(
+    expectedStatuses.includes(response.status),
+    `${label} must fail closed with one of: ${expectedStatuses.join(', ')}`
+  )
+  assert.notEqual(Number(response.envelope?.code), 200, `${label} must not return business success`)
+}
+
+function launchTokenFromMetadata(metadata: any) {
+  const fragment = String(metadata?.launch?.fragment || '')
+  const prefix = '#agentstudio_launch='
+  assert.ok(fragment.startsWith(prefix), 'iframe open metadata must contain a launch fragment')
+  const token = fragment.slice(prefix.length)
+  assert.match(token, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
+  sensitiveValues.add(token)
+  return token
+}
+
+async function openAndExchangeIframeSession(
+  baseUrl: string,
+  auth: AuthSession,
+  appCode = 'runtime_shared'
+) {
+  const metadata = await requestJson<any>(baseUrl, `/api/app-tenant/apps/${appCode}/open`, {
+    token: auth.accessToken
+  })
+  const launchToken = launchTokenFromMetadata(metadata)
+  const session = await requestJson<RuntimeSessionMetadata>(
+    baseUrl,
+    '/api/app-tenant/runtime/iframe/exchange',
+    {
+      method: 'POST',
+      token: auth.accessToken,
+      body: { launch_token: launchToken }
+    }
+  )
+  assert.match(String(session?.token || ''), /^[A-Za-z0-9_-]{43}$/)
+  assert.ok(Number.isFinite(Date.parse(String(session?.expires_at || ''))))
+  sensitiveValues.add(String(session.token))
+  return { metadata, launchToken, token: String(session.token) }
+}
+
 async function expectRuntimeDenied(baseUrl: string, token: string, label: string) {
   const response = await requestRuntimeContext(baseUrl, token)
   assert.ok([401, 403].includes(response.status), `${label} must return HTTP 401 or 403`)
@@ -497,6 +670,32 @@ async function requestJson<T>(baseUrl: string, path: string, options: RequestOpt
     )
   }
   return envelope?.data as T
+}
+
+async function requestProtected(
+  baseUrl: string,
+  path: string,
+  token: string,
+  body: Record<string, unknown>
+) {
+  const response = await fetch(new URL(path, `${baseUrl}/`), {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(body),
+    signal: terminationController.signal
+  })
+  const raw = await response.text()
+  let envelope: ApiEnvelope | undefined
+  try {
+    envelope = raw ? (JSON.parse(raw) as ApiEnvelope) : undefined
+  } catch {
+    envelope = undefined
+  }
+  return { status: response.status, envelope }
 }
 
 async function uploadZip<T>(baseUrl: string, path: string, token: string) {
@@ -616,7 +815,10 @@ async function proxyBackendRequest(
       signal: terminationController.signal
     })
     const body = Buffer.from(await response.arrayBuffer())
-    if (request.method() === 'GET' && pathname === '/api/app-tenant/apps/runtime_starter/open') {
+    if (
+      request.method() === 'GET' &&
+      /^\/api\/app-tenant\/apps\/[a-z0-9_]+\/open$/.test(pathname)
+    ) {
       try {
         observeOpen((JSON.parse(body.toString('utf8')) as ApiEnvelope).data)
       } catch {
@@ -637,6 +839,68 @@ async function proxyBackendRequest(
   }
 }
 
+function iframeFixtureHtml() {
+  return `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Runtime E2E Fixture</title></head>
+  <body>
+    <main id="runtime-state">Waiting for runtime</main>
+    <script src="/runtime-sdk.js"></script>
+    <script>
+      (async function () {
+        try {
+          const context = await window.AgentStudioRuntime.runtime.context.get({ timeoutMs: 10000 });
+          window.__runtimeContext = context;
+          document.getElementById('runtime-state').textContent = 'Runtime iframe ready';
+        } catch (error) {
+          document.getElementById('runtime-state').textContent = 'Runtime iframe failed: ' + (error && error.code || 'unknown');
+        }
+      })();
+    </script>
+  </body>
+</html>`
+}
+
+function iframeAttackerHtml() {
+  return `<!doctype html>
+<html lang="en">
+  <body data-response="none">
+    <script>
+      window.addEventListener('message', function (event) {
+        if (event.data && event.data.request_id === 'wrong-origin-request') {
+          document.body.dataset.response = 'received';
+        }
+      });
+      parent.postMessage({
+        channel: 'agentstudio:app-runtime',
+        version: 1,
+        type: 'context.get.request',
+        request_id: 'wrong-origin-request',
+        data: {}
+      }, '*');
+      document.body.dataset.posted = 'true';
+    </script>
+  </body>
+</html>`
+}
+
+async function routeIframeFixture(route: Route) {
+  const pathname = new URL(route.request().url()).pathname
+  if (pathname === '/runtime-sdk.js') {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/javascript; charset=utf-8',
+      body: readFileSync(runtimeSdkBundle)
+    })
+    return
+  }
+  await route.fulfill({
+    status: 200,
+    contentType: 'text/html; charset=utf-8',
+    body: iframeFixtureHtml()
+  })
+}
+
 async function configureBrowserContext(
   context: BrowserContext,
   auth: AuthSession,
@@ -644,6 +908,14 @@ async function configureBrowserContext(
   observeOpen: (value: unknown) => void
 ) {
   const proxy = (route: Route) => proxyBackendRequest(route, backendUrl, observeOpen)
+  await context.route(iframeFixturePattern, routeIframeFixture)
+  await context.route(iframeAttackerPattern, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'text/html; charset=utf-8',
+      body: iframeAttackerHtml()
+    })
+  )
   await context.route('**/api/**', proxy)
   await context.route('**/nest-api/**', proxy)
   await context.route('**/apps-static/**', proxy)
@@ -872,6 +1144,355 @@ async function verifyBrowserFlow(input: {
   await context.close()
 }
 
+async function verifyIframeBrowserFlow(input: {
+  previewUrl: string
+  backendUrl: string
+  auth: AuthSession
+  expectedContext: Record<string, unknown>
+  forbiddenIdentityValues: string[]
+}) {
+  let observedOpenMetadata: any
+  if (!browser) browser = await chromium.launch({ headless: true })
+  const context = await browser.newContext()
+  await configureBrowserContext(context, input.auth, input.backendUrl, (value) => {
+    const metadata = value as any
+    if (metadata?.code !== 'runtime_shared') return
+    const launchToken = String(metadata?.launch?.fragment || '').replace('#agentstudio_launch=', '')
+    if (launchToken) sensitiveValues.add(launchToken)
+    observedOpenMetadata = metadata
+  })
+  page = await context.newPage()
+  let runtimeContextRequests = 0
+  page.on('request', (request) => {
+    if (mapBrowserPathToBackend(new URL(request.url()).pathname) === '/api/app-runtime/context') {
+      runtimeContextRequests += 1
+    }
+  })
+  page.on('console', (message) => browserConsole.push(tail(message.text(), 1, 500)))
+  page.on('pageerror', (error) => browserConsole.push(tail(error.message, 1, 500)))
+
+  addStep('verify iframe exact-origin handshake')
+  await page.goto(`${input.previewUrl}/#/app-center/open?code=runtime_shared`, {
+    waitUntil: 'domcontentloaded'
+  })
+  const iframe = page.locator('iframe.app-runner-page__iframe')
+  await iframe.waitFor({ state: 'visible', timeout: 30_000 })
+  const sandbox = (await iframe.getAttribute('sandbox')) || ''
+  assert.match(sandbox, /(?:^|\s)allow-scripts(?:\s|$)/)
+  assert.match(sandbox, /(?:^|\s)allow-same-origin(?:\s|$)/)
+  const handle = await iframe.elementHandle()
+  const frame = await handle?.contentFrame()
+  assert.ok(frame, 'external runtime iframe must expose a Playwright frame')
+  await frame.waitForFunction(
+    () => document.getElementById('runtime-state')?.textContent === 'Runtime iframe ready',
+    undefined,
+    { timeout: 30_000 }
+  )
+  assert.equal(new URL(frame.url()).origin, iframeFixtureOrigin)
+  assert.equal(observedOpenMetadata?.launch?.origin, iframeFixtureOrigin)
+  assert.deepEqual(
+    await frame.evaluate(
+      () => (window as unknown as { __runtimeContext?: unknown }).__runtimeContext
+    ),
+    input.expectedContext
+  )
+  assert.equal(runtimeContextRequests, 1, 'exact-origin handshake must issue one context request')
+
+  const launchToken = launchTokenFromMetadata(observedOpenMetadata)
+  const iframeText = await frame.locator('body').innerText()
+  const hostText = await page.locator('body').innerText()
+  const frameMessages = JSON.stringify(
+    await frame.evaluate(
+      () =>
+        (window as unknown as { __agentStudioRuntimeMessages?: unknown[] })
+          .__agentStudioRuntimeMessages || []
+    )
+  )
+  for (const [label, value] of [
+    ['iframe fixture body', iframeText],
+    ['iframe host body', hostText],
+    ['iframe runtime messages', frameMessages],
+    ['iframe browser console', browserConsole.join('\n')]
+  ] as const) {
+    assertNoSensitiveValue(label, value, input.forbiddenIdentityValues)
+  }
+  assert.doesNotMatch(frameMessages, /token|authorization|cookie|password/i)
+
+  addStep('verify iframe launch replay denial')
+  const replay = await requestProtected(
+    input.backendUrl,
+    '/api/app-tenant/runtime/iframe/exchange',
+    input.auth.accessToken,
+    { launch_token: launchToken }
+  )
+  assert.ok([401, 403].includes(replay.status), 'consumed iframe launch must reject replay')
+  assert.notEqual(Number(replay.envelope?.code), 200)
+
+  addStep('verify iframe origin denial')
+  await iframe.evaluate((element, value) => {
+    ;(element as HTMLIFrameElement).src = value
+  }, `${iframeAttackerOrigin}/attack`)
+  await page.waitForFunction(
+    (origin) =>
+      Array.from(document.querySelectorAll('iframe')).some((element) =>
+        String((element as HTMLIFrameElement).src || '').startsWith(String(origin))
+      ),
+    iframeAttackerOrigin
+  )
+  const attackerFrame = page
+    .frames()
+    .find((candidate) => candidate.url().startsWith(iframeAttackerOrigin))
+  assert.ok(attackerFrame, 'wrong-origin iframe fixture must load')
+  await attackerFrame.waitForFunction(() => document.body.dataset.posted === 'true')
+  await page.waitForTimeout(500)
+  assert.equal(await attackerFrame.locator('body').getAttribute('data-response'), 'none')
+  assert.equal(
+    runtimeContextRequests,
+    1,
+    'wrong-origin iframe messages must not reach the runtime backend'
+  )
+
+  await context.close()
+  return launchToken
+}
+
+async function createSharedRuntimeApp(backendUrl: string, platformToken: string) {
+  const allowedOrigins = [
+    iframeFixtureOrigin,
+    new URL(config.httpUrl).origin,
+    new URL(config.webhookUrl).origin,
+    new URL(config.redirectPrivateUrl).origin
+  ].filter((value, index, values) => values.indexOf(value) === index)
+  await requestJson(backendUrl, '/api/app-platform/apps', {
+    method: 'POST',
+    token: platformToken,
+    body: {
+      code: 'runtime_shared',
+      name: 'Runtime Shared Capabilities',
+      type: 'iframe',
+      category: 'developer_tools',
+      summary: 'Disposable shared capability lifecycle fixture',
+      visibility: 'marketplace',
+      developer_name: 'AgentStudio E2E',
+      entry_url: iframeFixtureUrl,
+      version: '1.0.0',
+      allowed_origins: allowedOrigins,
+      requested_capabilities: [...sharedRuntimeCapabilities]
+    }
+  })
+}
+
+async function verifySharedCapabilityLifecycle(input: {
+  backendUrl: string
+  previewUrl: string
+  tenant: AuthSession
+  otherTenant: AuthSession
+  expectedContext: Record<string, unknown>
+  forbiddenIdentityValues: string[]
+}) {
+  const browserLaunchToken = await verifyIframeBrowserFlow({
+    previewUrl: input.previewUrl,
+    backendUrl: input.backendUrl,
+    auth: input.tenant,
+    expectedContext: input.expectedContext,
+    forbiddenIdentityValues: input.forbiddenIdentityValues
+  })
+  const ownerSession = await openAndExchangeIframeSession(input.backendUrl, input.tenant)
+  const namespace = 'lifecycle'
+  const key = `key_${Date.now().toString(36)}`
+  const kvPath = `/api/app-runtime/kv/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`
+
+  addStep('verify runtime KV lifecycle')
+  const setKv = assertRuntimeSuccess<any>(
+    await requestRuntime(input.backendUrl, kvPath, ownerSession.token, {
+      method: 'PUT',
+      body: { value: { state: 'ready', count: 1 }, ttl_seconds: 600 }
+    }),
+    'runtime KV set'
+  )
+  assert.equal(setKv.namespace, namespace)
+  assert.equal(setKv.key, key)
+  assert.deepEqual(setKv.value, { state: 'ready', count: 1 })
+  assert.equal(setKv.version, 1)
+  const getKv = assertRuntimeSuccess<any>(
+    await requestRuntime(input.backendUrl, kvPath, ownerSession.token),
+    'runtime KV get'
+  )
+  assert.deepEqual(getKv, setKv)
+  assert.equal(
+    Number(
+      mysqlQuery(
+        `SELECT COUNT(*) FROM app_runtime_kv WHERE namespace='${namespace}' AND \`key\`='${key}'`
+      )
+    ),
+    1
+  )
+
+  addStep('verify runtime file lifecycle')
+  const fileBytes = Buffer.from(`runtime-file-${Date.now().toString(36)}`, 'utf8')
+  const form = new FormData()
+  form.append('file', new Blob([fileBytes], { type: 'text/plain' }), 'runtime-e2e.txt')
+  const fileMetadata = assertRuntimeSuccess<any>(
+    await requestRuntime(input.backendUrl, '/api/app-runtime/files', ownerSession.token, {
+      method: 'POST',
+      form
+    }),
+    'runtime file upload'
+  )
+  assert.match(String(fileMetadata.id || ''), /^[A-Za-z0-9_-]{43}$/)
+  assert.equal(fileMetadata.name, 'runtime-e2e.txt')
+  assert.equal(fileMetadata.mime_type, 'text/plain')
+  assert.equal(fileMetadata.size, fileBytes.length)
+  assert.doesNotMatch(JSON.stringify(fileMetadata), /storage[_-]?key|path|directory/i)
+  const fileRead = await requestRuntime(
+    input.backendUrl,
+    `/api/app-runtime/files/${encodeURIComponent(fileMetadata.id)}`,
+    ownerSession.token
+  )
+  assert.equal(fileRead.status, 200)
+  assert.deepEqual(fileRead.body, fileBytes)
+  assert.match(String(fileRead.headers.get('content-type') || ''), /^text\/plain/)
+  assert.equal(
+    Number(
+      mysqlQuery(`SELECT COUNT(*) FROM app_storage_object WHERE object_id='${fileMetadata.id}'`)
+    ),
+    1
+  )
+
+  addStep('verify runtime HTTP lifecycle')
+  const httpSession = await openAndExchangeIframeSession(input.backendUrl, input.tenant)
+  const httpResult = assertRuntimeSuccess<any>(
+    await requestRuntime(input.backendUrl, '/api/app-runtime/http', httpSession.token, {
+      method: 'POST',
+      body: { url: config.httpUrl, method: 'GET', headers: { accept: 'application/json' } }
+    }),
+    'runtime HTTP request'
+  )
+  assert.ok(Number(httpResult.status) >= 200 && Number(httpResult.status) < 400)
+  assert.equal(typeof httpResult.body, 'string')
+  assert.equal(typeof httpResult.truncated, 'boolean')
+
+  addStep('verify runtime webhook lifecycle')
+  const webhookSession = await openAndExchangeIframeSession(input.backendUrl, input.tenant)
+  const webhookResult = assertRuntimeSuccess<any>(
+    await requestRuntime(input.backendUrl, '/api/app-runtime/webhooks', webhookSession.token, {
+      method: 'POST',
+      body: {
+        url: config.webhookUrl,
+        event: 'runtime.e2e',
+        payload: { state: 'ready' }
+      }
+    }),
+    'runtime webhook emit'
+  )
+  assert.ok(Number(webhookResult.status) >= 200 && Number(webhookResult.status) < 400)
+
+  addStep('verify private-address denial')
+  const privateSession = await openAndExchangeIframeSession(input.backendUrl, input.tenant)
+  assertRuntimeDenied(
+    await requestRuntime(input.backendUrl, '/api/app-runtime/http', privateSession.token, {
+      method: 'POST',
+      body: { url: 'https://127.0.0.1/', method: 'GET' }
+    }),
+    'private-address runtime request',
+    [400]
+  )
+
+  addStep('verify runtime origin denial')
+  const originSession = await openAndExchangeIframeSession(input.backendUrl, input.tenant)
+  assertRuntimeDenied(
+    await requestRuntime(input.backendUrl, '/api/app-runtime/http', originSession.token, {
+      method: 'POST',
+      body: { url: 'https://1.1.1.1/', method: 'GET' }
+    }),
+    'unapproved-origin runtime request',
+    [400]
+  )
+
+  addStep('verify redirected private-address denial')
+  const redirectSession = await openAndExchangeIframeSession(input.backendUrl, input.tenant)
+  assertRuntimeDenied(
+    await requestRuntime(input.backendUrl, '/api/app-runtime/http', redirectSession.token, {
+      method: 'POST',
+      body: { url: config.redirectPrivateUrl, method: 'GET' }
+    }),
+    'redirected private-address runtime request',
+    [400]
+  )
+
+  const otherSession = await openAndExchangeIframeSession(input.backendUrl, input.otherTenant)
+  addStep('verify cross-tenant KV denial')
+  assertRuntimeDenied(
+    await requestRuntime(input.backendUrl, kvPath, otherSession.token),
+    'cross-tenant KV read',
+    [404]
+  )
+  addStep('verify cross-tenant file denial')
+  assertRuntimeDenied(
+    await requestRuntime(
+      input.backendUrl,
+      `/api/app-runtime/files/${encodeURIComponent(fileMetadata.id)}`,
+      otherSession.token
+    ),
+    'cross-tenant file read',
+    [404]
+  )
+
+  addStep('verify capability revocation')
+  const revocationSession = await openAndExchangeIframeSession(input.backendUrl, input.tenant)
+  const withoutKvRead = sharedRuntimeCapabilities.filter((value) => value !== 'kv.read')
+  await requestJson(input.backendUrl, '/api/app-tenant/apps/runtime_shared/capabilities', {
+    method: 'PUT',
+    token: input.tenant.accessToken,
+    body: { capabilities: withoutKvRead }
+  })
+  assertRuntimeDenied(
+    await requestRuntime(input.backendUrl, kvPath, revocationSession.token),
+    'revoked KV capability',
+    [403]
+  )
+  await requestJson(input.backendUrl, '/api/app-tenant/apps/runtime_shared/capabilities', {
+    method: 'PUT',
+    token: input.tenant.accessToken,
+    body: { capabilities: [...sharedRuntimeCapabilities] }
+  })
+
+  const deletedKv = assertRuntimeSuccess<any>(
+    await requestRuntime(input.backendUrl, kvPath, ownerSession.token, { method: 'DELETE' }),
+    'runtime KV delete'
+  )
+  assert.equal(deletedKv.deleted, true)
+  assertRuntimeDenied(
+    await requestRuntime(input.backendUrl, kvPath, ownerSession.token),
+    'deleted runtime KV read',
+    [404]
+  )
+  const deletedFile = assertRuntimeSuccess<any>(
+    await requestRuntime(
+      input.backendUrl,
+      `/api/app-runtime/files/${encodeURIComponent(fileMetadata.id)}`,
+      ownerSession.token,
+      { method: 'DELETE' }
+    ),
+    'runtime file delete'
+  )
+  assert.equal(deletedFile.deleted, true)
+  assertRuntimeDenied(
+    await requestRuntime(
+      input.backendUrl,
+      `/api/app-runtime/files/${encodeURIComponent(fileMetadata.id)}`,
+      ownerSession.token
+    ),
+    'deleted runtime file read',
+    [404]
+  )
+
+  const redactedDiagnostics = redact(
+    `runtime=${ownerSession.token} launch=${ownerSession.launchToken} browser=${browserLaunchToken}`
+  )
+  assertNoSensitiveValue('redacted diagnostics', redactedDiagnostics)
+}
+
 async function writeFailureEvidence(error: unknown) {
   if (!artifactRoot) return
   mkdirSync(artifactRoot, { recursive: true })
@@ -922,7 +1543,15 @@ async function main() {
   const ownerPhone = `139${String(Date.now()).slice(-8)}`
   const ownerEmail = `${ownerUsername}@example.test`
   const jwtSecret = randomBytes(48).toString('base64url')
-  for (const value of [ownerUsername, ownerEmail, ownerPhone, ownerPassword, jwtSecret])
+  const launchSecret = randomBytes(48).toString('base64url')
+  for (const value of [
+    ownerUsername,
+    ownerEmail,
+    ownerPhone,
+    ownerPassword,
+    jwtSecret,
+    launchSecret
+  ])
     sensitiveValues.add(value)
 
   addStep('claim isolated Redis database')
@@ -949,7 +1578,13 @@ async function main() {
   runPnpm('build frontend', webRoot, ['run', 'build'])
   addStep('build runtime starter')
   runPnpm('build runtime starter', webRoot, ['run', 'build:app-runtime-starter'])
-  for (const required of [serverEntry, resolve(webRoot, 'dist/index.html'), zipPath, viteCli]) {
+  for (const required of [
+    serverEntry,
+    resolve(webRoot, 'dist/index.html'),
+    zipPath,
+    runtimeSdkBundle,
+    viteCli
+  ]) {
     assert.ok(existsSync(required), `Required E2E artifact is missing: ${basename(required)}`)
   }
 
@@ -988,8 +1623,14 @@ async function main() {
       APP_PUBLIC_DIR: resolve(artifactRoot, 'public'),
       APP_PUBLIC_PREFIX: '/apps-static/',
       APP_RUNTIME_CAPABILITIES_ENABLED: 'true',
+      APP_RUNTIME_IFRAME_LAUNCH_ENABLED: 'true',
+      APP_RUNTIME_LAUNCH_SECRET: launchSecret,
       APP_RUNTIME_SESSION_TTL_SECONDS: '300',
       APP_RUNTIME_CAPABILITY_RATE_LIMIT_PER_MINUTE: '2',
+      APP_RUNTIME_STORAGE_DIR: resolve(artifactRoot, 'runtime-storage'),
+      APP_RUNTIME_STORAGE_MAX_FILE_MB: '1',
+      APP_RUNTIME_STORAGE_QUOTA_MB: '2',
+      APP_RUNTIME_STORAGE_ALLOWED_MIME_TYPES: 'text/plain,application/json',
       FILE_UPLOAD_DIR: resolve(artifactRoot, 'uploads')
     }
   })
@@ -1044,6 +1685,8 @@ async function main() {
     token: platform.accessToken,
     body: {}
   })
+  addStep('create shared runtime iframe app')
+  await createSharedRuntimeApp(backendUrl, platform.accessToken)
 
   addStep('register and authenticate tenant owner')
   const signup = await requestJson<SignupData>(backendUrl, '/api/saas/signup', {
@@ -1070,6 +1713,11 @@ async function main() {
     method: 'POST',
     token: tenant.accessToken,
     body: { capabilities: ['context.read'] }
+  })
+  await requestJson(backendUrl, '/api/app-tenant/apps/runtime_shared/install', {
+    method: 'POST',
+    token: tenant.accessToken,
+    body: { capabilities: [...sharedRuntimeCapabilities] }
   })
   const openMetadata = await requestJson<any>(
     backendUrl,
@@ -1175,6 +1823,29 @@ async function main() {
     }
   })
   const otherTenantId = assertNumericId(otherSignup.tenantId, 'other tenant id')
+  const otherTenant = await authenticate(backendUrl, otherUsername, otherPassword, otherTenantId)
+  await requestJson(backendUrl, '/api/app-tenant/apps/runtime_shared/install', {
+    method: 'POST',
+    token: otherTenant.accessToken,
+    body: { capabilities: [...sharedRuntimeCapabilities] }
+  })
+
+  await verifySharedCapabilityLifecycle({
+    backendUrl,
+    previewUrl,
+    tenant,
+    otherTenant,
+    expectedContext: {
+      tenant: { id: String(signup.tenantId), name: tenantName },
+      user: { id: String(signup.userId), display_name: ownerRealname },
+      app: {
+        code: 'runtime_shared',
+        name: 'Runtime Shared Capabilities',
+        version: '1.0.0'
+      }
+    },
+    forbiddenIdentityValues: [ownerUsername, ownerEmail, ownerPhone]
+  })
 
   addStep('verify cross-tenant runtime token denial')
   mysqlQuery(`UPDATE app_runtime_session SET tenant_id=${otherTenantId} WHERE id=${sessionId}`)
@@ -1254,6 +1925,7 @@ async function cleanupResources() {
       }
       try {
         dropDatabase()
+        assertDatabaseRemoved()
       } catch (error) {
         errors.push(error)
       }
@@ -1267,6 +1939,8 @@ async function cleanupResources() {
         rmSync(resolve(artifactRoot, 'packages'), { recursive: true, force: true })
         rmSync(resolve(artifactRoot, 'public'), { recursive: true, force: true })
         rmSync(resolve(artifactRoot, 'uploads'), { recursive: true, force: true })
+        rmSync(resolve(artifactRoot, 'runtime-storage'), { recursive: true, force: true })
+        assertArtifactCleanup()
       }
     } catch (error) {
       errors.push(error)
