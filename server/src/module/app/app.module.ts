@@ -36,6 +36,7 @@ import { AppFactoryService } from './services/app-factory.service';
 import { AppPackageStorageService } from './services/app-package-storage.service';
 import { AppPlatformService } from './services/app-platform.service';
 import { AppRuntimeContextService } from './services/app-runtime-context.service';
+import { AppRuntimeKvService } from './services/app-runtime-kv.service';
 import { AppRuntimeSessionService } from './services/app-runtime-session.service';
 import { AppTenantService } from './services/app-tenant.service';
 
@@ -80,6 +81,7 @@ import { AppTenantService } from './services/app-tenant.service';
     AppPackageStorageService,
     AppPlatformService,
     AppRuntimeContextService,
+    AppRuntimeKvService,
     AppRuntimeSessionService,
     AppTenantService,
     AppFactoryService,

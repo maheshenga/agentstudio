@@ -1,7 +1,11 @@
 import {
   BadRequestException,
+  Body,
   Controller,
+  Delete,
   Get,
+  Param,
+  Put,
   Req,
   ServiceUnavailableException,
   UseFilters,
@@ -12,7 +16,9 @@ import type { Request } from 'express';
 import { Public } from '../../common/decorators/auth.decorator';
 import { ResultData } from '../../common/utils/result';
 import { AppRuntimeHttpExceptionFilter } from './app-runtime-http-exception.filter';
+import { SetAppRuntimeKvDto } from './dto/app-runtime-kv.dto';
 import { AppRuntimeContextService } from './services/app-runtime-context.service';
+import { AppRuntimeKvService } from './services/app-runtime-kv.service';
 import { AppRuntimeSessionService } from './services/app-runtime-session.service';
 
 @ApiTags('App Runtime')
@@ -22,6 +28,7 @@ export class AppRuntimeController {
   constructor(
     private readonly sessionService: AppRuntimeSessionService,
     private readonly contextService: AppRuntimeContextService,
+    private readonly kvService: AppRuntimeKvService,
   ) {}
 
   @Get('context')
@@ -37,6 +44,48 @@ export class AppRuntimeController {
     const context = await this.contextService.buildAuthorizedContext(session);
     if (!context) throw new ServiceUnavailableException('App runtime context is unavailable');
     return ResultData.ok(context);
+  }
+
+  @Get('kv/:namespace/:key')
+  @Public()
+  async kvGet(
+    @Req() request: Request,
+    @Param('namespace') namespace: string,
+    @Param('key') key: string,
+  ) {
+    const session = await this.authorize(request, 'kv.read');
+    return ResultData.ok(await this.kvService.get(session, namespace, key));
+  }
+
+  @Put('kv/:namespace/:key')
+  @Public()
+  async kvSet(
+    @Req() request: Request,
+    @Param('namespace') namespace: string,
+    @Param('key') key: string,
+    @Body() body: SetAppRuntimeKvDto,
+  ) {
+    const session = await this.authorize(request, 'kv.write');
+    return ResultData.ok(await this.kvService.set(session, namespace, key, body));
+  }
+
+  @Delete('kv/:namespace/:key')
+  @Public()
+  async kvDelete(
+    @Req() request: Request,
+    @Param('namespace') namespace: string,
+    @Param('key') key: string,
+  ) {
+    const session = await this.authorize(request, 'kv.delete');
+    return ResultData.ok(await this.kvService.delete(session, namespace, key));
+  }
+
+  private authorize(request: Request, capability: 'kv.read' | 'kv.write' | 'kv.delete') {
+    return this.sessionService.authorize(this.getRuntimeToken(request), capability, {
+      requestId: this.header(request, 'x-request-id', 100),
+      ip: String(request.ip || '').slice(0, 80),
+      userAgent: this.header(request, 'user-agent', 500),
+    });
   }
 
   private getRuntimeToken(request: Request) {
