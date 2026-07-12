@@ -724,9 +724,24 @@ export class AppTenantService {
       visibility: app.visibility || 'marketplace',
       entry_mode: app.entryMode || '',
       entry_url: app.entryUrl || '',
+      runtime_type: app.runtimeType || this.runtimeType(app.type),
+      trust_level: app.trustLevel || this.trustLevel(app.type),
+      service_health_path: app.serviceHealthPath || '',
+      runtime_config: app.runtimeConfig || null,
       system_module_code: app.systemModuleCode || '',
       saas_module_code: app.saasModuleCode || '',
     };
+  }
+
+  private runtimeType(type?: AppPackageEntity['type']) {
+    if (type === 'internal') return 'native';
+    return type || 'static';
+  }
+
+  private trustLevel(type?: AppPackageEntity['type']) {
+    if (type === 'internal' || type === 'service') return 'platform_trusted';
+    if (type === 'iframe') return 'external_managed';
+    return 'static_sandboxed';
   }
 
   private toInstallResponse(install: Partial<TenantAppInstallEntity>) {

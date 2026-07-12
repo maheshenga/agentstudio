@@ -1,7 +1,21 @@
-import { Column, CreateDateColumn, DeleteDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  DeleteDateColumn,
+  Entity,
+  Index,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
 export type AppVersionReviewStatus = 'pending' | 'approved' | 'rejected';
-export type AppVersionPublishStatus = 'unpublished' | 'published' | 'failed' | 'unpublished_retired';
+export type AppVersionPublishStatus =
+  | 'unpublished'
+  | 'published'
+  | 'failed'
+  | 'unpublished_retired';
+export type AppPackageFormat = 'static_zip' | 'iframe_config' | 'service_zip' | 'native';
+export type AppServiceCandidateHealthStatus = 'unknown' | 'checking' | 'healthy' | 'unhealthy';
 
 @Index('uk_app_package_version', ['appId', 'version'], { unique: true })
 @Index('idx_app_package_version_review', ['reviewStatus'])
@@ -22,6 +36,35 @@ export class AppPackageVersionEntity {
 
   @Column({ type: 'json', name: 'approved_capabilities', nullable: true })
   approvedCapabilities?: string[] | null;
+
+  @Column({ type: 'int', name: 'manifest_version', unsigned: true, default: 1 })
+  manifestVersion: number;
+
+  @Column({ type: 'varchar', name: 'package_format', length: 30, default: 'static_zip' })
+  packageFormat: AppPackageFormat;
+
+  @Column({ type: 'json', name: 'scan_result', nullable: true })
+  scanResult?: Record<string, unknown> | null;
+
+  @Column({
+    type: 'varchar',
+    name: 'candidate_health_status',
+    length: 20,
+    default: 'unknown',
+  })
+  candidateHealthStatus: AppServiceCandidateHealthStatus;
+
+  @Column({ type: 'bigint', name: 'submitted_by', nullable: true })
+  submittedBy?: number | null;
+
+  @Column({ type: 'bigint', name: 'released_by', nullable: true })
+  releasedBy?: number | null;
+
+  @Column({ type: 'datetime', name: 'released_time', nullable: true })
+  releasedTime?: Date | null;
+
+  @Column({ type: 'bigint', name: 'rollback_from_version_id', nullable: true })
+  rollbackFromVersionId?: number | null;
 
   @Column({ type: 'varchar', name: 'package_path', length: 500, default: '' })
   packagePath: string;

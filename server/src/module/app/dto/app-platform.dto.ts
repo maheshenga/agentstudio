@@ -23,7 +23,7 @@ import type {
   AppVersionReviewStatus,
 } from '../entities/app-package-version.entity';
 
-export const APP_PACKAGE_TYPES: AppPackageType[] = ['internal', 'static', 'iframe'];
+export const APP_PACKAGE_TYPES: AppPackageType[] = ['internal', 'static', 'iframe', 'service'];
 export const APP_PACKAGE_STATUSES: AppPackageStatus[] = [
   'draft',
   'pending_review',

@@ -82,6 +82,35 @@ export const envValidationSchema = Joi.object({
     then: Joi.string().min(32).required(),
     otherwise: Joi.string().allow('').default(''),
   }),
+  APP_SERVICE_RUNTIME_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
+  APP_SERVICE_RUNTIME_DIR: Joi.string().default('../upload/app-service-runtime'),
+  APP_SERVICE_RUNTIME_USER: Joi.when('APP_SERVICE_RUNTIME_ENABLED', {
+    is: true,
+    then: Joi.string()
+      .pattern(/^[a-z_][a-z0-9_-]{0,31}$/)
+      .invalid('root')
+      .required(),
+    otherwise: Joi.string().allow('').default(''),
+  }),
+  APP_SERVICE_PM2_HOME: Joi.when('APP_SERVICE_RUNTIME_ENABLED', {
+    is: true,
+    then: Joi.string().trim().min(1).required(),
+    otherwise: Joi.string().allow('').default(''),
+  }),
+  APP_SERVICE_PM2_COMMAND: Joi.string().trim().min(1).default('pm2'),
+  APP_SERVICE_RUNTIME_INTERPRETER: Joi.string().valid('node', 'bun').default('node'),
+  APP_SERVICE_MEMORY_MB: Joi.number().integer().min(128).max(2048).default(256),
+  APP_SERVICE_REQUEST_TIMEOUT_MS: Joi.number().integer().min(1000).max(30000).default(15000),
+  APP_SERVICE_MAX_BODY_MB: Joi.number().integer().min(1).max(10).default(2),
+  APP_SERVICE_HEALTH_SUCCESS_COUNT: Joi.number().integer().min(1).max(10).default(3),
+  APP_SERVICE_PORT_MIN: Joi.number().port().default(20000),
+  APP_SERVICE_PORT_MAX: Joi.number()
+    .port()
+    .default(39999)
+    .custom((value, helpers) => {
+      const minimum = Number(helpers.state.ancestors[0]?.APP_SERVICE_PORT_MIN ?? 20000);
+      return Number(value) - minimum >= 99 ? value : helpers.error('number.min');
+    }),
 
   LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug').default('info'),
   LOG_DIR: Joi.string().default('logs'),

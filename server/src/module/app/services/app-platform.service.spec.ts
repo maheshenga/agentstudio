@@ -202,6 +202,44 @@ describe('AppPlatformService', () => {
     );
   });
 
+  it('creates a service app as an unpublished platform-trusted draft', async () => {
+    appRepo.findOne.mockResolvedValue(null);
+
+    await expect(
+      service.createApp(
+        {
+          code: 'admin_echo_service',
+          name: 'Admin Echo Service',
+          type: 'service',
+          category: 'developer_tools',
+        },
+        88,
+      ),
+    ).resolves.toMatchObject({
+      code: 'admin_echo_service',
+      type: 'service',
+      status: 'draft',
+      entry_mode: 'service',
+      entry_url: '',
+      runtime_type: 'service',
+      trust_level: 'platform_trusted',
+      service_health_path: '/health',
+    });
+
+    expect(appRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'service',
+        status: 'draft',
+        entryMode: 'service',
+        entryUrl: '',
+        runtimeType: 'service',
+        trustLevel: 'platform_trusted',
+        serviceHealthPath: '/health',
+      }),
+    );
+    expect(versionRepo.create).not.toHaveBeenCalled();
+  });
+
   it('creates a new immutable iframe version when runtime settings change', async () => {
     appRepo.findOne.mockResolvedValue({
       id: 3,

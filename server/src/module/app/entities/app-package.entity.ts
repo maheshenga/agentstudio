@@ -1,9 +1,30 @@
-import { Column, CreateDateColumn, DeleteDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  DeleteDateColumn,
+  Entity,
+  Index,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
-export type AppPackageType = 'internal' | 'static' | 'iframe';
-export type AppPackageStatus = 'draft' | 'pending_review' | 'approved' | 'published' | 'rejected' | 'disabled' | 'archived';
+export type AppPackageType = 'internal' | 'static' | 'iframe' | 'service';
+export type AppPackageStatus =
+  | 'draft'
+  | 'pending_review'
+  | 'approved'
+  | 'published'
+  | 'rejected'
+  | 'disabled'
+  | 'archived';
 export type AppPackageVisibility = 'platform' | 'tenant' | 'marketplace' | 'private';
-export type AppPackageEntryMode = 'internal_route' | 'static' | 'iframe' | 'new_window';
+export type AppPackageEntryMode = 'internal_route' | 'static' | 'iframe' | 'service' | 'new_window';
+export type AppRuntimeType = 'static' | 'iframe' | 'service' | 'native';
+export type AppTrustLevel =
+  | 'platform_trusted'
+  | 'developer_restricted'
+  | 'external_managed'
+  | 'static_sandboxed';
 
 @Index('uk_app_package_code', ['code'], { unique: true })
 @Index('idx_app_package_status', ['status'])
@@ -51,6 +72,18 @@ export class AppPackageEntity {
 
   @Column({ type: 'varchar', name: 'entry_url', length: 500, default: '' })
   entryUrl: string;
+
+  @Column({ type: 'varchar', name: 'runtime_type', length: 20, default: 'static' })
+  runtimeType: AppRuntimeType;
+
+  @Column({ type: 'varchar', name: 'trust_level', length: 30, default: 'static_sandboxed' })
+  trustLevel: AppTrustLevel;
+
+  @Column({ type: 'varchar', name: 'service_health_path', length: 255, default: '' })
+  serviceHealthPath: string;
+
+  @Column({ type: 'json', name: 'runtime_config', nullable: true })
+  runtimeConfig?: Record<string, unknown> | null;
 
   @Column({ type: 'varchar', name: 'system_module_code', length: 80, default: '' })
   systemModuleCode: string;

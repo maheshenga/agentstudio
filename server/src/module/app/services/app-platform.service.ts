@@ -177,10 +177,14 @@ export class AppPlatformService {
       description: dto.description || '',
       developerId: operatorId ?? null,
       developerName: dto.developer_name || '',
-      status: dto.type === 'static' ? 'draft' : 'published',
+      status: dto.type === 'static' || dto.type === 'service' ? 'draft' : 'published',
       visibility: dto.visibility || 'marketplace',
       entryMode: this.resolveEntryMode(dto.type),
       entryUrl: iframeRuntime?.entryUrl || this.normalizeEntryUrl(dto.type, dto.entry_url || ''),
+      runtimeType: this.runtimeType(dto.type),
+      trustLevel: this.trustLevel(dto.type),
+      serviceHealthPath: dto.type === 'service' ? '/health' : '',
+      runtimeConfig: null,
       systemModuleCode: dto.system_module_code || '',
       saasModuleCode: dto.saas_module_code || '',
       sort: dto.sort ?? 100,
@@ -640,6 +644,7 @@ export class AppPlatformService {
   private resolveEntryMode(type: AppPackageType) {
     if (type === 'internal') return 'internal_route';
     if (type === 'static') return 'static';
+    if (type === 'service') return 'service';
     return 'iframe';
   }
 
@@ -650,7 +655,19 @@ export class AppPlatformService {
     if (type === 'iframe') {
       return normalizeExternalHttpUrl(value, { label: 'Iframe app entry', httpsOnly: true });
     }
+    if (type === 'service') return '';
     return this.normalizeInternalRoute(value);
+  }
+
+  private runtimeType(type: AppPackageType) {
+    if (type === 'internal') return 'native' as const;
+    return type;
+  }
+
+  private trustLevel(type: AppPackageType) {
+    if (type === 'internal' || type === 'service') return 'platform_trusted' as const;
+    if (type === 'iframe') return 'external_managed' as const;
+    return 'static_sandboxed' as const;
   }
 
   private normalizeIframeRuntime(entryValue: string, originValues?: string[]) {
@@ -883,6 +900,10 @@ export class AppPlatformService {
       manifest: version.manifest || null,
       requested_capabilities: normalizeAppCapabilities(version.manifest),
       approved_capabilities: version.approvedCapabilities || [],
+      manifest_version: Number(version.manifestVersion) || 1,
+      package_format: version.packageFormat || 'static_zip',
+      scan_result: version.scanResult || null,
+      candidate_health_status: version.candidateHealthStatus || 'unknown',
       package_path: version.packagePath || '',
       publish_path: version.publishPath || '',
       entry_file: version.entryFile || '',
@@ -896,6 +917,10 @@ export class AppPlatformService {
       ),
       review_message: version.reviewMessage || '',
       reviewer_id: version.reviewerId ?? null,
+      submitted_by: version.submittedBy ?? null,
+      released_by: version.releasedBy ?? null,
+      released_time: version.releasedTime ?? null,
+      rollback_from_version_id: version.rollbackFromVersionId ?? null,
       review_time: version.reviewTime,
       create_time: version.createTime,
       update_time: version.updateTime,
@@ -930,6 +955,10 @@ export class AppPlatformService {
       visibility: app.visibility || 'marketplace',
       entry_mode: app.entryMode || '',
       entry_url: app.entryUrl || '',
+      runtime_type: app.runtimeType || this.runtimeType(app.type as AppPackageType),
+      trust_level: app.trustLevel || this.trustLevel(app.type as AppPackageType),
+      service_health_path: app.serviceHealthPath || '',
+      runtime_config: app.runtimeConfig || null,
       system_module_code: app.systemModuleCode || '',
       saas_module_code: app.saasModuleCode || '',
       sort: Number(app.sort) || 0,

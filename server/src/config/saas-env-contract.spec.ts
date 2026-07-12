@@ -39,6 +39,18 @@ const CONFIGURATION_ENV_KEYS_REQUIRING_SCHEMA = [
   'APP_RUNTIME_STORAGE_ALLOWED_MIME_TYPES',
   'APP_RUNTIME_IFRAME_LAUNCH_ENABLED',
   'APP_RUNTIME_LAUNCH_SECRET',
+  'APP_SERVICE_RUNTIME_ENABLED',
+  'APP_SERVICE_RUNTIME_DIR',
+  'APP_SERVICE_RUNTIME_USER',
+  'APP_SERVICE_PM2_HOME',
+  'APP_SERVICE_PM2_COMMAND',
+  'APP_SERVICE_RUNTIME_INTERPRETER',
+  'APP_SERVICE_MEMORY_MB',
+  'APP_SERVICE_REQUEST_TIMEOUT_MS',
+  'APP_SERVICE_MAX_BODY_MB',
+  'APP_SERVICE_HEALTH_SUCCESS_COUNT',
+  'APP_SERVICE_PORT_MIN',
+  'APP_SERVICE_PORT_MAX',
 ] as const;
 
 const UNSAFE_EXAMPLE_VALUES = new Map([
@@ -95,6 +107,18 @@ describe('SaaS environment contract readiness', () => {
     expect(schema).toMatch(
       /APP_RUNTIME_LAUNCH_SECRET:\s*Joi\.when\([\s\S]*then:\s*Joi\.string\(\)\.min\(32\)\.required\(\)/,
     );
+  });
+
+  it('keeps service runtime disabled and validates its low-privilege process bounds', () => {
+    const schema = readProjectFile('server/src/config/env.validation.ts');
+
+    expect(schema).toMatch(/APP_SERVICE_RUNTIME_ENABLED:\s*Joi\.boolean\(\).*default\(false\)/s);
+    expect(schema).toMatch(/APP_SERVICE_RUNTIME_USER:[\s\S]*pattern\(\/\^\[a-z_\]/);
+    expect(schema).toMatch(/APP_SERVICE_RUNTIME_INTERPRETER:[\s\S]*valid\('node', 'bun'\)/);
+    expect(schema).toMatch(/APP_SERVICE_MEMORY_MB:[\s\S]*min\(128\)[\s\S]*max\(2048\)/);
+    expect(schema).toMatch(/APP_SERVICE_REQUEST_TIMEOUT_MS:[\s\S]*min\(1000\)[\s\S]*max\(30000\)/);
+    expect(schema).toMatch(/APP_SERVICE_MAX_BODY_MB:[\s\S]*min\(1\)[\s\S]*max\(10\)/);
+    expect(schema).toMatch(/APP_SERVICE_HEALTH_SUCCESS_COUNT:[\s\S]*min\(1\)[\s\S]*max\(10\)/);
   });
 });
 
