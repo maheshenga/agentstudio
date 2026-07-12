@@ -46,6 +46,7 @@ import {
 } from './services/app-runtime-http.service';
 import { AppRuntimeSessionService } from './services/app-runtime-session.service';
 import { AppServiceLogRedactor } from './services/app-service-log-redactor';
+import { AppServiceLoopbackTransport } from './services/app-service-loopback.transport';
 import { AppServicePackageService } from './services/app-service-package.service';
 import {
   AppServiceCommandRunner,
@@ -53,6 +54,13 @@ import {
   AppServiceProcessManager,
   NodeAppServiceCommandRunner,
 } from './services/app-service-process-manager';
+import {
+  AppServiceDelay,
+  AppServicePortAllocator,
+  AppServiceRuntimeService,
+  NodeAppServiceDelay,
+  NodeAppServicePortAllocator,
+} from './services/app-service-runtime.service';
 import { AppTenantService } from './services/app-tenant.service';
 
 @Module({
@@ -100,6 +108,10 @@ import { AppTenantService } from './services/app-tenant.service';
     AppServiceHostEnvironment,
     AppServiceProcessManager,
     { provide: AppServiceCommandRunner, useClass: NodeAppServiceCommandRunner },
+    AppServiceLoopbackTransport,
+    AppServiceRuntimeService,
+    { provide: AppServicePortAllocator, useClass: NodeAppServicePortAllocator },
+    { provide: AppServiceDelay, useClass: NodeAppServiceDelay },
     AppPlatformService,
     AppRuntimeContextService,
     AppIframeLaunchService,
@@ -119,6 +131,8 @@ import { AppTenantService } from './services/app-tenant.service';
     AppServicePackageService,
     AppServiceLogRedactor,
     AppServiceProcessManager,
+    AppServiceLoopbackTransport,
+    AppServiceRuntimeService,
     AppPlatformService,
     AppRuntimeContextService,
     AppTenantService,

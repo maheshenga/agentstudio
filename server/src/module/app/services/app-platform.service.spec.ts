@@ -13,6 +13,7 @@ import { AppCapabilityPolicyService } from './app-capability-policy.service';
 import { AppPackageStorageService } from './app-package-storage.service';
 import { AppRuntimeSessionService } from './app-runtime-session.service';
 import { AppServicePackageService } from './app-service-package.service';
+import { AppServiceRuntimeService } from './app-service-runtime.service';
 import { AppPlatformService } from './app-platform.service';
 
 describe('AppPlatformService', () => {
@@ -44,6 +45,14 @@ describe('AppPlatformService', () => {
   };
   const servicePackageService = {
     scanAndInstall: jest.fn(),
+  };
+  const serviceRuntimeService = {
+    startCandidate: jest.fn(),
+    publishCandidate: jest.fn(),
+    rollback: jest.fn(),
+    stopCandidate: jest.fn(),
+    reconcile: jest.fn(),
+    probeActive: jest.fn(),
   };
   const capabilityPolicy = {
     approvePlatformCapabilities: jest.fn(),
@@ -86,6 +95,7 @@ describe('AppPlatformService', () => {
         { provide: AppCapabilityPolicyService, useValue: capabilityPolicy },
         { provide: AppRuntimeSessionService, useValue: runtimeSessionService },
         { provide: AppServicePackageService, useValue: servicePackageService },
+        { provide: AppServiceRuntimeService, useValue: serviceRuntimeService },
         { provide: DataSource, useValue: dataSource },
       ],
     }).compile();
@@ -141,6 +151,32 @@ describe('AppPlatformService', () => {
         where: expect.objectContaining({ developerId: 17 }),
       }),
     );
+  });
+
+  it('delegates service lifecycle operations to the isolated runtime service', async () => {
+    serviceRuntimeService.startCandidate.mockResolvedValue({ role: 'candidate' });
+    serviceRuntimeService.publishCandidate.mockResolvedValue({ active: '2.0.0' });
+    serviceRuntimeService.rollback.mockResolvedValue({ active: '1.0.0' });
+    serviceRuntimeService.stopCandidate.mockResolvedValue({ stopped: true });
+    serviceRuntimeService.reconcile.mockResolvedValue({ restarted: 1 });
+    serviceRuntimeService.probeActive.mockResolvedValue({ body: { ok: true } });
+
+    await expect(service.startServiceCandidate('svc', '2.0.0', 9)).resolves.toEqual({
+      role: 'candidate',
+    });
+    await expect(service.publishServiceCandidate('svc', '2.0.0', 9)).resolves.toEqual({
+      active: '2.0.0',
+    });
+    await expect(service.rollbackServiceVersion('svc', '1.0.0', 'rollback', 9)).resolves.toEqual({
+      active: '1.0.0',
+    });
+    await expect(service.stopServiceCandidate('svc', '2.0.0', 'cancel', 9)).resolves.toEqual({
+      stopped: true,
+    });
+    await expect(service.reconcileServiceRuntime()).resolves.toEqual({ restarted: 1 });
+    await expect(service.probeActiveService('svc', { ping: true })).resolves.toEqual({
+      body: { ok: true },
+    });
   });
 
   it('creates an iframe app as a published marketplace app', async () => {

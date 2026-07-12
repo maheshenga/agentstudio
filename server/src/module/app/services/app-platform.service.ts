@@ -21,6 +21,7 @@ import { AppCapabilityPolicyService } from './app-capability-policy.service';
 import { AppPackageStorageService } from './app-package-storage.service';
 import { AppRuntimeSessionService } from './app-runtime-session.service';
 import { AppServicePackageService } from './app-service-package.service';
+import { AppServiceRuntimeService } from './app-service-runtime.service';
 
 export interface AppPlatformListQuery {
   keyword?: string;
@@ -47,6 +48,7 @@ export class AppPlatformService {
     private readonly storage: AppPackageStorageService,
     private readonly manifestService: AppManifestService,
     private readonly servicePackageService: AppServicePackageService,
+    private readonly serviceRuntimeService: AppServiceRuntimeService,
     private readonly capabilityPolicy: AppCapabilityPolicyService,
     private readonly dataSource: DataSource,
     private readonly runtimeSessionService: AppRuntimeSessionService,
@@ -347,6 +349,35 @@ export class AppPlatformService {
       ...this.toResponse(app),
       versions: versions.map((version) => this.toVersionResponse(version, app.code, app.entryUrl)),
     };
+  }
+
+  startServiceCandidate(code: string, version: string, operatorId: number) {
+    return this.serviceRuntimeService.startCandidate(code, version, operatorId);
+  }
+
+  publishServiceCandidate(code: string, version: string, operatorId: number) {
+    return this.serviceRuntimeService.publishCandidate(code, version, operatorId);
+  }
+
+  rollbackServiceVersion(
+    code: string,
+    version: string,
+    reason: string,
+    operatorId: number,
+  ) {
+    return this.serviceRuntimeService.rollback(code, version, reason, operatorId);
+  }
+
+  stopServiceCandidate(code: string, version: string, reason: string, operatorId: number) {
+    return this.serviceRuntimeService.stopCandidate(code, version, reason, operatorId);
+  }
+
+  reconcileServiceRuntime() {
+    return this.serviceRuntimeService.reconcile();
+  }
+
+  probeActiveService(code: string, input: unknown) {
+    return this.serviceRuntimeService.probeActive(code, input);
   }
 
   async uploadStaticVersion(code: string, file: Express.Multer.File, operatorId?: number) {

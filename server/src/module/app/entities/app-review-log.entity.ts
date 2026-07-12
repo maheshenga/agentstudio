@@ -7,6 +7,10 @@ export type AppReviewAction =
   | 'publish'
   | 'unpublish'
   | 'rollback'
+  | 'candidate_start'
+  | 'candidate_stop'
+  | 'reconcile'
+  | 'probe'
   | 'disable'
   | 'archive';
 
