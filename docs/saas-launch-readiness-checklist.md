@@ -473,6 +473,58 @@ Environment-dependent live verification:
 
 Feature flags remain disabled by default. Enable `APP_RUNTIME_CAPABILITIES_ENABLED` and `APP_RUNTIME_IFRAME_LAUNCH_ENABLED` in a target environment only after migrations, Redis, runtime storage, approved public upstreams, and authenticated tenant lifecycle smoke tests pass there.
 
+## P10 Administrator Service Runtime Verification - 2026-07-13
+
+Deterministic gate:
+
+```powershell
+cd server
+pnpm.cmd run verify:app-service-runtime-live-e2e-contract
+pnpm.cmd exec jest src/module/app src/common/utils/safe-url.util.spec.ts src/migration-specs/create-app-service-runtime.spec.ts src/migration-specs/seed-app-service-runtime-menus.spec.ts --runInBand
+pnpm.cmd run build
+
+cd ../web
+pnpm.cmd run verify:app-service-runtime-readiness
+pnpm.cmd run verify:app-marketplace-readiness
+pnpm.cmd run verify:app-runtime-readiness
+pnpm.cmd run build
+
+cd ..
+node scripts/run-saas-readiness.cjs
+git diff --check
+```
+
+The deterministic contract verifies upload and parser scan, independent approval, candidate health, publish, failed candidate preservation, active/standby role swap, rollback, crash reconciliation, bounded redacted logs, feature-disabled denial, signal cleanup, and zero owned database, Redis, PM2, release, and generated-database residue.
+
+Run the live gate only from Linux with a disposable MySQL target, an empty isolated Redis logical database, an empty runtime root outside the repository, an empty isolated PM2 home, and a dedicated non-root runtime user. Provide these names through the protected local environment without printing their values:
+
+```text
+APP_SERVICE_E2E_DB_HOST
+APP_SERVICE_E2E_DB_PORT
+APP_SERVICE_E2E_DB_USERNAME
+APP_SERVICE_E2E_DB_PASSWORD
+APP_SERVICE_E2E_PLATFORM_USERNAME
+APP_SERVICE_E2E_PLATFORM_PASSWORD
+APP_SERVICE_E2E_REDIS_DB
+APP_SERVICE_E2E_REDIS_ISOLATED=1
+APP_SERVICE_E2E_RUNTIME_ROOT
+APP_SERVICE_E2E_PM2_HOME
+APP_SERVICE_E2E_RUNTIME_USER
+```
+
+Optional connection and range settings are `APP_SERVICE_E2E_REDIS_HOST`, `APP_SERVICE_E2E_REDIS_PORT`, `APP_SERVICE_E2E_REDIS_PASSWORD`, `APP_SERVICE_E2E_PM2_COMMAND`, `APP_SERVICE_E2E_PORT_MIN`, and `APP_SERVICE_E2E_PORT_MAX`.
+
+```powershell
+cd server
+pnpm.cmd run verify:app-service-runtime-live-e2e
+```
+
+The live gate refuses Windows/macOS, a root runtime user, Redis DB `0`, a non-empty Redis database, production-like database names, runtime or PM2 paths inside the repository, shared/non-empty PM2 state, and missing isolation settings. It never uses `sudo`, shell mode, dependency installation, lifecycle scripts, or request-provided commands.
+
+Production rollout follows [app-service-runtime-baota.md](deployment/app-service-runtime-baota.md). Keep `APP_SERVICE_RUNTIME_ENABLED=false` until backup, migrations, non-login user, directory modes, loopback-only ports, host firewall rules, candidate smoke, rollback readiness, and a 15-minute observation window are complete.
+
+The live gate is environment-blocked in ordinary Windows development sessions and must not be bypassed. Record either a green disposable Linux run or the exact missing isolation prerequisites before production enablement.
+
 Current local environment evidence on 2026-07-12:
 
 - MySQL and Redis CLI executables are available.
