@@ -25,6 +25,7 @@
     "verify:saas-live-browser-e2e": "tsx scripts/verify-saas-live-browser-e2e.ts",
     "verify:saas-platform-live-browser-e2e": "tsx scripts/verify-saas-platform-live-browser-e2e.ts",
     "verify:app-marketplace-readiness": "tsx scripts/verify-app-marketplace-readiness.ts",
+    "verify:app-service-runtime-readiness": "tsx scripts/verify-app-service-runtime-readiness.ts",
     "verify:app-factory-readiness": "tsx scripts/verify-app-factory-readiness.ts",
     "verify:app-developer-readiness": "tsx scripts/verify-app-developer-readiness.ts",
     "verify:app-analytics-readiness": "tsx scripts/verify-app-analytics-readiness.ts",

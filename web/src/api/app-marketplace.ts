@@ -1,7 +1,13 @@
 import request from '@/utils/http'
 import type { AppRuntimeBootstrap } from '@/utils/app-runtime'
 
-export type AppPackageType = 'internal' | 'static' | 'iframe'
+export type AppPackageType = 'internal' | 'static' | 'iframe' | 'service'
+export type AppRuntimeType = 'static' | 'iframe' | 'service' | 'native'
+export type AppTrustLevel =
+  | 'platform_trusted'
+  | 'developer_restricted'
+  | 'external_managed'
+  | 'static_sandboxed'
 export type AppPackageStatus =
   | 'draft'
   | 'pending_review'
@@ -33,6 +39,9 @@ export interface AppPackageRecord {
   visibility: AppPackageVisibility
   entry_mode?: string
   entry_url?: string
+  runtime_type?: AppRuntimeType
+  trust_level?: AppTrustLevel
+  service_health_path?: string
   system_module_code?: string
   saas_module_code?: string
   available?: boolean
@@ -51,6 +60,20 @@ export interface AppPackageVersionRecord {
   app_id: number
   version: string
   manifest?: Record<string, unknown> | null
+  manifest_version?: number
+  package_format?: 'static_zip' | 'iframe_config' | 'service_zip' | 'native'
+  scan_result?: {
+    passed: boolean
+    findings: Array<{
+      code: string
+      severity: 'warning' | 'error'
+      line?: number
+      column?: number
+    }>
+    scannedFiles: number
+    entrySha256: string
+  } | null
+  candidate_health_status?: 'unknown' | 'checking' | 'healthy' | 'unhealthy'
   requested_capabilities?: string[]
   approved_capabilities?: string[]
   package_path?: string
@@ -197,6 +220,16 @@ export function uploadPlatformStaticAppVersion(code: string, file: File) {
   form.append('file', file)
   return request.post<AppPackageVersionRecord>({
     url: `/api/app-platform/apps/${code}/versions/upload`,
+    data: form,
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+
+export function uploadPlatformServiceAppVersion(code: string, file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  return request.post<AppPackageVersionRecord>({
+    url: `/api/app-platform/apps/${code}/versions/service-upload`,
     data: form,
     headers: { 'Content-Type': 'multipart/form-data' }
   })

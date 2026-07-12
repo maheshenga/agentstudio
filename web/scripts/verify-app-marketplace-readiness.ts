@@ -46,6 +46,7 @@ for (const token of [
   '/api/app-platform/apps',
   '/api/app-platform/reviews',
   '/api/app-platform/apps/${code}/versions/upload',
+  '/api/app-platform/apps/${code}/versions/service-upload',
   '/api/app-platform/apps/${code}/versions/${version}/approve',
   '/api/app-platform/apps/${code}/versions/${version}/publish',
   '/api/app-platform/apps/${code}/versions/${version}/unpublish',
@@ -69,7 +70,12 @@ for (const token of [
   'entry_url',
   'launch',
   'allowed_origins',
-  'requested_capabilities'
+  'requested_capabilities',
+  "'service'",
+  'runtime_type',
+  'trust_level',
+  'scan_result',
+  'uploadPlatformServiceAppVersion'
 ]) {
   assertIncludes(apiSource, token, 'app marketplace API')
 }
@@ -79,6 +85,7 @@ for (const token of [
   'fetchPlatformApps',
   'createPlatformApp',
   'uploadPlatformStaticAppVersion',
+  'uploadPlatformServiceAppVersion',
   'approvePlatformAppVersion',
   'publishPlatformAppVersion',
   'fetchPlatformModules',
@@ -95,7 +102,10 @@ for (const token of [
   'ElOption',
   'ElTable',
   'ElDialog',
-  'ElDrawer'
+  'ElDrawer',
+  "value: 'service'",
+  'platform_trusted',
+  'scanStatusText'
 ]) {
   assertIncludes(platformPage, token, 'platform apps page')
 }
