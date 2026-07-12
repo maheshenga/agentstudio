@@ -45,7 +45,14 @@ import {
   UndiciAppRuntimeHttpTransport,
 } from './services/app-runtime-http.service';
 import { AppRuntimeSessionService } from './services/app-runtime-session.service';
+import { AppServiceLogRedactor } from './services/app-service-log-redactor';
 import { AppServicePackageService } from './services/app-service-package.service';
+import {
+  AppServiceCommandRunner,
+  AppServiceHostEnvironment,
+  AppServiceProcessManager,
+  NodeAppServiceCommandRunner,
+} from './services/app-service-process-manager';
 import { AppTenantService } from './services/app-tenant.service';
 
 @Module({
@@ -89,6 +96,10 @@ import { AppTenantService } from './services/app-tenant.service';
     AppDeveloperService,
     AppPackageStorageService,
     AppServicePackageService,
+    AppServiceLogRedactor,
+    AppServiceHostEnvironment,
+    AppServiceProcessManager,
+    { provide: AppServiceCommandRunner, useClass: NodeAppServiceCommandRunner },
     AppPlatformService,
     AppRuntimeContextService,
     AppIframeLaunchService,
@@ -106,6 +117,8 @@ import { AppTenantService } from './services/app-tenant.service';
     AppDeveloperService,
     AppPackageStorageService,
     AppServicePackageService,
+    AppServiceLogRedactor,
+    AppServiceProcessManager,
     AppPlatformService,
     AppRuntimeContextService,
     AppTenantService,
