@@ -10,6 +10,7 @@ import {
 export type AppServiceInstanceRole = 'candidate' | 'active' | 'standby' | 'retired';
 export type AppServiceProcessStatus = 'starting' | 'online' | 'stopped' | 'failed';
 export type AppServiceHealthStatus = 'unknown' | 'checking' | 'healthy' | 'unhealthy';
+export type AppServiceCircuitState = 'closed' | 'open' | 'half_open';
 
 @Index('uk_app_service_instance_process', ['processName'], { unique: true })
 @Index('idx_app_service_instance_app_role', ['appId', 'role'])
@@ -45,6 +46,24 @@ export class AppServiceInstanceEntity {
 
   @Column({ type: 'int', name: 'restart_count', unsigned: true, default: 0 })
   restartCount: number;
+
+  @Column({ type: 'int', name: 'consecutive_failures', unsigned: true, default: 0 })
+  consecutiveFailures: number;
+
+  @Column({ type: 'varchar', name: 'circuit_state', length: 20, default: 'closed' })
+  circuitState: AppServiceCircuitState;
+
+  @Column({ type: 'datetime', name: 'circuit_open_until', nullable: true })
+  circuitOpenUntil?: Date | null;
+
+  @Column({ type: 'int', name: 'active_invocations', unsigned: true, default: 0 })
+  activeInvocations: number;
+
+  @Column({ type: 'datetime', name: 'last_invoke_time', nullable: true })
+  lastInvokeTime?: Date | null;
+
+  @Column({ type: 'datetime', name: 'last_success_time', nullable: true })
+  lastSuccessTime?: Date | null;
 
   @Column({ type: 'datetime', name: 'last_health_time', nullable: true })
   lastHealthTime?: Date | null;

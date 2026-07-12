@@ -126,6 +126,18 @@ export default () => ({
       portMin: Number(process.env.APP_SERVICE_PORT_MIN ?? 20000),
       portMax: Number(process.env.APP_SERVICE_PORT_MAX ?? 39999),
     },
+    developerService: {
+      enabled: process.env.APP_DEVELOPER_SERVICE_ENABLED === 'true',
+      concurrency: Number(process.env.APP_DEVELOPER_SERVICE_CONCURRENCY ?? 20),
+      ratePerMinute: Number(process.env.APP_DEVELOPER_SERVICE_RATE_PER_MINUTE ?? 60),
+      circuitFailures: Number(process.env.APP_DEVELOPER_SERVICE_CIRCUIT_FAILURES ?? 5),
+      circuitOpenSeconds: Number(
+        process.env.APP_DEVELOPER_SERVICE_CIRCUIT_OPEN_SECONDS ?? 60,
+      ),
+      logRetentionDays: Number(
+        process.env.APP_DEVELOPER_SERVICE_LOG_RETENTION_DAYS ?? 7,
+      ),
+    },
   },
   log: {
     level: process.env.LOG_LEVEL ?? 'info',

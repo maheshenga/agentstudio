@@ -111,6 +111,31 @@ export const envValidationSchema = Joi.object({
       const minimum = Number(helpers.state.ancestors[0]?.APP_SERVICE_PORT_MIN ?? 20000);
       return Number(value) - minimum >= 99 ? value : helpers.error('number.min');
     }),
+  APP_DEVELOPER_SERVICE_ENABLED: Joi.boolean()
+    .truthy('true')
+    .falsy('false')
+    .default(false),
+  APP_DEVELOPER_SERVICE_CONCURRENCY: Joi.number().integer().min(1).max(100).default(20),
+  APP_DEVELOPER_SERVICE_RATE_PER_MINUTE: Joi.number()
+    .integer()
+    .min(1)
+    .max(6000)
+    .default(60),
+  APP_DEVELOPER_SERVICE_CIRCUIT_FAILURES: Joi.number()
+    .integer()
+    .min(2)
+    .max(20)
+    .default(5),
+  APP_DEVELOPER_SERVICE_CIRCUIT_OPEN_SECONDS: Joi.number()
+    .integer()
+    .min(10)
+    .max(3600)
+    .default(60),
+  APP_DEVELOPER_SERVICE_LOG_RETENTION_DAYS: Joi.number()
+    .integer()
+    .min(1)
+    .max(30)
+    .default(7),
 
   LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug').default('info'),
   LOG_DIR: Joi.string().default('logs'),

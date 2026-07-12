@@ -51,6 +51,12 @@ const CONFIGURATION_ENV_KEYS_REQUIRING_SCHEMA = [
   'APP_SERVICE_HEALTH_SUCCESS_COUNT',
   'APP_SERVICE_PORT_MIN',
   'APP_SERVICE_PORT_MAX',
+  'APP_DEVELOPER_SERVICE_ENABLED',
+  'APP_DEVELOPER_SERVICE_CONCURRENCY',
+  'APP_DEVELOPER_SERVICE_RATE_PER_MINUTE',
+  'APP_DEVELOPER_SERVICE_CIRCUIT_FAILURES',
+  'APP_DEVELOPER_SERVICE_CIRCUIT_OPEN_SECONDS',
+  'APP_DEVELOPER_SERVICE_LOG_RETENTION_DAYS',
 ] as const;
 
 const UNSAFE_EXAMPLE_VALUES = new Map([
@@ -119,6 +125,31 @@ describe('SaaS environment contract readiness', () => {
     expect(schema).toMatch(/APP_SERVICE_REQUEST_TIMEOUT_MS:[\s\S]*min\(1000\)[\s\S]*max\(30000\)/);
     expect(schema).toMatch(/APP_SERVICE_MAX_BODY_MB:[\s\S]*min\(1\)[\s\S]*max\(10\)/);
     expect(schema).toMatch(/APP_SERVICE_HEALTH_SUCCESS_COUNT:[\s\S]*min\(1\)[\s\S]*max\(10\)/);
+  });
+
+  it('keeps certified developer services disabled with bounded quotas and circuit policy', () => {
+    const schema = readProjectFile('server/src/config/env.validation.ts');
+    const example = parseEnvExample(readProjectFile('server/.env.example'));
+
+    expect(schema).toMatch(
+      /APP_DEVELOPER_SERVICE_ENABLED:\s*Joi\.boolean\(\).*default\(false\)/s,
+    );
+    expect(schema).toMatch(
+      /APP_DEVELOPER_SERVICE_CONCURRENCY:[\s\S]*min\(1\)[\s\S]*max\(100\)[\s\S]*default\(20\)/,
+    );
+    expect(schema).toMatch(
+      /APP_DEVELOPER_SERVICE_RATE_PER_MINUTE:[\s\S]*min\(1\)[\s\S]*max\(6000\)[\s\S]*default\(60\)/,
+    );
+    expect(schema).toMatch(
+      /APP_DEVELOPER_SERVICE_CIRCUIT_FAILURES:[\s\S]*min\(2\)[\s\S]*max\(20\)[\s\S]*default\(5\)/,
+    );
+    expect(schema).toMatch(
+      /APP_DEVELOPER_SERVICE_CIRCUIT_OPEN_SECONDS:[\s\S]*min\(10\)[\s\S]*max\(3600\)[\s\S]*default\(60\)/,
+    );
+    expect(schema).toMatch(
+      /APP_DEVELOPER_SERVICE_LOG_RETENTION_DAYS:[\s\S]*min\(1\)[\s\S]*max\(30\)[\s\S]*default\(7\)/,
+    );
+    expect(example.APP_DEVELOPER_SERVICE_ENABLED).toBe('false');
   });
 });
 

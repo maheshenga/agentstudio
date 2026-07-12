@@ -112,7 +112,7 @@
 - Produces: `AppPackageVersionEntity.reviewSnapshot`, `reviewSnapshotHash`, `submittedTime`, `serviceTargets`, `candidateReviewedBy`, and `candidateReviewedTime`
 - Produces: `AppServiceInstanceEntity.consecutiveFailures`, `circuitState`, `circuitOpenUntil`, `activeInvocations`, `lastInvokeTime`, and `lastSuccessTime`
 
-- [ ] **Step 1: Write failing entity and migration tests**
+- [x] **Step 1: Write failing entity and migration tests**
 
 Create entity metadata tests asserting:
 
@@ -148,7 +148,7 @@ expect(invocationColumns).not.toEqual(
 
 The migration test must assert unique/index clauses for `user_id`, developer/app/time observability, tenant/app/time invocation queries, and circuit columns; it must also assert `down()` reverses only P11 schema.
 
-- [ ] **Step 2: Run schema tests to verify RED**
+- [x] **Step 2: Run schema tests to verify RED**
 
 Run:
 
@@ -158,7 +158,7 @@ pnpm run test -- app-developer-service-entities.spec.ts create-certified-develop
 
 Expected: FAIL because the P11 entities, columns, and migration do not exist.
 
-- [ ] **Step 3: Implement entities and migration**
+- [x] **Step 3: Implement entities and migration**
 
 Use these exact entity contracts:
 
@@ -177,6 +177,7 @@ export class AppDeveloperProfileEntity {
   website: string;
   applicationStatement: string;
   certificationStatus: AppDeveloperCertificationStatus;
+  requestedRuntimeTypes: AppDeveloperRuntimeType[];
   approvedRuntimeTypes: AppDeveloperRuntimeType[];
   riskLevel: AppDeveloperRiskLevel;
   reviewerId?: number | null;
@@ -193,7 +194,7 @@ export class AppDeveloperProfileEntity {
 
 The migration adds JSON columns for snapshots/targets, a `char(64)` snapshot hash, candidate reviewer fields, and circuit counters. Existing versions receive `NULL` snapshots and empty target arrays; existing P10 service instances receive closed/zero circuit defaults.
 
-- [ ] **Step 4: Write and implement environment-contract tests**
+- [x] **Step 4: Write and implement environment-contract tests**
 
 Add these variables with Joi defaults and clamps:
 
@@ -208,7 +209,7 @@ APP_DEVELOPER_SERVICE_LOG_RETENTION_DAYS=7
 
 Validation ranges are concurrency `1..100`, rate `1..6000`, failures `2..20`, open seconds `10..3600`, and retention days `1..30`. Map them under `appMarketplace.developerService`.
 
-- [ ] **Step 5: Run Task 1 tests to verify GREEN**
+- [x] **Step 5: Run Task 1 tests to verify GREEN**
 
 Run:
 
@@ -218,7 +219,7 @@ pnpm run test -- app-developer-service-entities.spec.ts create-certified-develop
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit Task 1**
+- [x] **Step 6: Commit Task 1**
 
 ```powershell
 git add server/src/module/app/entities server/src/migrations/1760000000042-CreateCertifiedDeveloperServiceRuntime.ts server/src/config server/.env.example

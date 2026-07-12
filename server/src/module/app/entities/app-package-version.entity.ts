@@ -46,6 +46,18 @@ export class AppPackageVersionEntity {
   @Column({ type: 'json', name: 'scan_result', nullable: true })
   scanResult?: Record<string, unknown> | null;
 
+  @Column({ type: 'json', name: 'review_snapshot', nullable: true })
+  reviewSnapshot?: Record<string, unknown> | null;
+
+  @Column({ type: 'char', name: 'review_snapshot_hash', length: 64, default: '' })
+  reviewSnapshotHash: string;
+
+  @Column({ type: 'datetime', name: 'submitted_time', nullable: true })
+  submittedTime?: Date | null;
+
+  @Column({ type: 'json', name: 'service_targets', nullable: true })
+  serviceTargets?: string[] | null;
+
   @Column({
     type: 'varchar',
     name: 'candidate_health_status',
@@ -56,6 +68,12 @@ export class AppPackageVersionEntity {
 
   @Column({ type: 'bigint', name: 'submitted_by', nullable: true })
   submittedBy?: number | null;
+
+  @Column({ type: 'bigint', name: 'candidate_reviewed_by', nullable: true })
+  candidateReviewedBy?: number | null;
+
+  @Column({ type: 'datetime', name: 'candidate_reviewed_time', nullable: true })
+  candidateReviewedTime?: Date | null;
 
   @Column({ type: 'bigint', name: 'released_by', nullable: true })
   releasedBy?: number | null;
