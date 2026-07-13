@@ -17,6 +17,8 @@ export interface SystemModuleRecord {
   sort?: number
   remark?: string
   tenant_enabled?: boolean | number
+  explicit_enabled?: boolean
+  plan_enabled?: boolean
   entitlement_source?: string
   create_time?: string | Date
   update_time?: string | Date
@@ -104,6 +106,18 @@ export interface SaveSystemModuleSaasBridgeParams {
   remark?: string
 }
 
+export interface SystemTenantModuleGrantRecord {
+  id?: number | string
+  tenant_id: number
+  module_code: string
+  enabled: boolean
+  source: string
+  start_time?: string | Date | null
+  end_time?: string | Date | null
+  create_time?: string | Date | null
+  update_time?: string | Date | null
+}
+
 export function fetchSystemModules(params?: SystemModuleListParams) {
   return request.get<SystemModuleRecord[]>({ url: '/api/system/modules', params })
 }
@@ -128,11 +142,17 @@ export function registerBuiltInSystemModules() {
 }
 
 export function fetchSystemModuleSaasBridges(params?: SystemModuleSaasBridgeListParams) {
-  return request.get<SystemModuleSaasBridgeRecord[]>({ url: '/api/system/modules/saas-bridges', params })
+  return request.get<SystemModuleSaasBridgeRecord[]>({
+    url: '/api/system/modules/saas-bridges',
+    params
+  })
 }
 
 export function saveSystemModuleSaasBridge(params: SaveSystemModuleSaasBridgeParams) {
-  return request.post<SystemModuleSaasBridgeRecord>({ url: '/api/system/modules/saas-bridges', data: params })
+  return request.post<SystemModuleSaasBridgeRecord>({
+    url: '/api/system/modules/saas-bridges',
+    data: params
+  })
 }
 
 export function updateSystemModuleSaasBridgeStatus(id: number | string, enabled: number) {
@@ -142,10 +162,32 @@ export function updateSystemModuleSaasBridgeStatus(id: number | string, enabled:
   })
 }
 
+export function fetchPlatformTenantModuleGrants(tenantId: number) {
+  return request.get<SystemModuleRecord[]>({
+    url: `/api/system/modules/tenant-grants/${tenantId}`
+  })
+}
+
+export function grantPlatformTenantModule(tenantId: number, code: string, reason?: string) {
+  return request.post<SystemTenantModuleGrantRecord>({
+    url: `/api/system/modules/tenant-grants/${tenantId}/${code}/grant`,
+    data: { reason }
+  })
+}
+
+export function revokePlatformTenantModule(tenantId: number, code: string, reason?: string) {
+  return request.post<SystemTenantModuleGrantRecord>({
+    url: `/api/system/modules/tenant-grants/${tenantId}/${code}/revoke`,
+    data: { reason }
+  })
+}
+
 export function fetchTenantSystemModules() {
   return request.get<SystemModuleRecord[]>({ url: '/api/tenant/modules' })
 }
 
 export function fetchTenantSystemModuleAccessDiagnosis(code: string) {
-  return request.get<SystemModuleAccessDiagnosis>({ url: `/api/tenant/modules/${code}/access-diagnosis` })
+  return request.get<SystemModuleAccessDiagnosis>({
+    url: `/api/tenant/modules/${code}/access-diagnosis`
+  })
 }

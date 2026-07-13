@@ -33,6 +33,8 @@ export const SYSTEM_MODULE_EVENT_TYPES = [
   'upgrade',
   'health_check',
   'config_update',
+  'tenant_grant',
+  'tenant_revoke',
   'uninstall',
 ] as const;
 export type SystemModuleEventType = (typeof SYSTEM_MODULE_EVENT_TYPES)[number];

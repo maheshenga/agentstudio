@@ -17,6 +17,9 @@ describe('SystemModulePlatformController', () => {
     listSaasBridges: jest.fn(),
     saveSaasBridge: jest.fn(),
     updateSaasBridgeStatus: jest.fn(),
+    listTenantGrants: jest.fn(),
+    grantTenantModule: jest.fn(),
+    revokeTenantModule: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -50,14 +53,21 @@ describe('SystemModulePlatformController', () => {
   it('passes the operator id when updating module status', async () => {
     registry.updateStatus.mockResolvedValue({ code: 'ai_console', status: 'disabled' });
 
-    const result = await controller.updateStatus('ai_console', { status: 'disabled' }, { userId: 42 } as any);
+    const result = await controller.updateStatus('ai_console', { status: 'disabled' }, {
+      userId: 42,
+    } as any);
 
     expect(registry.updateStatus).toHaveBeenCalledWith('ai_console', 'disabled', 42);
     expect(result.data).toEqual({ code: 'ai_console', status: 'disabled' });
   });
 
   it('registers plugin manifests outside tenant scope with operator id', async () => {
-    const body = { code: 'risk_ops_plugin', name: 'Risk Ops Plugin', source: 'plugin', version: '1.2.3' };
+    const body = {
+      code: 'risk_ops_plugin',
+      name: 'Risk Ops Plugin',
+      source: 'plugin',
+      version: '1.2.3',
+    };
     const module = { code: 'risk_ops_plugin', status: 'installed' };
     registry.registerPluginManifest.mockResolvedValue(module);
     const contextSpy = jest.spyOn(TenantContext, 'run');
@@ -90,7 +100,12 @@ describe('SystemModulePlatformController', () => {
 
   it('saves SaaS bridge config with operator id', async () => {
     const body = { saas_module_code: 'ai_chat', system_module_code: 'ai_console', enabled: 1 };
-    const row = { id: 1, saas_module_code: 'ai_chat', system_module_code: 'ai_console', enabled: true };
+    const row = {
+      id: 1,
+      saas_module_code: 'ai_chat',
+      system_module_code: 'ai_console',
+      enabled: true,
+    };
     registry.saveSaasBridge.mockResolvedValue(row);
 
     const result = await controller.saveSaasBridge(body as any, { userId: 82 } as any);
@@ -103,9 +118,38 @@ describe('SystemModulePlatformController', () => {
     const row = { id: 1, enabled: false };
     registry.updateSaasBridgeStatus.mockResolvedValue(row);
 
-    const result = await controller.updateSaasBridgeStatus('1', { enabled: 0 }, { userId: 83 } as any);
+    const result = await controller.updateSaasBridgeStatus('1', { enabled: 0 }, {
+      userId: 83,
+    } as any);
 
     expect(registry.updateSaasBridgeStatus).toHaveBeenCalledWith(1, 0, 83);
     expect(result.data).toEqual(row);
+  });
+
+  it('lists and mutates explicit tenant module grants outside tenant scope', async () => {
+    registry.listTenantGrants.mockResolvedValue([{ code: 'ai_console', tenant_enabled: true }]);
+    registry.grantTenantModule.mockResolvedValue({ module_code: 'ai_console', enabled: true });
+    registry.revokeTenantModule.mockResolvedValue({ module_code: 'ai_console', enabled: false });
+
+    const listed = await controller.listTenantGrants('23', { userId: 41 } as any);
+    const granted = await controller.grantTenantModule(
+      '23',
+      'ai_console',
+      { reason: 'Enable AI' },
+      { userId: 42 } as any,
+    );
+    const revoked = await controller.revokeTenantModule(
+      '23',
+      'ai_console',
+      { reason: 'Disable AI' },
+      { userId: 43 } as any,
+    );
+
+    expect(registry.listTenantGrants).toHaveBeenCalledWith(23);
+    expect(registry.grantTenantModule).toHaveBeenCalledWith(23, 'ai_console', 42, 'Enable AI');
+    expect(registry.revokeTenantModule).toHaveBeenCalledWith(23, 'ai_console', 43, 'Disable AI');
+    expect(listed.data).toEqual([{ code: 'ai_console', tenant_enabled: true }]);
+    expect(granted.data).toEqual({ module_code: 'ai_console', enabled: true });
+    expect(revoked.data).toEqual({ module_code: 'ai_console', enabled: false });
   });
 });

@@ -42,7 +42,9 @@ class MemoryRepository<T extends EntityRecord> {
     const existingIndex =
       input.id !== undefined
         ? this.records.findIndex((record) => record.id === input.id)
-        : this.records.findIndex((record) => record.code !== undefined && record.code === input.code);
+        : this.records.findIndex(
+            (record) => record.code !== undefined && record.code === input.code,
+          );
     const record = {
       ...input,
       id: input.id ?? this.nextId++,
@@ -61,7 +63,9 @@ class MemoryRepository<T extends EntityRecord> {
 
   async insert(input: T) {
     if (input.code && this.records.some((record) => record.code === input.code)) {
-      const error = new Error(`Duplicate entry '${input.code}' for key 'uk_system_module_code'`) as Error & {
+      const error = new Error(
+        `Duplicate entry '${input.code}' for key 'uk_system_module_code'`,
+      ) as Error & {
         code: string;
         errno: number;
       };
@@ -85,8 +89,14 @@ class MemoryRepository<T extends EntityRecord> {
     return this.records.find((record) => this.matchesWhere(record, options.where)) ?? null;
   }
 
-  async find(options: { where?: EntityRecord | EntityRecord[]; order?: EntityRecord; take?: number } = {}) {
-    const whereList = Array.isArray(options.where) ? options.where : options.where ? [options.where] : undefined;
+  async find(
+    options: { where?: EntityRecord | EntityRecord[]; order?: EntityRecord; take?: number } = {},
+  ) {
+    const whereList = Array.isArray(options.where)
+      ? options.where
+      : options.where
+        ? [options.where]
+        : undefined;
     const filtered = whereList
       ? this.records.filter((record) => whereList.some((where) => this.matchesWhere(record, where)))
       : [...this.records];
@@ -136,7 +146,11 @@ class MemoryDataSource {
 
   constructor(private readonly repositories: Map<Function, MemoryRepository<EntityRecord>>) {}
 
-  async transaction<T>(callback: (manager: { getRepository: (entity: Function) => MemoryRepository<EntityRecord> }) => Promise<T>) {
+  async transaction<T>(
+    callback: (manager: {
+      getRepository: (entity: Function) => MemoryRepository<EntityRecord>;
+    }) => Promise<T>,
+  ) {
     this.transactionCalls += 1;
     return callback({
       getRepository: (entity: Function) => {
@@ -212,7 +226,9 @@ describe('SystemModuleRegistryService', () => {
     expect(dependencyRepo.records.filter((row) => row.moduleCode === 'saas_platform')).toEqual([
       expect.objectContaining({ dependsOnCode: 'core_system', required: 1 }),
     ]);
-    expect(eventRepo.records.filter((row) => row.eventType === 'install')).toHaveLength(BUILT_IN_SYSTEM_MODULES.length);
+    expect(eventRepo.records.filter((row) => row.eventType === 'install')).toHaveLength(
+      BUILT_IN_SYSTEM_MODULES.length,
+    );
     expect(dataSource.transactionCalls).toBe(2);
   });
 
@@ -224,18 +240,25 @@ describe('SystemModuleRegistryService', () => {
     moduleRepo.savedInputs = [];
     await service.registerBuiltInModules();
 
-    await expect(service.getModule('core_system')).resolves.toEqual(expect.objectContaining({ status: 'disabled' }));
+    await expect(service.getModule('core_system')).resolves.toEqual(
+      expect.objectContaining({ status: 'disabled' }),
+    );
     expect(moduleRepo.savedInputs).not.toContainEqual(
       expect.objectContaining({
         code: 'core_system',
         status: expect.any(String),
       }),
     );
-    expect(moduleRepo.updatedInputs.some((input) => Object.prototype.hasOwnProperty.call(input, 'status'))).toBe(false);
+    expect(
+      moduleRepo.updatedInputs.some((input) =>
+        Object.prototype.hasOwnProperty.call(input, 'status'),
+      ),
+    ).toBe(false);
   });
 
   it('registers plugin manifests as installed metadata only modules', async () => {
-    const { service, moduleRepo, dependencyRepo, permissionRepo, apiRepo, eventRepo } = createService();
+    const { service, moduleRepo, dependencyRepo, permissionRepo, apiRepo, eventRepo } =
+      createService();
 
     const result = await service.registerPluginManifest(
       {
@@ -331,11 +354,14 @@ describe('SystemModuleRegistryService', () => {
         version: '1.2.3',
         hooks: { onInstall: 'runInstaller' },
       }),
-    ).rejects.toThrow(new BadRequestException('Plugin hooks are metadata-only and must use reserved values'));
+    ).rejects.toThrow(
+      new BadRequestException('Plugin hooks are metadata-only and must use reserved values'),
+    );
   });
 
   it('rejects plugin manifests that reuse non-plugin module codes without replacing metadata or bindings', async () => {
-    const { service, moduleRepo, dependencyRepo, permissionRepo, apiRepo, eventRepo } = createService();
+    const { service, moduleRepo, dependencyRepo, permissionRepo, apiRepo, eventRepo } =
+      createService();
     await service.registerBuiltInModules();
 
     const beforeModule = { ...moduleRepo.records.find((record) => record.code === 'core_system') };
@@ -360,12 +386,22 @@ describe('SystemModuleRegistryService', () => {
         dependencies: [{ code: 'evil_dep', version: '*' }],
         api_endpoints: [{ method: 'POST', path: '/evil', permission_slug: 'evil:admin' }],
       }),
-    ).rejects.toThrow(new BadRequestException('Module code is already used by a non-plugin module'));
+    ).rejects.toThrow(
+      new BadRequestException('Module code is already used by a non-plugin module'),
+    );
 
-    expect(moduleRepo.records.find((record) => record.code === 'core_system')).toEqual(beforeModule);
-    expect(dependencyRepo.records.filter((record) => record.moduleCode === 'core_system')).toEqual(beforeDependencies);
-    expect(permissionRepo.records.filter((record) => record.moduleCode === 'core_system')).toEqual(beforePermissions);
-    expect(apiRepo.records.filter((record) => record.moduleCode === 'core_system')).toEqual(beforeApis);
+    expect(moduleRepo.records.find((record) => record.code === 'core_system')).toEqual(
+      beforeModule,
+    );
+    expect(dependencyRepo.records.filter((record) => record.moduleCode === 'core_system')).toEqual(
+      beforeDependencies,
+    );
+    expect(permissionRepo.records.filter((record) => record.moduleCode === 'core_system')).toEqual(
+      beforePermissions,
+    );
+    expect(apiRepo.records.filter((record) => record.moduleCode === 'core_system')).toEqual(
+      beforeApis,
+    );
     expect(eventRepo.records).toEqual(beforeEvents);
   });
 
@@ -387,7 +423,9 @@ describe('SystemModuleRegistryService', () => {
       source: 'plugin',
       version: '1.1.0',
       permissions: [{ slug: 'risk:ops:manage', bindingType: 'required' }],
-      api_endpoints: [{ method: 'POST', path: '/risk/ops/manage', permission_slug: 'risk:ops:manage' }],
+      api_endpoints: [
+        { method: 'POST', path: '/risk/ops/manage', permission_slug: 'risk:ops:manage' },
+      ],
     });
 
     expect(result).toEqual(
@@ -398,17 +436,22 @@ describe('SystemModuleRegistryService', () => {
         version: '1.1.0',
       }),
     );
-    expect(moduleRepo.records.filter((record) => record.code === 'risk_ops_plugin')).toHaveLength(1);
-    expect(permissionRepo.records.filter((record) => record.moduleCode === 'risk_ops_plugin')).toEqual([
+    expect(moduleRepo.records.filter((record) => record.code === 'risk_ops_plugin')).toHaveLength(
+      1,
+    );
+    expect(
+      permissionRepo.records.filter((record) => record.moduleCode === 'risk_ops_plugin'),
+    ).toEqual([
       expect.objectContaining({ permissionSlug: 'risk:ops:manage', bindingType: 'required' }),
     ]);
     expect(apiRepo.records.filter((record) => record.moduleCode === 'risk_ops_plugin')).toEqual([
       expect.objectContaining({ method: 'POST', path: '/risk/ops/manage' }),
     ]);
-    expect(eventRepo.records.filter((record) => record.moduleCode === 'risk_ops_plugin').map((record) => record.eventType)).toEqual([
-      'install',
-      'upgrade',
-    ]);
+    expect(
+      eventRepo.records
+        .filter((record) => record.moduleCode === 'risk_ops_plugin')
+        .map((record) => record.eventType),
+    ).toEqual(['install', 'upgrade']);
   });
 
   it('updates status transactionally and records an enable event with operator id', async () => {
@@ -569,6 +612,61 @@ describe('SystemModuleRegistryService', () => {
     ]);
   });
 
+  it('grants and revokes one explicit tenant module idempotently with audit events', async () => {
+    const { service, moduleRepo, tenantModuleRepo, eventRepo } = createService();
+    await moduleRepo.save({
+      code: 'ai_console',
+      name: 'AI Console',
+      source: 'built_in',
+      version: '1.0.0',
+      status: 'enabled',
+      configSchema: {},
+      healthStatus: 'healthy',
+      sort: 40,
+    });
+
+    await expect(
+      service.grantTenantModule(23, 'ai_console', 9, 'Enable tenant AI'),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        tenant_id: 23,
+        module_code: 'ai_console',
+        enabled: true,
+        source: 'platform',
+      }),
+    );
+    await service.grantTenantModule(23, 'ai_console', 9, 'Repeated request');
+
+    expect(tenantModuleRepo.records).toHaveLength(1);
+    expect(eventRepo.records.filter((row) => row.eventType === 'tenant_grant')).toHaveLength(1);
+    expect(eventRepo.records).toContainEqual(
+      expect.objectContaining({
+        moduleCode: 'ai_console',
+        eventType: 'tenant_grant',
+        operatorId: 9,
+        metadata: expect.objectContaining({ tenantId: 23 }),
+      }),
+    );
+
+    await expect(
+      service.revokeTenantModule(23, 'ai_console', 10, 'Tenant requested removal'),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        tenant_id: 23,
+        module_code: 'ai_console',
+        enabled: false,
+      }),
+    );
+    expect(tenantModuleRepo.records[0]).toEqual(expect.objectContaining({ enabled: 0 }));
+    expect(eventRepo.records).toContainEqual(
+      expect.objectContaining({
+        eventType: 'tenant_revoke',
+        operatorId: 10,
+        metadata: expect.objectContaining({ tenantId: 23 }),
+      }),
+    );
+  });
+
   it('marks tenant modules enabled by SaaS plan bridge entitlements', async () => {
     const { service, moduleRepo, tenantModuleRepo, saasModuleService } = createService();
     await moduleRepo.save({
@@ -606,7 +704,10 @@ describe('SystemModuleRegistryService', () => {
       source: 'manual',
       config: null,
     });
-    saasModuleService.listTenantModules.mockResolvedValue([{ code: 'ai_chat' }, { code: 'member_management' }]);
+    saasModuleService.listTenantModules.mockResolvedValue([
+      { code: 'ai_chat' },
+      { code: 'member_management' },
+    ]);
 
     const result = await service.listTenantModules(23);
 
@@ -806,7 +907,9 @@ describe('SystemModuleRegistryService', () => {
       }),
     );
     expect(bridgeRepo.records).toHaveLength(1);
-    expect(bridgeRepo.records[0]).toEqual(expect.objectContaining({ id: 88, enabled: 1, deleteTime: null }));
+    expect(bridgeRepo.records[0]).toEqual(
+      expect.objectContaining({ id: 88, enabled: 1, deleteTime: null }),
+    );
   });
 
   it('updates SaaS bridge config status by id', async () => {
@@ -828,7 +931,9 @@ describe('SystemModuleRegistryService', () => {
   it('rejects invalid lifecycle state with BadRequestException', async () => {
     const { service } = createService();
 
-    await expect(service.updateStatus('core_system', 'paused' as any)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.updateStatus('core_system', 'paused' as any)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
   });
 
   it('rejects unknown module lookups with NotFoundException', async () => {

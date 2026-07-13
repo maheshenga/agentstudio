@@ -3,10 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, IsNull, Repository } from 'typeorm';
 
 import { SaasModuleService } from '../../saas/services/saas-module.service';
-import {
-  SAAS_TO_SYSTEM_MODULE_BRIDGE,
-  SYSTEM_MODULE_STATUSES,
-} from '../constants';
+import { SAAS_TO_SYSTEM_MODULE_BRIDGE, SYSTEM_MODULE_STATUSES } from '../constants';
 import type { SystemModuleEventType, SystemModuleStatus } from '../constants';
 import { SystemModuleApiEntity } from '../entities/system-module-api.entity';
 import { SystemModuleDependencyEntity } from '../entities/system-module-dependency.entity';
@@ -120,7 +117,9 @@ export class SystemModuleRegistryService implements OnModuleInit {
   }
 
   async importManifests(manifests: SystemModuleManifest[]) {
-    return this.dataSource.transaction((manager) => this.importManifestsWithManager(manager, manifests));
+    return this.dataSource.transaction((manager) =>
+      this.importManifestsWithManager(manager, manifests),
+    );
   }
 
   private async importManifestsWithManager(
@@ -142,7 +141,9 @@ export class SystemModuleRegistryService implements OnModuleInit {
         lock: { mode: 'pessimistic_write' },
       });
       if (!existing) {
-        throw new NotFoundException(`System module ${manifest.code} not found after manifest insert`);
+        throw new NotFoundException(
+          `System module ${manifest.code} not found after manifest insert`,
+        );
       }
       options.validateExisting?.(existing, manifest);
 
@@ -156,18 +157,34 @@ export class SystemModuleRegistryService implements OnModuleInit {
       await this.replaceApis(apiRepo, manifest);
 
       if (inserted) {
-        await this.recordEvent(eventRepo, manifest.code, 'install', 'success', `Imported module ${manifest.code}`);
+        await this.recordEvent(
+          eventRepo,
+          manifest.code,
+          'install',
+          'success',
+          `Imported module ${manifest.code}`,
+        );
       } else if (manifestChanged) {
-        await this.recordEvent(eventRepo, manifest.code, 'upgrade', 'success', `Synced module ${manifest.code}`, {
-          metadata: { version: manifest.version },
-        });
+        await this.recordEvent(
+          eventRepo,
+          manifest.code,
+          'upgrade',
+          'success',
+          `Synced module ${manifest.code}`,
+          {
+            metadata: { version: manifest.version },
+          },
+        );
       }
     }
 
     return imported;
   }
 
-  private async insertManifestModule(repo: Repository<SystemModuleEntity>, manifest: SystemModuleManifest) {
+  private async insertManifestModule(
+    repo: Repository<SystemModuleEntity>,
+    manifest: SystemModuleManifest,
+  ) {
     try {
       await repo.insert(
         repo.create({
@@ -218,7 +235,9 @@ export class SystemModuleRegistryService implements OnModuleInit {
       err?.code === 'ER_DUP_ENTRY' ||
       err?.code === '23505' ||
       err?.errno === 1062 ||
-      String(err?.message || '').toLowerCase().includes('duplicate')
+      String(err?.message || '')
+        .toLowerCase()
+        .includes('duplicate')
     );
   }
 
@@ -232,7 +251,9 @@ export class SystemModuleRegistryService implements OnModuleInit {
         if (query.source && module.source !== query.source) return false;
         if (!keyword) return true;
         return [module.code, module.name, module.description, module.category].some((value) =>
-          String(value || '').toLowerCase().includes(keyword),
+          String(value || '')
+            .toLowerCase()
+            .includes(keyword),
         );
       })
       .map((module) => this.toResponse(module));
@@ -256,9 +277,115 @@ export class SystemModuleRegistryService implements OnModuleInit {
       const tenantEnabled = explicitlyEnabled || planEnabled;
       return {
         ...this.toResponse(module),
+        explicit_enabled: explicitlyEnabled,
+        plan_enabled: planEnabled,
         tenant_enabled: tenantEnabled,
-        entitlement_source: explicitlyEnabled ? tenantModule?.source || 'platform' : planEnabled ? 'plan' : null,
+        entitlement_source: explicitlyEnabled
+          ? tenantModule?.source || 'platform'
+          : planEnabled
+            ? 'plan'
+            : null,
       };
+    });
+  }
+
+  listTenantGrants(tenantId: number) {
+    return this.listTenantModules(this.assertTenantId(tenantId));
+  }
+
+  async grantTenantModule(
+    tenantIdValue: number,
+    codeValue: string,
+    operatorId?: number,
+    reason = '',
+  ) {
+    const tenantId = this.assertTenantId(tenantIdValue);
+    const code = this.requiredModuleCode(codeValue);
+    return this.dataSource.transaction(async (manager) => {
+      const moduleRepo = manager.getRepository(SystemModuleEntity);
+      const tenantModuleRepo = manager.getRepository(SystemTenantModuleEntity);
+      const eventRepo = manager.getRepository(SystemModuleEventEntity);
+      const module = await moduleRepo.findOne({
+        where: { code, deleteTime: IsNull() },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!module) throw new NotFoundException(`System module ${code} not found`);
+      if (module.status !== 'enabled') {
+        throw new BadRequestException(`System module ${code} is not enabled`);
+      }
+
+      const existing = await tenantModuleRepo.findOne({
+        where: { tenantId, moduleCode: code },
+        withDeleted: true,
+        lock: { mode: 'pessimistic_write' },
+      } as any);
+      if (existing && Number(existing.enabled) === 1 && !existing.deleteTime) {
+        return this.toTenantGrantResponse(existing);
+      }
+
+      const grant = existing || tenantModuleRepo.create({ tenantId, moduleCode: code });
+      grant.tenantId = tenantId;
+      grant.moduleCode = code;
+      grant.enabled = 1;
+      grant.source = 'platform';
+      grant.startTime = new Date();
+      grant.endTime = null;
+      grant.deleteTime = null;
+      const saved = await tenantModuleRepo.save(grant);
+      await this.recordEvent(
+        eventRepo,
+        code,
+        'tenant_grant',
+        'success',
+        this.eventReason(reason, `Granted module ${code} to tenant ${tenantId}`),
+        { operatorId, metadata: { tenantId, source: 'platform' } },
+      );
+      return this.toTenantGrantResponse(saved);
+    });
+  }
+
+  async revokeTenantModule(
+    tenantIdValue: number,
+    codeValue: string,
+    operatorId?: number,
+    reason = '',
+  ) {
+    const tenantId = this.assertTenantId(tenantIdValue);
+    const code = this.requiredModuleCode(codeValue);
+    return this.dataSource.transaction(async (manager) => {
+      const moduleRepo = manager.getRepository(SystemModuleEntity);
+      const tenantModuleRepo = manager.getRepository(SystemTenantModuleEntity);
+      const eventRepo = manager.getRepository(SystemModuleEventEntity);
+      const module = await moduleRepo.findOne({
+        where: { code, deleteTime: IsNull() },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!module) throw new NotFoundException(`System module ${code} not found`);
+
+      const grant = await tenantModuleRepo.findOne({
+        where: { tenantId, moduleCode: code },
+        withDeleted: true,
+        lock: { mode: 'pessimistic_write' },
+      } as any);
+      if (!grant || Number(grant.enabled) === 0) {
+        return this.toTenantGrantResponse(
+          grant || { tenantId, moduleCode: code, enabled: 0, source: 'platform' },
+        );
+      }
+
+      grant.enabled = 0;
+      grant.endTime = new Date();
+      grant.deleteTime = null;
+      const saved = await tenantModuleRepo.save(grant);
+      await this.recordEvent(
+        eventRepo,
+        code,
+        'tenant_revoke',
+        'success',
+        this.eventReason(reason, `Revoked module ${code} from tenant ${tenantId}`),
+        { operatorId, metadata: { tenantId, source: grant.source || 'platform' } },
+      );
+      return this.toTenantGrantResponse(saved);
     });
   }
 
@@ -268,12 +395,14 @@ export class SystemModuleRegistryService implements OnModuleInit {
       order: { saasModuleCode: 'ASC', systemModuleCode: 'ASC', id: 'ASC' },
     });
 
-    const enabledFilter = query.enabled === undefined || query.enabled === '' ? undefined : Number(query.enabled);
+    const enabledFilter =
+      query.enabled === undefined || query.enabled === '' ? undefined : Number(query.enabled);
 
     return bridgeRows
       .filter((row) => {
         if (query.saas_module_code && row.saasModuleCode !== query.saas_module_code) return false;
-        if (query.system_module_code && row.systemModuleCode !== query.system_module_code) return false;
+        if (query.system_module_code && row.systemModuleCode !== query.system_module_code)
+          return false;
         if (enabledFilter !== undefined && Number(row.enabled) !== enabledFilter) return false;
         return true;
       })
@@ -295,7 +424,8 @@ export class SystemModuleRegistryService implements OnModuleInit {
       where: { saasModuleCode, systemModuleCode },
       withDeleted: true,
     } as any);
-    const bridge = existing || this.bridgeRepo.create({ saasModuleCode, systemModuleCode, source: 'platform' });
+    const bridge =
+      existing || this.bridgeRepo.create({ saasModuleCode, systemModuleCode, source: 'platform' });
 
     bridge.saasModuleCode = saasModuleCode;
     bridge.systemModuleCode = systemModuleCode;
@@ -403,7 +533,10 @@ export class SystemModuleRegistryService implements OnModuleInit {
     }));
   }
 
-  private async replaceDependencies(repo: Repository<SystemModuleDependencyEntity>, manifest: SystemModuleManifest) {
+  private async replaceDependencies(
+    repo: Repository<SystemModuleDependencyEntity>,
+    manifest: SystemModuleManifest,
+  ) {
     await repo.delete({ moduleCode: manifest.code });
     if (!manifest.dependencies.length) return;
 
@@ -419,7 +552,10 @@ export class SystemModuleRegistryService implements OnModuleInit {
     );
   }
 
-  private async replacePermissions(repo: Repository<SystemModulePermissionEntity>, manifest: SystemModuleManifest) {
+  private async replacePermissions(
+    repo: Repository<SystemModulePermissionEntity>,
+    manifest: SystemModuleManifest,
+  ) {
     await repo.delete({ moduleCode: manifest.code });
     if (!manifest.permissions.length) return;
 
@@ -434,7 +570,10 @@ export class SystemModuleRegistryService implements OnModuleInit {
     );
   }
 
-  private async replaceApis(repo: Repository<SystemModuleApiEntity>, manifest: SystemModuleManifest) {
+  private async replaceApis(
+    repo: Repository<SystemModuleApiEntity>,
+    manifest: SystemModuleManifest,
+  ) {
     await repo.delete({ moduleCode: manifest.code });
     if (!manifest.apis.length) return;
 
@@ -488,7 +627,9 @@ export class SystemModuleRegistryService implements OnModuleInit {
       );
     }
 
-    return new Set(uniqueCodes.flatMap((saasModuleCode) => SAAS_TO_SYSTEM_MODULE_BRIDGE[saasModuleCode] || []));
+    return new Set(
+      uniqueCodes.flatMap((saasModuleCode) => SAAS_TO_SYSTEM_MODULE_BRIDGE[saasModuleCode] || []),
+    );
   }
 
   private statusToEventType(status: SystemModuleStatus): SystemModuleEventType {
@@ -566,10 +707,31 @@ export class SystemModuleRegistryService implements OnModuleInit {
     if (value && typeof value === 'object') {
       return `{${Object.keys(value as Record<string, unknown>)
         .sort()
-        .map((key) => `${JSON.stringify(key)}:${this.stableStringify((value as Record<string, unknown>)[key])}`)
+        .map(
+          (key) =>
+            `${JSON.stringify(key)}:${this.stableStringify((value as Record<string, unknown>)[key])}`,
+        )
         .join(',')}}`;
     }
     return JSON.stringify(value);
+  }
+
+  private assertTenantId(value: number) {
+    const tenantId = Number(value);
+    if (!Number.isSafeInteger(tenantId) || tenantId <= 0) {
+      throw new BadRequestException('A positive tenant id is required');
+    }
+    return tenantId;
+  }
+
+  private requiredModuleCode(value: string) {
+    const code = String(value || '').trim();
+    if (!code) throw new BadRequestException('System module code is required');
+    return code;
+  }
+
+  private eventReason(value: string, fallback: string) {
+    return (String(value || '').trim() || fallback).slice(0, 500);
   }
 
   private toResponse(module: Partial<SystemModuleEntity>) {
@@ -600,6 +762,20 @@ export class SystemModuleRegistryService implements OnModuleInit {
       enabled: Number(row.enabled) === 1,
       source: row.source || 'platform',
       remark: row.remark || '',
+      create_time: row.createTime,
+      update_time: row.updateTime,
+    };
+  }
+
+  private toTenantGrantResponse(row: Partial<SystemTenantModuleEntity>) {
+    return {
+      id: row.id,
+      tenant_id: row.tenantId,
+      module_code: row.moduleCode,
+      enabled: Number(row.enabled) === 1,
+      source: row.source || 'platform',
+      start_time: row.startTime,
+      end_time: row.endTime,
       create_time: row.createTime,
       update_time: row.updateTime,
     };

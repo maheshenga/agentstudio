@@ -7,6 +7,7 @@ import { ResultData } from '../../common/utils/result';
 import { User } from '../system/user/user.decorator';
 import type { UserDto } from '../system/user/user.decorator';
 import { PluginModuleManifestDto } from './dto/plugin-module-manifest.dto';
+import { TenantModuleGrantReasonDto } from './dto/tenant-module-grant.dto';
 import {
   SaveSystemModuleSaasBridgeDto,
   SystemModuleListQueryDto,
@@ -26,7 +27,9 @@ export class SystemModulePlatformController {
   @ApiOperation({ summary: 'List system modules' })
   @RequirePermission('system:module:list')
   listModules(@Query() query: SystemModuleListQueryDto, @User() user: UserDto) {
-    return this.runOutsideTenant(user, () => this.registry.listModules(query).then((data) => ResultData.ok(data)));
+    return this.runOutsideTenant(user, () =>
+      this.registry.listModules(query).then((data) => ResultData.ok(data)),
+    );
   }
 
   @Post('plugins/register')
@@ -65,7 +68,50 @@ export class SystemModulePlatformController {
     @User() user: UserDto,
   ) {
     return this.runOutsideTenant(user, () =>
-      this.registry.updateSaasBridgeStatus(Number(id), body.enabled, user?.userId).then((data) => ResultData.ok(data)),
+      this.registry
+        .updateSaasBridgeStatus(Number(id), body.enabled, user?.userId)
+        .then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Get('tenant-grants/:tenantId')
+  @ApiOperation({ summary: 'List system module grants for a tenant' })
+  @RequirePermission('system:module:list')
+  listTenantGrants(@Param('tenantId') tenantId: string, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () =>
+      this.registry.listTenantGrants(Number(tenantId)).then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Post('tenant-grants/:tenantId/:code/grant')
+  @ApiOperation({ summary: 'Grant a system module to a tenant' })
+  @RequirePermission('system:module:config')
+  grantTenantModule(
+    @Param('tenantId') tenantId: string,
+    @Param('code') code: string,
+    @Body() body: TenantModuleGrantReasonDto,
+    @User() user: UserDto,
+  ) {
+    return this.runOutsideTenant(user, () =>
+      this.registry
+        .grantTenantModule(Number(tenantId), code, user?.userId, body?.reason || '')
+        .then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Post('tenant-grants/:tenantId/:code/revoke')
+  @ApiOperation({ summary: 'Revoke an explicit system module grant from a tenant' })
+  @RequirePermission('system:module:config')
+  revokeTenantModule(
+    @Param('tenantId') tenantId: string,
+    @Param('code') code: string,
+    @Body() body: TenantModuleGrantReasonDto,
+    @User() user: UserDto,
+  ) {
+    return this.runOutsideTenant(user, () =>
+      this.registry
+        .revokeTenantModule(Number(tenantId), code, user?.userId, body?.reason || '')
+        .then((data) => ResultData.ok(data)),
     );
   }
 
@@ -73,15 +119,23 @@ export class SystemModulePlatformController {
   @ApiOperation({ summary: 'Get system module detail' })
   @RequirePermission('system:module:read')
   getModule(@Param('code') code: string, @User() user: UserDto) {
-    return this.runOutsideTenant(user, () => this.registry.getModule(code).then((data) => ResultData.ok(data)));
+    return this.runOutsideTenant(user, () =>
+      this.registry.getModule(code).then((data) => ResultData.ok(data)),
+    );
   }
 
   @Put(':code/status')
   @ApiOperation({ summary: 'Update system module status' })
   @RequirePermission('system:module:status')
-  updateStatus(@Param('code') code: string, @Body() body: UpdateSystemModuleStatusDto, @User() user: UserDto) {
+  updateStatus(
+    @Param('code') code: string,
+    @Body() body: UpdateSystemModuleStatusDto,
+    @User() user: UserDto,
+  ) {
     return this.runOutsideTenant(user, () =>
-      this.registry.updateStatus(code, body.status, user?.userId).then((data) => ResultData.ok(data)),
+      this.registry
+        .updateStatus(code, body.status, user?.userId)
+        .then((data) => ResultData.ok(data)),
     );
   }
 
@@ -89,7 +143,9 @@ export class SystemModulePlatformController {
   @ApiOperation({ summary: 'List system module events' })
   @RequirePermission('system:module:event')
   listEvents(@Param('code') code: string, @User() user: UserDto) {
-    return this.runOutsideTenant(user, () => this.registry.listEvents(code).then((data) => ResultData.ok(data)));
+    return this.runOutsideTenant(user, () =>
+      this.registry.listEvents(code).then((data) => ResultData.ok(data)),
+    );
   }
 
   @Post('register-built-ins')

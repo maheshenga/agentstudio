@@ -5,7 +5,9 @@
         <div class="system-modules-page__header">
           <div>
             <h1 class="system-modules-page__title">系统模块</h1>
-            <p class="system-modules-page__subtitle">管理平台内置、插件和扩展模块的安装状态与运行入口。</p>
+            <p class="system-modules-page__subtitle"
+              >管理平台内置、插件和扩展模块的安装状态与运行入口。</p
+            >
           </div>
           <ElButton type="primary" :icon="Refresh" :loading="syncing" @click="syncBuiltIns">
             同步内置模块
@@ -42,7 +44,9 @@
           <ElOption label="已安装" value="installed" />
           <ElOption label="异常" value="failed" />
         </ElSelect>
-        <ElButton type="primary" :icon="Search" :loading="loading" @click="loadModules">查询</ElButton>
+        <ElButton type="primary" :icon="Search" :loading="loading" @click="loadModules"
+          >查询</ElButton
+        >
         <ElButton @click="resetFilters">重置</ElButton>
       </div>
 
@@ -95,7 +99,9 @@
         <div class="system-modules-page__header">
           <div>
             <h2 class="system-modules-page__title">SAAS 桥接配置</h2>
-            <p class="system-modules-page__subtitle">维护商业 SAAS 模块与系统模块之间的授权映射关系。</p>
+            <p class="system-modules-page__subtitle"
+              >维护商业 SAAS 模块与系统模块之间的授权映射关系。</p
+            >
           </div>
           <ElButton type="primary" @click="openBridgeDialog()">新增桥接</ElButton>
         </div>
@@ -125,13 +131,25 @@
           <ElOption label="已启用" :value="1" />
           <ElOption label="已禁用" :value="0" />
         </ElSelect>
-        <ElButton type="primary" :icon="Search" :loading="bridgeLoading" @click="loadSaasBridges">查询</ElButton>
+        <ElButton type="primary" :icon="Search" :loading="bridgeLoading" @click="loadSaasBridges"
+          >查询</ElButton
+        >
         <ElButton @click="resetBridgeFilters">重置</ElButton>
       </div>
 
       <ElTable v-loading="bridgeLoading" :data="bridgeRecords" border>
-        <ElTableColumn prop="saas_module_code" label="SAAS 模块" min-width="160" show-overflow-tooltip />
-        <ElTableColumn prop="system_module_code" label="系统模块" min-width="160" show-overflow-tooltip />
+        <ElTableColumn
+          prop="saas_module_code"
+          label="SAAS 模块"
+          min-width="160"
+          show-overflow-tooltip
+        />
+        <ElTableColumn
+          prop="system_module_code"
+          label="系统模块"
+          min-width="160"
+          show-overflow-tooltip
+        />
         <ElTableColumn label="状态" width="110">
           <template #default="{ row }">
             <ElTag :type="row.enabled ? 'success' : 'info'" effect="light">
@@ -165,7 +183,86 @@
       </ElTable>
     </ElCard>
 
-    <ElDialog v-model="bridgeDialogVisible" :title="editingBridgeId ? '编辑桥接' : '新增桥接'" width="560px">
+    <ElCard class="art-table-card" shadow="never">
+      <template #header>
+        <div class="system-modules-page__header">
+          <div>
+            <h2 class="system-modules-page__title">租户模块授权</h2>
+            <p class="system-modules-page__subtitle">
+              管理平台显式授权；套餐授权需要通过套餐或 SaaS 桥接配置调整。
+            </p>
+          </div>
+        </div>
+      </template>
+
+      <div class="system-modules-page__filters">
+        <ElInputNumber
+          v-model="tenantGrantTenantId"
+          :min="1"
+          :precision="0"
+          controls-position="right"
+          placeholder="租户 ID"
+        />
+        <ElButton
+          type="primary"
+          :icon="Search"
+          :loading="tenantGrantLoading"
+          @click="loadTenantGrants"
+        >
+          查询授权
+        </ElButton>
+      </div>
+
+      <ElTable v-loading="tenantGrantLoading" :data="tenantGrantRecords" border>
+        <ElTableColumn prop="code" label="模块编码" min-width="160" show-overflow-tooltip />
+        <ElTableColumn prop="name" label="模块名称" min-width="160" show-overflow-tooltip />
+        <ElTableColumn label="显式授权" width="110">
+          <template #default="{ row }">
+            <ElTag :type="row.explicit_enabled ? 'success' : 'info'" effect="light">
+              {{ row.explicit_enabled ? '已授权' : '未授权' }}
+            </ElTag>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="套餐授权" width="110">
+          <template #default="{ row }">
+            <ElTag :type="row.plan_enabled ? 'success' : 'info'" effect="light">
+              {{ row.plan_enabled ? '已包含' : '未包含' }}
+            </ElTag>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="最终状态" width="110">
+          <template #default="{ row }">
+            <ElTag :type="row.tenant_enabled ? 'success' : 'warning'" effect="light">
+              {{ row.tenant_enabled ? '可用' : '不可用' }}
+            </ElTag>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn prop="entitlement_source" label="权益来源" width="120">
+          <template #default="{ row }">{{ row.entitlement_source || '-' }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="操作" fixed="right" width="130">
+          <template #default="{ row }">
+            <ElButton
+              link
+              :type="row.explicit_enabled ? 'warning' : 'primary'"
+              :loading="tenantGrantUpdatingCode === row.code"
+              @click="changeTenantGrant(row)"
+            >
+              {{ row.explicit_enabled ? '撤销授权' : '授予模块' }}
+            </ElButton>
+          </template>
+        </ElTableColumn>
+        <template #empty>
+          <ElEmpty description="请输入租户 ID 查询模块授权" />
+        </template>
+      </ElTable>
+    </ElCard>
+
+    <ElDialog
+      v-model="bridgeDialogVisible"
+      :title="editingBridgeId ? '编辑桥接' : '新增桥接'"
+      width="560px"
+    >
       <ElForm ref="bridgeFormRef" :model="bridgeForm" :rules="bridgeRules" label-width="112px">
         <ElFormItem label="SAAS 模块" prop="saas_module_code">
           <ElSelect
@@ -220,9 +317,12 @@
   import { Refresh, Search, SwitchButton, View } from '@element-plus/icons-vue'
   import { fetchPlatformModules, type SaasModuleRecord } from '@/api/saas'
   import {
+    fetchPlatformTenantModuleGrants,
     fetchSystemModuleSaasBridges,
     fetchSystemModules,
+    grantPlatformTenantModule,
     registerBuiltInSystemModules,
+    revokePlatformTenantModule,
     saveSystemModuleSaasBridge,
     updateSystemModuleSaasBridgeStatus,
     type SaveSystemModuleSaasBridgeParams,
@@ -247,12 +347,20 @@
   const bridgeFormRef = ref<FormInstance>()
   const saasModuleOptions = ref<SaasModuleRecord[]>([])
   const systemModuleOptions = ref<SystemModuleRecord[]>([])
+  const tenantGrantTenantId = ref<number>()
+  const tenantGrantRecords = ref<SystemModuleRecord[]>([])
+  const tenantGrantLoading = ref(false)
+  const tenantGrantUpdatingCode = ref('')
   const filters = reactive({
     keyword: '',
     source: '',
     status: ''
   })
-  const bridgeFilters = reactive<{ saas_module_code: string; system_module_code: string; enabled: number | '' }>({
+  const bridgeFilters = reactive<{
+    saas_module_code: string
+    system_module_code: string
+    enabled: number | ''
+  }>({
     saas_module_code: '',
     system_module_code: '',
     enabled: ''
@@ -389,6 +497,48 @@
     ])
     saasModuleOptions.value = saasModules
     systemModuleOptions.value = systemModules
+  }
+
+  async function loadTenantGrants() {
+    const tenantId = Number(tenantGrantTenantId.value || 0)
+    if (!Number.isSafeInteger(tenantId) || tenantId <= 0) {
+      ElMessage.warning('请输入有效的租户 ID')
+      return
+    }
+    tenantGrantLoading.value = true
+    try {
+      tenantGrantRecords.value = await fetchPlatformTenantModuleGrants(tenantId)
+    } finally {
+      tenantGrantLoading.value = false
+    }
+  }
+
+  async function changeTenantGrant(row: SystemModuleRecord) {
+    const tenantId = Number(tenantGrantTenantId.value || 0)
+    if (!Number.isSafeInteger(tenantId) || tenantId <= 0) return
+    const action = row.explicit_enabled ? '撤销' : '授予'
+    const { value } = await ElMessageBox.prompt(
+      `请输入${action}模块「${row.name}」的原因`,
+      `${action}租户模块`,
+      {
+        confirmButtonText: '确认',
+        cancelButtonText: '取消',
+        inputValue: `${action}租户模块 ${row.code}`,
+        inputValidator: (reason) => Boolean(String(reason || '').trim()) || '请输入操作原因'
+      }
+    )
+    tenantGrantUpdatingCode.value = row.code
+    try {
+      if (row.explicit_enabled) {
+        await revokePlatformTenantModule(tenantId, row.code, String(value || ''))
+      } else {
+        await grantPlatformTenantModule(tenantId, row.code, String(value || ''))
+      }
+      ElMessage.success(`${action}完成`)
+      await loadTenantGrants()
+    } finally {
+      tenantGrantUpdatingCode.value = ''
+    }
   }
 
   function resetBridgeForm() {
