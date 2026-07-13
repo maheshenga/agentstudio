@@ -12,7 +12,9 @@ import { AppRevenueLedgerEntity } from './entities/app-revenue-ledger.entity';
 import { AppSettlementBatchEntity } from './entities/app-settlement-batch.entity';
 import { TenantAppLicenseEntity } from './entities/tenant-app-license.entity';
 import { AppLicenseAccessService } from './services/app-license-access.service';
+import { AppOrderService } from './services/app-order.service';
 import { AppPricePlanService } from './services/app-price-plan.service';
+import { AppRevenueLedgerService } from './services/app-revenue-ledger.service';
 
 @Module({
   imports: [
@@ -28,7 +30,18 @@ import { AppPricePlanService } from './services/app-price-plan.service';
     ]),
   ],
   controllers: [AppCommercePlatformController, AppCommerceTenantController],
-  providers: [AppPricePlanService, AppLicenseAccessService],
-  exports: [TypeOrmModule, AppPricePlanService, AppLicenseAccessService],
+  providers: [
+    AppPricePlanService,
+    AppLicenseAccessService,
+    AppRevenueLedgerService,
+    AppOrderService,
+  ],
+  exports: [
+    TypeOrmModule,
+    AppPricePlanService,
+    AppLicenseAccessService,
+    AppRevenueLedgerService,
+    AppOrderService,
+  ],
 })
 export class AppCommerceModule {}

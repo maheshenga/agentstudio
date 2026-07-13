@@ -378,7 +378,7 @@ git commit -m "feat(app): manage application pricing"
 - Produces: `AppOrderService.startTrial(tenantId, userId, appCode, planCode)`
 - Produces: `AppRevenueLedgerService.recordCharge(manager, order, license)`
 
-- [ ] **Step 1: Write failing order/license/ledger tests**
+- [x] **Step 1: Write failing order/license/ledger tests**
 
 Cover:
 
@@ -395,13 +395,13 @@ it('starts one bounded trial and rejects every repeated trial attempt');
 it('never creates a paid ledger row for free, included, or trial access');
 ```
 
-- [ ] **Step 2: Run Task 3 tests to verify RED**
+- [x] **Step 2: Run Task 3 tests to verify RED**
 
 ```powershell
 pnpm.cmd run test -- app-order.service.spec.ts app-revenue-ledger.service.spec.ts app-commerce-tenant.controller.spec.ts --runInBand
 ```
 
-- [ ] **Step 3: Implement tenant order and trial endpoints**
+- [x] **Step 3: Implement tenant order and trial endpoints**
 
 Routes:
 
@@ -421,7 +421,7 @@ app:tenant:orders
 
 Order creation input contains only `price_plan_code` and `payment_method`. The saved order snapshots app name/code, pricing model, billing period, amount, currency, developer, and share basis points.
 
-- [ ] **Step 4: Implement transactional payment activation**
+- [x] **Step 4: Implement transactional payment activation**
 
 Under a pessimistic order lock:
 
@@ -433,14 +433,14 @@ Under a pessimistic order lock:
 6. insert one immutable `charge` ledger row with event key `charge:<orderNo>`;
 7. commit all changes together.
 
-- [ ] **Step 5: Run Task 3 tests and build**
+- [x] **Step 5: Run Task 3 tests and build**
 
 ```powershell
 pnpm.cmd run test -- app-order.service.spec.ts app-revenue-ledger.service.spec.ts app-commerce-tenant.controller.spec.ts --runInBand
 pnpm.cmd run build
 ```
 
-- [ ] **Step 6: Review and commit Task 3**
+- [x] **Step 6: Review and commit Task 3**
 
 ```powershell
 git add server/src/module/app-commerce
