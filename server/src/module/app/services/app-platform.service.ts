@@ -44,6 +44,16 @@ export interface AppReviewQueueQuery {
   publish_status?: AppVersionPublishStatus;
 }
 
+const APP_STATUS_TRANSITIONS: Record<AppPackageStatus, readonly AppPackageStatus[]> = {
+  draft: ['archived'],
+  pending_review: ['archived'],
+  approved: ['archived'],
+  published: ['disabled'],
+  rejected: ['archived'],
+  disabled: ['published', 'archived'],
+  archived: [],
+};
+
 @Injectable()
 export class AppPlatformService {
   constructor(
@@ -341,6 +351,13 @@ export class AppPlatformService {
       return this.toResponse(app);
     }
 
+    if (!APP_STATUS_TRANSITIONS[app.status]?.includes(status)) {
+      throw new BadRequestException(`Illegal app status transition: ${app.status} -> ${status}`);
+    }
+    if (status === 'published') {
+      await this.assertCanEnable(app);
+    }
+
     app.status = status;
     const saved = await this.appRepo.save(app);
     await this.recordAppEvent(
@@ -377,12 +394,7 @@ export class AppPlatformService {
     return this.serviceRuntimeService.getRuntimeApp(code);
   }
 
-  async rollbackServiceVersion(
-    code: string,
-    version: string,
-    reason: string,
-    operatorId: number,
-  ) {
+  async rollbackServiceVersion(code: string, version: string, reason: string, operatorId: number) {
     await this.serviceRuntimeService.rollback(code, version, reason, operatorId);
     return this.serviceRuntimeService.getRuntimeApp(code);
   }
@@ -640,9 +652,7 @@ export class AppPlatformService {
     }
 
     const requestedCapabilities = normalizeAppCapabilities(appVersion.manifest);
-    const effectiveApproval = normalizeApprovedCapabilities(
-      approvedCapabilities ?? requestedCapabilities,
-    );
+    const effectiveApproval = normalizeApprovedCapabilities(approvedCapabilities ?? []);
     const savedVersion = await this.dataSource.transaction(async (manager) => {
       appVersion.reviewStatus = 'approved';
       appVersion.reviewMessage = message || '';
@@ -819,6 +829,44 @@ export class AppPlatformService {
       },
     );
     return this.toVersionResponse(savedVersion, app.code, app.entryUrl);
+  }
+
+  private async assertCanEnable(app: AppPackageEntity) {
+    if (app.type === 'internal') {
+      this.normalizeEntryUrl('internal', app.entryUrl || '');
+      return;
+    }
+
+    if (app.type === 'service') {
+      const runtime = await this.serviceRuntimeService.getRuntimeApp(app.code);
+      const active = Array.isArray(runtime.instances)
+        ? runtime.instances.filter(
+            (instance) =>
+              instance.role === 'active' &&
+              instance.process_status === 'online' &&
+              instance.health_status === 'healthy',
+          )
+        : [];
+      if (!runtime.active_version || active.length !== 1) {
+        throw new BadRequestException(
+          'Service app requires a healthy active runtime before enabling',
+        );
+      }
+      return;
+    }
+
+    const version = await this.versionRepo.findOne({
+      where: {
+        appId: app.id,
+        reviewStatus: 'approved',
+        publishStatus: 'published',
+        deleteTime: IsNull(),
+      },
+      order: { id: 'DESC' },
+    } as any);
+    if (!version || (app.type === 'static' && !version.publishPath)) {
+      throw new BadRequestException('App requires a reviewed published version before enabling');
+    }
   }
 
   private resolveEntryMode(type: AppPackageType) {

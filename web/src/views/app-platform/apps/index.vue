@@ -120,6 +120,7 @@
               >
             </ElUpload>
             <ElButton
+              v-if="row.status === 'published' || row.status === 'disabled'"
               link
               :type="row.status === 'disabled' ? 'success' : 'warning'"
               :icon="row.status === 'disabled' ? CircleCheck : CircleClose"
@@ -324,26 +325,8 @@
           >
             <template #default="{ row }">{{ row.review_message || '-' }}</template>
           </ElTableColumn>
-          <ElTableColumn label="Actions" fixed="right" width="360">
+          <ElTableColumn label="Actions" fixed="right" width="260">
             <template #default="{ row }">
-              <ElButton
-                link
-                type="success"
-                :icon="CircleCheck"
-                :disabled="row.review_status !== 'pending'"
-                @click="reviewVersion(row.version, 'approve')"
-              >
-                Approve
-              </ElButton>
-              <ElButton
-                link
-                type="warning"
-                :icon="CircleClose"
-                :disabled="row.review_status !== 'pending'"
-                @click="reviewVersion(row.version, 'reject')"
-              >
-                Reject
-              </ElButton>
               <ElButton
                 v-if="selectedDetail.type !== 'service'"
                 link
@@ -401,12 +384,10 @@
     View
   } from '@element-plus/icons-vue'
   import {
-    approvePlatformAppVersion,
     createPlatformApp,
     fetchPlatformApp,
     fetchPlatformApps,
     publishPlatformAppVersion,
-    rejectPlatformAppVersion,
     rollbackPlatformAppVersion,
     unpublishPlatformAppVersion,
     updatePlatformApp,
@@ -753,21 +734,6 @@
     } finally {
       uploadingCode.value = ''
     }
-  }
-
-  async function reviewVersion(version: string, action: 'approve' | 'reject') {
-    if (!selectedDetail.value) return
-    const message =
-      action === 'approve' ? 'Approved from platform console' : 'Rejected from platform console'
-    if (action === 'approve') {
-      await approvePlatformAppVersion(selectedDetail.value.code, version, message)
-      ElMessage.success('Version approved')
-    } else {
-      await rejectPlatformAppVersion(selectedDetail.value.code, version, message)
-      ElMessage.success('Version rejected')
-    }
-    await refreshSelectedDetail()
-    await loadApps()
   }
 
   async function publishVersion(version: string) {

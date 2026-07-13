@@ -748,6 +748,45 @@ describe('AppPlatformService', () => {
     expect(reviewLogRepo.save).toHaveBeenCalled();
   });
 
+  it('rejects publishing a draft app through the generic status endpoint', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 3,
+      code: 'job_board',
+      name: 'Job Board',
+      type: 'static',
+      status: 'draft',
+      entryMode: 'static',
+      entryUrl: '',
+    });
+
+    await expect(service.updateStatus('job_board', 'published', 77)).rejects.toThrow(
+      'Illegal app status transition: draft -> published',
+    );
+    expect(appRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('rejects re-enabling a service app without a healthy active runtime', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 9,
+      code: 'workflow_service',
+      name: 'Workflow Service',
+      type: 'service',
+      status: 'disabled',
+      entryMode: 'service',
+      entryUrl: '',
+    });
+    serviceRuntimeService.getRuntimeApp.mockResolvedValue({
+      app_code: 'workflow_service',
+      active_version: '',
+      instances: [],
+    });
+
+    await expect(service.updateStatus('workflow_service', 'published', 77)).rejects.toThrow(
+      'Service app requires a healthy active runtime before enabling',
+    );
+    expect(appRepo.save).not.toHaveBeenCalled();
+  });
+
   it('rejects updates for unknown apps', async () => {
     appRepo.findOne.mockResolvedValue(null);
 
@@ -837,6 +876,32 @@ describe('AppPlatformService', () => {
 
     expect(versionRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({ approvedCapabilities: ['context.read'] }),
+    );
+  });
+
+  it('approves no runtime capabilities when the reviewer omits a selection', async () => {
+    appRepo.findOne.mockResolvedValue({ id: 4, code: 'job_board', status: 'pending_review' });
+    versionRepo.findOne.mockResolvedValue({
+      id: 8,
+      appId: 4,
+      version: '1.0.0',
+      reviewStatus: 'pending',
+      publishStatus: 'unpublished',
+      manifest: { permissions: ['runtime:context:read'] },
+    });
+    versionRepo.save.mockImplementation(async (value) => value);
+
+    await service.approveVersion('job_board', '1.0.0', 'Reviewed', 66);
+
+    expect(versionRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ approvedCapabilities: [] }),
+    );
+    expect(capabilityPolicy.approvePlatformCapabilities).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedCapabilities: ['context.read'],
+        approvedCapabilities: [],
+      }),
+      grantRepo,
     );
   });
 
@@ -1147,9 +1212,7 @@ describe('AppPlatformService', () => {
     versionRepo.findOne.mockResolvedValue(pendingVersion);
     certificationService.assertRuntimeApproved.mockResolvedValue({ id: 5, userId: 17 });
 
-    await service.approveVersion('workflow_service', '1.0.0', 'Verified', 88, [
-      'context.read',
-    ]);
+    await service.approveVersion('workflow_service', '1.0.0', 'Verified', 88, ['context.read']);
 
     expect(certificationService.assertRuntimeApproved).toHaveBeenCalledWith(17, 'service');
     expect(reviewSnapshotService.verify).toHaveBeenCalledWith(pendingVersion);
