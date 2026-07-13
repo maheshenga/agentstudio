@@ -5,32 +5,45 @@
         <div class="app-installed-page__header">
           <div>
             <h1 class="app-installed-page__title">Installed Apps</h1>
-            <p class="app-installed-page__subtitle">Open tenant apps or remove apps that are no longer needed.</p>
+            <p class="app-installed-page__subtitle"
+              >Open tenant apps or remove apps that are no longer needed.</p
+            >
           </div>
-          <ElButton type="primary" :icon="Refresh" :loading="loading" @click="loadInstalled">Refresh</ElButton>
+          <ElButton type="primary" :icon="Refresh" :loading="loading" @click="loadInstalled"
+            >Refresh</ElButton
+          >
         </div>
       </template>
 
       <div v-if="loadError" class="app-installed-page__load-error">
         <ElAlert type="error" :title="loadError" show-icon :closable="false" />
-        <ElButton size="small" type="primary" link :loading="loading" @click="loadInstalled">Retry</ElButton>
+        <ElButton size="small" type="primary" link :loading="loading" @click="loadInstalled"
+          >Retry</ElButton
+        >
       </div>
 
       <ElTable v-loading="loading" :data="records" border>
         <ElTableColumn label="App" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
-            <div class="app-installed-page__app-name">{{ row.app?.name || `App #${row.app_id}` }}</div>
+            <div class="app-installed-page__app-name">{{
+              row.app?.name || `App #${row.app_id}`
+            }}</div>
             <div class="app-installed-page__app-code">{{ row.app?.code || '-' }}</div>
           </template>
         </ElTableColumn>
         <ElTableColumn label="Type" width="120">
           <template #default="{ row }">
-            <ElTag :type="typeTagType(row.app?.type)" effect="light">{{ typeText(row.app?.type) }}</ElTag>
+            <ElTag :type="typeTagType(row.app?.type)" effect="light">{{
+              typeText(row.app?.type)
+            }}</ElTag>
           </template>
         </ElTableColumn>
         <ElTableColumn label="Status" width="120">
           <template #default="{ row }">
-            <ElTag :type="row.enabled && row.app?.available !== false ? 'success' : 'info'" effect="light">
+            <ElTag
+              :type="row.enabled && row.app?.available !== false ? 'success' : 'info'"
+              effect="light"
+            >
               {{ row.enabled && row.app?.available !== false ? 'Enabled' : 'Disabled' }}
             </ElTag>
           </template>
@@ -43,19 +56,41 @@
             <span v-else>{{ availabilityText(row.app?.availability_status) }}</span>
           </template>
         </ElTableColumn>
+        <ElTableColumn label="License" min-width="190">
+          <template #default="{ row }">
+            <div class="app-installed-page__license">
+              <ElTag :type="commerceTagType(row.app?.commerce?.access_status)" effect="light">
+                {{ commerceLabel(row.app?.commerce?.access_status) }}
+              </ElTag>
+              <span v-if="row.app?.commerce?.license_expires_at">
+                Expires {{ formatDateTime(row.app.commerce.license_expires_at) }}
+              </span>
+            </div>
+          </template>
+        </ElTableColumn>
         <ElTableColumn label="Source" width="130">
           <template #default="{ row }">{{ sourceText(row.source) }}</template>
         </ElTableColumn>
         <ElTableColumn label="Installed" width="170">
-          <template #default="{ row }">{{ formatDateTime(row.installed_time || row.create_time) }}</template>
+          <template #default="{ row }">{{
+            formatDateTime(row.installed_time || row.create_time)
+          }}</template>
         </ElTableColumn>
         <ElTableColumn label="Summary" min-width="260" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.app?.summary || row.app?.description || '-' }}</template>
+          <template #default="{ row }">{{
+            row.app?.summary || row.app?.description || '-'
+          }}</template>
         </ElTableColumn>
         <ElTableColumn label="Capabilities" min-width="180">
           <template #default="{ row }">
             <div v-if="row.effective_capabilities?.length" class="app-installed-page__capabilities">
-              <ElTag v-for="capability in row.effective_capabilities" :key="capability" size="small" type="success" effect="plain">
+              <ElTag
+                v-for="capability in row.effective_capabilities"
+                :key="capability"
+                size="small"
+                type="success"
+                effect="plain"
+              >
                 {{ capabilityLabel(capability) }}
               </ElTag>
             </div>
@@ -65,6 +100,22 @@
         </ElTableColumn>
         <ElTableColumn label="Actions" fixed="right" width="270">
           <template #default="{ row }">
+            <ElButton
+              v-if="row.app?.commerce_action === 'renew'"
+              link
+              type="warning"
+              @click="renewApp(row.app?.code)"
+            >
+              Renew
+            </ElButton>
+            <ElButton
+              v-else-if="row.app?.commerce_action === 'contact_admin'"
+              link
+              type="danger"
+              disabled
+            >
+              Contact administrator
+            </ElButton>
             <ElButton
               link
               type="primary"
@@ -102,7 +153,13 @@
 
     <ElDialog v-model="permissionDialogVisible" title="App permissions" width="520px">
       <div v-loading="permissionLoading" class="app-installed-page__permission-body">
-        <ElAlert v-if="permissionError" type="error" :title="permissionError" :closable="false" show-icon />
+        <ElAlert
+          v-if="permissionError"
+          type="error"
+          :title="permissionError"
+          :closable="false"
+          show-icon
+        />
         <ElAlert
           v-else-if="!permissionLoading && !platformApprovedCapabilities.length"
           type="warning"
@@ -110,14 +167,26 @@
           :closable="false"
           show-icon
         />
-        <ElCheckboxGroup v-else v-model="selectedCapabilities" class="app-installed-page__permission-options">
-          <ElCheckbox v-for="capability in platformApprovedCapabilities" :key="capability" :value="capability">
+        <ElCheckboxGroup
+          v-else
+          v-model="selectedCapabilities"
+          class="app-installed-page__permission-options"
+        >
+          <ElCheckbox
+            v-for="capability in platformApprovedCapabilities"
+            :key="capability"
+            :value="capability"
+          >
             {{ capabilityLabel(capability) }}
           </ElCheckbox>
         </ElCheckboxGroup>
       </div>
       <template #footer>
-        <ElButton :disabled="permissionSaving || permissionLoading" @click="permissionDialogVisible = false">Cancel</ElButton>
+        <ElButton
+          :disabled="permissionSaving || permissionLoading"
+          @click="permissionDialogVisible = false"
+          >Cancel</ElButton
+        >
         <ElButton
           type="danger"
           plain
@@ -151,6 +220,7 @@
     type AppPackageType,
     type TenantAppInstallRecord
   } from '@/api/app-marketplace'
+  import type { AppCommerceAccessStatus } from '@/api/app-commerce'
 
   defineOptions({ name: 'AppCenterInstalledPage' })
 
@@ -182,12 +252,21 @@
   }
 
   function typeTagType(type?: AppPackageType) {
-    const map: Record<string, 'success' | 'warning' | 'info'> = { internal: 'success', static: 'warning', iframe: 'info' }
+    const map: Record<string, 'success' | 'warning' | 'info'> = {
+      internal: 'success',
+      static: 'warning',
+      iframe: 'info'
+    }
     return type ? map[type] || 'info' : 'info'
   }
 
   function sourceText(source?: string) {
-    const map: Record<string, string> = { marketplace: 'Marketplace', plan: 'Plan', platform: 'Platform', manual: 'Manual' }
+    const map: Record<string, string> = {
+      marketplace: 'Marketplace',
+      plan: 'Plan',
+      platform: 'Platform',
+      manual: 'Manual'
+    }
     return source ? map[source] || source : '-'
   }
 
@@ -202,7 +281,30 @@
   }
 
   function isOpenDisabled(row: TenantAppInstallRecord) {
-    return row.app?.available === false || !row.enabled || !row.app?.code
+    return (
+      row.app?.available === false || row.app?.can_open === false || !row.enabled || !row.app?.code
+    )
+  }
+
+  function commerceLabel(status?: AppCommerceAccessStatus) {
+    const map: Record<string, string> = {
+      legacy_free: 'Legacy free',
+      free: 'Free',
+      included: 'Included',
+      trialing: 'Trial active',
+      licensed: 'Licensed',
+      purchase_required: 'Purchase required',
+      expired: 'Expired',
+      revoked: 'Revoked'
+    }
+    return status ? map[status] || status : 'Free'
+  }
+
+  function commerceTagType(status?: AppCommerceAccessStatus) {
+    if (status === 'expired' || status === 'purchase_required') return 'warning'
+    if (status === 'revoked') return 'danger'
+    if (status === 'licensed' || status === 'trialing' || status === 'included') return 'success'
+    return 'info'
   }
 
   function capabilityLabel(capability: string) {
@@ -232,6 +334,11 @@
   function openApp(code?: string) {
     if (!code) return
     router.push({ path: '/app-center/open', query: { code } })
+  }
+
+  function renewApp(code?: string) {
+    if (!code) return
+    router.push({ path: '/app-center/marketplace', query: { app: code } })
   }
 
   async function uninstallApp(row: TenantAppInstallRecord) {
@@ -310,9 +417,9 @@
 
   .app-installed-page__header {
     display: flex;
+    gap: 16px;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 16px;
   }
 
   .app-installed-page__title {
@@ -325,27 +432,27 @@
 
   .app-installed-page__subtitle {
     margin: 6px 0 0;
-    color: var(--el-text-color-secondary);
     font-size: 13px;
     line-height: 1.5;
+    color: var(--el-text-color-secondary);
   }
 
   .app-installed-page__load-error {
     display: flex;
-    align-items: center;
     gap: 12px;
+    align-items: center;
     margin-bottom: 16px;
   }
 
   .app-installed-page__app-name {
-    color: var(--el-text-color-primary);
     font-weight: 500;
+    color: var(--el-text-color-primary);
   }
 
   .app-installed-page__app-code {
     margin-top: 2px;
-    color: var(--el-text-color-secondary);
     font-size: 12px;
+    color: var(--el-text-color-secondary);
   }
 
   .app-installed-page__capabilities,
@@ -353,6 +460,14 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+  }
+
+  .app-installed-page__license {
+    display: grid;
+    gap: 6px;
+    justify-items: start;
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
   }
 
   .app-installed-page__permission-body {
@@ -363,7 +478,7 @@
     margin: 12px 0;
   }
 
-  @media (max-width: 640px) {
+  @media (width <= 640px) {
     .app-installed-page__header {
       display: grid;
     }

@@ -695,7 +695,7 @@ git commit -m "feat(app): settle application revenue"
 **Interfaces:**
 - Produces frontend `AppPricePlanRecord`, `TenantAppCommerceAccess`, `AppOrderRecord`, `TenantAppLicenseRecord`, `AppRevenueOverview`, and `AppSettlementRecord`.
 
-- [ ] **Step 1: Write failing menu and deterministic UI readiness tests**
+- [x] **Step 1: Write failing menu and deterministic UI readiness tests**
 
 The menu migration must create:
 
@@ -713,7 +713,7 @@ app:developer:revenue
 
 The readiness gate must fail until APIs, pages, price labels, loading/empty/error states, trial action, payment continuation, refund confirmation, and settlement state controls exist.
 
-- [ ] **Step 2: Run menu/readiness tests to verify RED**
+- [x] **Step 2: Run menu/readiness tests to verify RED**
 
 ```powershell
 cd server
@@ -722,11 +722,11 @@ cd ../web
 pnpm.cmd run verify:app-commerce-readiness
 ```
 
-- [ ] **Step 3: Implement menu grants**
+- [x] **Step 3: Implement menu grants**
 
 Grant platform commerce menus only to `admin` and `super_admin`. Grant tenant order/purchase permissions to tenant owner/admin roles, marketplace/order read to tenant members, and developer revenue only alongside the existing developer workspace roles.
 
-- [ ] **Step 4: Implement tenant conversion UI**
+- [x] **Step 4: Implement tenant conversion UI**
 
 Marketplace cards show the actual access state and the lowest applicable tenant-visible plan. Actions are deterministic:
 
@@ -741,13 +741,13 @@ pending order -> Continue payment
 
 The purchase dialog displays application, plan, billing period, amount, trial terms, and payment provider before creating the order. It never calculates totals or shares locally.
 
-- [ ] **Step 5: Implement platform and developer commerce workspaces**
+- [x] **Step 5: Implement platform and developer commerce workspaces**
 
 The platform page uses tabs for Price Plans, Orders, Licenses, Revenue, and Settlements. Use compact tables, dialogs for mutations, explicit confirmation for refund/revoke/paid transitions, and loading/empty/error/retry states.
 
 The developer page shows owned gross, refunds, developer amount, unsettled amount, and settlement history without tenant-sensitive details.
 
-- [ ] **Step 6: Run Task 7 frontend and migration gates**
+- [x] **Step 6: Run Task 7 frontend and migration gates**
 
 ```powershell
 cd server
@@ -759,7 +759,7 @@ pnpm.cmd run verify:app-runtime-readiness
 pnpm.cmd run build
 ```
 
-- [ ] **Step 7: Review and commit Task 7**
+- [x] **Step 7: Review and commit Task 7**
 
 ```powershell
 git add server/src/migrations/1760000000045-SeedAppCommercializationMenus.ts server/src/migration-specs/seed-app-commercialization-menus.spec.ts web/src/api web/src/views/app-center web/src/views/app-platform/commercial web/scripts web/package.json

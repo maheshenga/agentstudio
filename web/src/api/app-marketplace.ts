@@ -1,5 +1,6 @@
 import request from '@/utils/http'
 import type { AppRuntimeBootstrap } from '@/utils/app-runtime'
+import type { AppCommerceAction, TenantAppCommerceAccess } from '@/api/app-commerce'
 
 export type AppPackageType = 'internal' | 'static' | 'iframe' | 'service'
 export type AppRuntimeType = 'static' | 'iframe' | 'service' | 'native'
@@ -98,6 +99,10 @@ export interface AppPackageRecord {
   remark?: string
   create_time?: string | Date | null
   update_time?: string | Date | null
+  commerce?: TenantAppCommerceAccess
+  can_install?: boolean
+  can_open?: boolean
+  commerce_action?: AppCommerceAction
 }
 
 export interface AppPackageVersionRecord {
@@ -209,6 +214,10 @@ export interface TenantMarketplaceAppRecord extends AppPackageRecord {
   platform_approved_capabilities: string[]
   tenant_approved_capabilities: string[]
   effective_capabilities: string[]
+  commerce: TenantAppCommerceAccess
+  can_install: boolean
+  can_open: boolean
+  commerce_action: AppCommerceAction
 }
 
 export interface TenantAppInstallRecord {

@@ -30,6 +30,7 @@
     "verify:app-developer-readiness": "tsx scripts/verify-app-developer-readiness.ts",
     "verify:app-developer-service-readiness": "tsx scripts/verify-app-developer-service-readiness.ts",
     "verify:app-analytics-readiness": "tsx scripts/verify-app-analytics-readiness.ts",
+    "verify:app-commerce-readiness": "tsx scripts/verify-app-commerce-readiness.ts",
     "verify:app-runtime-readiness": "tsx scripts/verify-app-runtime-readiness.ts",
     "verify:app-runtime-sdk": "pnpm --filter @agentstudio/app-runtime-sdk verify",
     "build:app-runtime-starter": "pnpm --filter @agentstudio/app-runtime-sdk build && tsx scripts/build-runtime-starter.ts",
