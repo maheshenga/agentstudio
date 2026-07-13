@@ -134,6 +134,46 @@ async function verifySignupPage(page: Page) {
   assert(hasSubmit, 'SaaS signup page must render submit button')
 }
 
+async function verifyLoginInitialState(context: BrowserContext) {
+  const page = await context.newPage()
+  const pageErrors: string[] = []
+  const consoleWarnings: string[] = []
+
+  page.on('pageerror', (error) => pageErrors.push(error.message))
+  page.on('console', (message) => {
+    if (message.type() === 'warning') {
+      consoleWarnings.push(message.text())
+    }
+  })
+
+  try {
+    await page.goto(`${baseUrl}/#/auth/login`, { waitUntil: 'domcontentloaded' })
+    await assertHealthyPage(page, 'Login page')
+    await page.waitForTimeout(2_200)
+
+    const visibleWelcomeDialogs = await page.locator('.welcome-dialog:visible').count()
+    const visibleValidationErrors = await page
+      .locator('.login-form .el-form-item__error:visible')
+      .count()
+
+    assert(visibleWelcomeDialogs === 0, 'login page must not show the debug welcome dialog')
+    assert(
+      visibleValidationErrors === 0,
+      `untouched login form must not show validation errors, got ${visibleValidationErrors}`
+    )
+    assert(
+      pageErrors.length === 0,
+      `login page must not emit page errors: ${pageErrors.join('; ')}`
+    )
+    assert(
+      consoleWarnings.length === 0,
+      `login page must not emit console warnings: ${consoleWarnings.join('; ')}`
+    )
+  } finally {
+    await page.close()
+  }
+}
+
 async function verifyProtectedRedirect(page: Page, routePath: string) {
   await page.goto(`${baseUrl}/#${routePath}`, { waitUntil: 'domcontentloaded' })
   await page.waitForURL(
@@ -172,6 +212,8 @@ async function runBrowserSmoke() {
     browser = await chromium.launch({ headless: true })
     const context = await browser.newContext()
     await mockBackendApis(context)
+
+    await verifyLoginInitialState(context)
 
     const page = await context.newPage()
     page.on('pageerror', (error) => pageErrors.push(error.message))

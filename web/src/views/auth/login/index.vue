@@ -31,6 +31,7 @@
             ref="formRef"
             :model="formData"
             :rules="rules"
+            :validate-on-rule-change="false"
             :key="formKey"
             @keyup.enter="handleSubmit"
             class="login-form"
@@ -214,7 +215,7 @@
   }))
 
   const loading = ref(false)
-  const homeDebugEnabled = import.meta.env.VITE_HOME_DEGBUG === 'true'
+  const homeDebugEnabled = import.meta.env.DEV && import.meta.env.VITE_HOME_DEGBUG === 'true'
   const welcomeDialogVisible = ref(false)
   let welcomeDialogTimer: ReturnType<typeof setTimeout> | undefined
   const TENANT_LOOKUP_DEBOUNCE_MS = 400
