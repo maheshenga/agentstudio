@@ -42,6 +42,7 @@ export class AppOpenLogEntity {
     | 'license_required'
     | 'license_expired'
     | 'license_revoked'
+    | 'service_not_openable'
     | 'published_version_missing'
     | 'open_metadata_error';
 

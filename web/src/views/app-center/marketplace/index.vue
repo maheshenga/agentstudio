@@ -122,16 +122,34 @@
               Upgrade
             </ElButton>
             <ElButton
+              v-else-if="
+                row.type === 'service' && row.installed && row.service_status === 'update_required'
+              "
+              link
+              type="warning"
+              :loading="operatingCode === row.code"
+              @click="installApp(row)"
+            >
+              Update service
+            </ElButton>
+            <ElButton
               v-else-if="!row.installed"
               link
               type="primary"
               :icon="ShoppingCart"
-              :disabled="!row.available"
+              :disabled="!row.can_install"
               :loading="operatingCode === row.code"
               @click="installApp(row)"
             >
               Install
             </ElButton>
+            <ElTag
+              v-else-if="row.type === 'service'"
+              :type="row.service_callable ? 'success' : 'info'"
+              effect="light"
+            >
+              {{ row.service_callable ? 'Service ready' : 'Service unavailable' }}
+            </ElTag>
             <ElButton
               v-else
               link

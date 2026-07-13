@@ -8,6 +8,7 @@ import { AppCapabilityGrantEntity } from '../entities/app-capability-grant.entit
 import { AppOpenLogEntity } from '../entities/app-open-log.entity';
 import { AppPackageEntity } from '../entities/app-package.entity';
 import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
+import { AppServiceInstanceEntity } from '../entities/app-service-instance.entity';
 import { TenantAppInstallEntity } from '../entities/tenant-app-install.entity';
 import { AppRuntimeContextService } from './app-runtime-context.service';
 import { AppRuntimeSessionService } from './app-runtime-session.service';
@@ -25,6 +26,10 @@ describe('AppTenantService', () => {
     findOne: jest.fn(),
   };
   const versionRepo = {
+    find: jest.fn(),
+    findOne: jest.fn(),
+  };
+  const instanceRepo = {
     find: jest.fn(),
     findOne: jest.fn(),
   };
@@ -83,6 +88,8 @@ describe('AppTenantService', () => {
     jest.clearAllMocks();
     installRepo.create.mockImplementation((value) => ({ ...value }));
     versionRepo.find.mockResolvedValue([]);
+    instanceRepo.find.mockResolvedValue([]);
+    instanceRepo.findOne.mockResolvedValue(null);
     installRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 1, ...value }));
     openLogRepo.create.mockImplementation((value) => ({ ...value }));
     openLogRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 1, ...value }));
@@ -145,6 +152,7 @@ describe('AppTenantService', () => {
         AppTenantService,
         { provide: getRepositoryToken(AppPackageEntity), useValue: appRepo },
         { provide: getRepositoryToken(AppPackageVersionEntity), useValue: versionRepo },
+        { provide: getRepositoryToken(AppServiceInstanceEntity), useValue: instanceRepo },
         { provide: getRepositoryToken(TenantAppInstallEntity), useValue: installRepo },
         { provide: getRepositoryToken(AppOpenLogEntity), useValue: openLogRepo },
         { provide: SaasModuleService, useValue: saasModuleService },
@@ -416,6 +424,145 @@ describe('AppTenantService', () => {
         installedTime: expect.any(Date),
       }),
     );
+  });
+
+  it('installs a service app with its active healthy published version', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 3,
+      code: 'workflow_service',
+      type: 'service',
+      runtimeType: 'service',
+      status: 'published',
+      visibility: 'platform',
+    });
+    instanceRepo.findOne.mockResolvedValue({
+      id: 31,
+      appId: 3,
+      versionId: 19,
+      role: 'active',
+      processStatus: 'online',
+      healthStatus: 'healthy',
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 19,
+      appId: 3,
+      version: '1.0.0',
+      reviewStatus: 'approved',
+      publishStatus: 'published',
+    });
+    installRepo.findOne.mockResolvedValue(null);
+
+    await expect(service.installApp(23, 'workflow_service', 7)).resolves.toMatchObject({
+      tenant_id: 23,
+      app_id: 3,
+      version_id: 19,
+      enabled: true,
+    });
+
+    expect(instanceRepo.findOne).toHaveBeenCalledWith({
+      where: {
+        appId: 3,
+        role: 'active',
+        processStatus: 'online',
+        healthStatus: 'healthy',
+      },
+    });
+  });
+
+  it('rejects service installation when no healthy active release exists', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 3,
+      code: 'workflow_service',
+      type: 'service',
+      runtimeType: 'service',
+      status: 'published',
+      visibility: 'platform',
+    });
+    instanceRepo.findOne.mockResolvedValue(null);
+
+    await expect(service.installApp(23, 'workflow_service', 7)).rejects.toThrow(
+      'Service app has no healthy active version',
+    );
+    expect(installRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('reports service readiness without advertising an iframe open action', async () => {
+    appRepo.find.mockResolvedValue([
+      {
+        id: 3,
+        code: 'workflow_service',
+        name: 'Workflow Service',
+        type: 'service',
+        runtimeType: 'service',
+        status: 'published',
+        visibility: 'platform',
+      },
+    ]);
+    installRepo.find.mockResolvedValue([
+      { id: 30, tenantId: 23, appId: 3, versionId: 19, enabled: 1 },
+    ]);
+    instanceRepo.find.mockResolvedValue([
+      {
+        id: 31,
+        appId: 3,
+        versionId: 19,
+        role: 'active',
+        processStatus: 'online',
+        healthStatus: 'healthy',
+      },
+    ]);
+    versionRepo.find.mockResolvedValue([
+      {
+        id: 19,
+        appId: 3,
+        version: '1.0.0',
+        reviewStatus: 'approved',
+        publishStatus: 'published',
+        manifest: { capabilities: [] },
+      },
+    ]);
+
+    await expect(service.listMarketplace(23)).resolves.toEqual([
+      expect.objectContaining({
+        code: 'workflow_service',
+        installed: true,
+        can_open: false,
+        service_status: 'ready',
+        service_version: '1.0.0',
+        service_callable: true,
+      }),
+    ]);
+  });
+
+  it('rejects direct opening of an installed service app with a stable audit reason', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 3,
+      code: 'workflow_service',
+      name: 'Workflow Service',
+      type: 'service',
+      runtimeType: 'service',
+      status: 'published',
+      visibility: 'platform',
+    });
+    installRepo.findOne.mockResolvedValue({
+      id: 30,
+      tenantId: 23,
+      appId: 3,
+      versionId: 19,
+      enabled: 1,
+    });
+
+    await expect(service.getOpenMetadata(23, 'workflow_service', 7)).rejects.toThrow(
+      'Service apps cannot be opened directly',
+    );
+    expect(openLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appCode: 'workflow_service',
+        reasonCode: 'service_not_openable',
+        outcome: 'failed',
+      }),
+    );
+    expect(appRuntimeContextService.buildBootstrap).not.toHaveBeenCalled();
   });
 
   it('installs and records first tenant capability consent in one transaction', async () => {
@@ -1298,7 +1445,10 @@ describe('AppTenantService', () => {
     installRepo.find.mockResolvedValue([{ tenantId: 23, appId: 1, enabled: 1 }]);
     appLicenseAccessService.getAccessStates.mockResolvedValue(
       new Map([
-        [1, commerceAccess({ commerce_enabled: true, access_status: 'legacy_free', action: 'open' })],
+        [
+          1,
+          commerceAccess({ commerce_enabled: true, access_status: 'legacy_free', action: 'open' }),
+        ],
         [
           2,
           commerceAccess({
@@ -1365,31 +1515,34 @@ describe('AppTenantService', () => {
   it.each([
     ['expired', 'license_expired', 'Application license has expired'],
     ['revoked', 'license_revoked', 'Application license is inactive'],
-  ])('blocks open for an %s license with a stable audit reason', async (status, reasonCode, message) => {
-    appRepo.findOne.mockResolvedValue({
-      id: 7,
-      code: 'paid_tool',
-      name: 'Paid Tool',
-      type: 'internal',
-      status: 'published',
-      visibility: 'marketplace',
-    });
-    installRepo.findOne.mockResolvedValue({ id: 5, tenantId: 23, appId: 7, enabled: 1 });
-    appLicenseAccessService.getAccessState.mockResolvedValue(
-      commerceAccess({
-        commerce_enabled: true,
-        access_status: status,
-        can_install: false,
-        can_open: false,
-        action: status === 'expired' ? 'renew' : 'contact_admin',
-      }),
-    );
+  ])(
+    'blocks open for an %s license with a stable audit reason',
+    async (status, reasonCode, message) => {
+      appRepo.findOne.mockResolvedValue({
+        id: 7,
+        code: 'paid_tool',
+        name: 'Paid Tool',
+        type: 'internal',
+        status: 'published',
+        visibility: 'marketplace',
+      });
+      installRepo.findOne.mockResolvedValue({ id: 5, tenantId: 23, appId: 7, enabled: 1 });
+      appLicenseAccessService.getAccessState.mockResolvedValue(
+        commerceAccess({
+          commerce_enabled: true,
+          access_status: status,
+          can_install: false,
+          can_open: false,
+          action: status === 'expired' ? 'renew' : 'contact_admin',
+        }),
+      );
 
-    await expect(service.getOpenMetadata(23, 'paid_tool', 7)).rejects.toThrow(message);
-    expect(openLogRepo.create).toHaveBeenCalledWith(
-      expect.objectContaining({ reasonCode, failureMessage: message }),
-    );
-  });
+      await expect(service.getOpenMetadata(23, 'paid_tool', 7)).rejects.toThrow(message);
+      expect(openLogRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ reasonCode, failureMessage: message }),
+      );
+    },
+  );
 
   it('allows included access while the matching subscription remains active', async () => {
     appRepo.findOne.mockResolvedValue({

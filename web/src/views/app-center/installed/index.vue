@@ -117,6 +117,7 @@
               Contact administrator
             </ElButton>
             <ElButton
+              v-if="row.app?.type !== 'service'"
               link
               type="primary"
               :icon="Link"
@@ -125,6 +126,15 @@
             >
               Open
             </ElButton>
+            <ElTag v-else :type="row.app?.service_callable ? 'success' : 'warning'" effect="light">
+              {{
+                row.app?.service_callable
+                  ? 'Callable'
+                  : row.app?.service_status === 'update_required'
+                    ? 'Update required'
+                    : 'Unavailable'
+              }}
+            </ElTag>
             <ElButton
               link
               type="primary"
@@ -247,7 +257,12 @@
   })
 
   function typeText(type?: AppPackageType) {
-    const map: Record<string, string> = { internal: 'Internal', static: 'Static', iframe: 'Iframe' }
+    const map: Record<string, string> = {
+      internal: 'Internal',
+      static: 'Static',
+      iframe: 'Iframe',
+      service: 'Service'
+    }
     return type ? map[type] || type : '-'
   }
 

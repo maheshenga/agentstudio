@@ -103,6 +103,9 @@ export interface AppPackageRecord {
   can_install?: boolean
   can_open?: boolean
   commerce_action?: AppCommerceAction
+  service_status?: 'ready' | 'update_required' | 'unavailable'
+  service_version?: string
+  service_callable?: boolean
 }
 
 export interface AppPackageVersionRecord {
