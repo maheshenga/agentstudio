@@ -609,7 +609,7 @@ git commit -m "feat(app): enforce application licenses"
 - Produces: `AppSettlementService.approveBatch(id, operatorId, note)`
 - Produces: `AppSettlementService.markPaid(id, operatorId, paymentReference)`
 
-- [ ] **Step 1: Write failing refund, revenue, and settlement tests**
+- [x] **Step 1: Write failing refund, revenue, and settlement tests**
 
 Cover:
 
@@ -625,13 +625,13 @@ it('allows draft to approved to paid and rejects every backward transition');
 it('requires a bounded payment reference but performs no automated payout');
 ```
 
-- [ ] **Step 2: Run Task 6 tests to verify RED**
+- [x] **Step 2: Run Task 6 tests to verify RED**
 
 ```powershell
 pnpm.cmd run test -- app-order.service.spec.ts app-revenue-ledger.service.spec.ts app-settlement.service.spec.ts app-commerce-platform.controller.spec.ts app-commerce-developer.controller.spec.ts --runInBand
 ```
 
-- [ ] **Step 3: Implement platform refund and revenue endpoints**
+- [x] **Step 3: Implement platform refund and revenue endpoints**
 
 Routes:
 
@@ -645,7 +645,7 @@ GET  /api/app-platform/commerce/revenue
 
 Refund is a recorded full refund only after the operator confirms the provider-side result. No provider credentials or raw callback payload is accepted or stored.
 
-- [ ] **Step 4: Implement developer revenue and manual settlement endpoints**
+- [x] **Step 4: Implement developer revenue and manual settlement endpoints**
 
 Routes:
 
@@ -661,14 +661,14 @@ POST /api/app-platform/commerce/settlements/:id/cancel
 
 Developer responses contain owned app code/name, period, gross/refund/developer amounts, order count, and batch status only. They contain no tenant contact details, provider identifiers, payment keys, or other developers' rows.
 
-- [ ] **Step 5: Run Task 6 tests and build**
+- [x] **Step 5: Run Task 6 tests and build**
 
 ```powershell
 pnpm.cmd run test -- app-order.service.spec.ts app-revenue-ledger.service.spec.ts app-settlement.service.spec.ts app-commerce-platform.controller.spec.ts app-commerce-developer.controller.spec.ts --runInBand
 pnpm.cmd run build
 ```
 
-- [ ] **Step 6: Review and commit Task 6**
+- [x] **Step 6: Review and commit Task 6**
 
 ```powershell
 git add server/src/module/app-commerce

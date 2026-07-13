@@ -1,6 +1,16 @@
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsInt, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class CreateAppOrderDto {
   @ApiProperty({ required: true })
@@ -51,4 +61,79 @@ export class AppOrderListQueryDto {
   @IsOptional()
   @IsIn(['pending', 'paid', 'refunded', 'closed'])
   status?: 'pending' | 'paid' | 'refunded' | 'closed';
+
+  @ApiProperty({ required: false, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  tenant_id?: number;
+
+  @ApiProperty({ required: false, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  developer_id?: number;
+}
+
+export class AppLicenseListQueryDto {
+  @ApiProperty({ required: false, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiProperty({ required: false, minimum: 1, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @ApiProperty({ required: false, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  tenant_id?: number;
+
+  @ApiProperty({ required: false, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  app_id?: number;
+
+  @ApiProperty({
+    required: false,
+    enum: ['active', 'trialing', 'expired', 'revoked', 'refunded'],
+  })
+  @IsOptional()
+  @IsIn(['active', 'trialing', 'expired', 'revoked', 'refunded'])
+  status?: 'active' | 'trialing' | 'expired' | 'revoked' | 'refunded';
+}
+
+export class RecordAppRefundDto {
+  @ApiProperty({ required: true, minLength: 3, maxLength: 255 })
+  @IsString()
+  @MinLength(3)
+  @MaxLength(255)
+  reason: string;
+
+  @ApiProperty({ required: true, minLength: 1, maxLength: 100 })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  provider_reference: string;
+}
+
+export class RevokeAppLicenseDto {
+  @ApiProperty({ required: true, minLength: 3, maxLength: 255 })
+  @IsString()
+  @MinLength(3)
+  @MaxLength(255)
+  reason: string;
 }

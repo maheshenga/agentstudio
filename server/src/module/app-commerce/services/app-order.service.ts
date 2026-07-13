@@ -4,7 +4,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, FindOptionsWhere, In, Repository } from 'typeorm';
 
 import type { AppPackageEntity } from '../../app/entities/app-package.entity';
-import type { AppOrderListQueryDto, CreateAppOrderDto } from '../dto/app-order.dto';
+import type {
+  AppLicenseListQueryDto,
+  AppOrderListQueryDto,
+  CreateAppOrderDto,
+} from '../dto/app-order.dto';
 import { AppOrderEntity } from '../entities/app-order.entity';
 import type { AppPricePlanEntity } from '../entities/app-price-plan.entity';
 import { TenantAppLicenseEntity } from '../entities/tenant-app-license.entity';
@@ -174,6 +178,118 @@ export class AppOrderService {
     return { list: list.map((order) => this.toResponse(order)), total, page, limit };
   }
 
+  async listPlatformOrders(query: AppOrderListQueryDto = {}) {
+    const page = Math.max(1, Number(query.page || 1));
+    const limit = Math.min(100, Math.max(1, Number(query.limit || 20)));
+    const where: FindOptionsWhere<AppOrderEntity> = {};
+    if (query.order_no) where.orderNo = String(query.order_no).trim();
+    if (query.app_code) where.appCode = String(query.app_code).trim().toLowerCase();
+    if (query.status) where.status = query.status;
+    if (query.tenant_id) where.tenantId = Number(query.tenant_id);
+    if (query.developer_id) where.developerId = Number(query.developer_id);
+    const [list, total] = await this.orderRepo.findAndCount({
+      where,
+      order: { createTime: 'DESC', id: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+    return { list: list.map((order) => this.toResponse(order)), total, page, limit };
+  }
+
+  async listPlatformLicenses(query: AppLicenseListQueryDto = {}) {
+    const page = Math.max(1, Number(query.page || 1));
+    const limit = Math.min(100, Math.max(1, Number(query.limit || 20)));
+    const where: FindOptionsWhere<TenantAppLicenseEntity> = {};
+    if (query.tenant_id) where.tenantId = Number(query.tenant_id);
+    if (query.app_id) where.appId = Number(query.app_id);
+    if (query.status) where.status = query.status;
+    const [list, total] = await this.licenseRepo.findAndCount({
+      where,
+      order: { createTime: 'DESC', id: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+    return { list: list.map((license) => this.toLicenseResponse(license)), total, page, limit };
+  }
+
+  async recordFullRefund(
+    orderNo: string,
+    operatorId: number,
+    reason: string,
+    providerReference: string,
+  ): Promise<AppOrderEntity> {
+    this.assertCommerceEnabled();
+    this.requirePositiveId(operatorId, 'Operator');
+    const normalizedOrderNo = this.normalizeRequiredText(orderNo, 32, 'Application order number');
+    const normalizedReason = this.normalizeRequiredText(reason, 255, 'Refund reason');
+    const normalizedReference = this.normalizeRequiredText(
+      providerReference,
+      100,
+      'Refund reference',
+    );
+    return this.dataSource.transaction(async (manager) => {
+      const orderRepo = manager.getRepository(AppOrderEntity);
+      const licenseRepo = manager.getRepository(TenantAppLicenseEntity);
+      const order = await orderRepo.findOne({
+        where: { orderNo: normalizedOrderNo },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!order) throw new NotFoundException('Application order not found');
+      if (order.status === 'refunded') return order;
+      if (order.status !== 'paid') {
+        throw new BadRequestException('Only paid application orders can be refunded');
+      }
+      const license = await licenseRepo.findOne({
+        where: { orderId: Number(order.id) },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!license || license.source !== 'order') {
+        throw new BadRequestException('Application order license is unavailable');
+      }
+
+      const refundedAt = new Date();
+      license.status = 'refunded';
+      license.expiresAt = refundedAt;
+      license.revokedAt = refundedAt;
+      license.revokeReason = normalizedReason;
+      await licenseRepo.save(license);
+
+      order.status = 'refunded';
+      order.refundedAt = refundedAt;
+      order.refundedBy = Number(operatorId);
+      order.refundReason = normalizedReason;
+      order.refundReference = normalizedReference;
+      const savedOrder = await orderRepo.save(order);
+      await this.revenueLedgerService.recordRefund(manager, savedOrder, license);
+      return savedOrder;
+    });
+  }
+
+  async revokeLicense(licenseId: number, operatorId: number, reason: string) {
+    this.assertCommerceEnabled();
+    this.requirePositiveId(licenseId, 'License');
+    this.requirePositiveId(operatorId, 'Operator');
+    const normalizedReason = this.normalizeRequiredText(reason, 255, 'License revoke reason');
+    return this.dataSource.transaction(async (manager) => {
+      const licenseRepo = manager.getRepository(TenantAppLicenseEntity);
+      const license = await licenseRepo.findOne({
+        where: { id: Number(licenseId) },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!license) throw new NotFoundException('Application license not found');
+      if (license.status === 'revoked') return license;
+      if (license.status !== 'active' && license.status !== 'trialing') {
+        throw new BadRequestException('Only current application licenses can be revoked');
+      }
+      const revokedAt = new Date();
+      license.status = 'revoked';
+      license.revokedAt = revokedAt;
+      license.expiresAt = revokedAt;
+      license.revokeReason = normalizedReason;
+      return licenseRepo.save(license);
+    });
+  }
+
   async markTenantPaymentRequested(
     tenantId: number,
     orderNo: string,
@@ -218,6 +334,7 @@ export class AppOrderService {
   toLicenseResponse(license: Partial<TenantAppLicenseEntity>) {
     return {
       id: license.id,
+      tenant_id: license.tenantId,
       app_id: license.appId,
       price_plan_id: license.pricePlanId ?? null,
       order_id: license.orderId ?? null,
@@ -414,6 +531,14 @@ export class AppOrderService {
     const normalized = String(value || '').trim();
     if (!normalized || normalized.length > 64) {
       throw new BadRequestException('Application payment trade number is invalid');
+    }
+    return normalized;
+  }
+
+  private normalizeRequiredText(value: string, maxLength: number, label: string) {
+    const normalized = String(value || '').trim();
+    if (!normalized || normalized.length > maxLength) {
+      throw new BadRequestException(`${label} is invalid`);
     }
     return normalized;
   }

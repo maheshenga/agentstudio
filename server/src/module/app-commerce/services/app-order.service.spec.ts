@@ -28,7 +28,7 @@ describe('AppOrderService', () => {
   };
   const licenseRepo = { findOne: jest.fn() };
   const dataSource = { transaction: jest.fn() };
-  const revenueLedgerService = { recordCharge: jest.fn() };
+  const revenueLedgerService = { recordCharge: jest.fn(), recordRefund: jest.fn() };
   const manager = { getRepository: jest.fn() };
   const txOrderRepo = { findOne: jest.fn(), save: jest.fn() };
   const txLicenseRepo = { create: jest.fn(), findOne: jest.fn(), save: jest.fn() };
@@ -307,6 +307,100 @@ describe('AppOrderService', () => {
       { tenantId: 23, orderNo: 'AO20260713000000001000001', status: 'pending' },
       { paymentRequestedAt: requestedAt },
     );
+  });
+
+  it('records one full refund and revokes the order-backed current license in one transaction', async () => {
+    const refundedAt = new Date('2026-07-13T12:00:00.000Z');
+    jest.useFakeTimers().setSystemTime(refundedAt);
+    const paidOrder = createOrder({ status: 'paid', paidAt: new Date('2026-07-01T00:00:00.000Z') });
+    const activeLicense = createLicense({
+      id: 41,
+      orderId: paidOrder.id,
+      status: 'active',
+      expiresAt: new Date('2026-08-01T00:00:00.000Z'),
+    });
+    txOrderRepo.findOne.mockResolvedValue(paidOrder);
+    txLicenseRepo.findOne.mockResolvedValue(activeLicense);
+
+    const result = await service.recordFullRefund(
+      paidOrder.orderNo,
+      9,
+      'Provider refund confirmed',
+      'REFUND-20260713-1',
+    );
+
+    expect(txOrderRepo.findOne).toHaveBeenCalledWith({
+      where: { orderNo: paidOrder.orderNo },
+      lock: { mode: 'pessimistic_write' },
+    });
+    expect(txLicenseRepo.findOne).toHaveBeenCalledWith({
+      where: { orderId: paidOrder.id },
+      lock: { mode: 'pessimistic_write' },
+    });
+    expect(activeLicense).toMatchObject({
+      status: 'refunded',
+      expiresAt: refundedAt,
+      revokedAt: refundedAt,
+      revokeReason: 'Provider refund confirmed',
+    });
+    expect(result).toMatchObject({
+      status: 'refunded',
+      refundedAt,
+      refundedBy: 9,
+      refundReason: 'Provider refund confirmed',
+      refundReference: 'REFUND-20260713-1',
+    });
+    expect(revenueLedgerService.recordRefund).toHaveBeenCalledWith(
+      manager,
+      expect.objectContaining({ status: 'refunded' }),
+      expect.objectContaining({ status: 'refunded' }),
+    );
+  });
+
+  it('returns the existing refunded state for duplicate refund recording', async () => {
+    const refundedOrder = createOrder({
+      status: 'refunded',
+      refundedAt: new Date('2026-07-13T12:00:00.000Z'),
+      refundedBy: 9,
+      refundReason: 'Provider refund confirmed',
+      refundReference: 'REFUND-20260713-1',
+    });
+    txOrderRepo.findOne.mockResolvedValue(refundedOrder);
+
+    await expect(
+      service.recordFullRefund(
+        refundedOrder.orderNo,
+        10,
+        'Duplicate operator request',
+        'REFUND-20260713-2',
+      ),
+    ).resolves.toBe(refundedOrder);
+
+    expect(txLicenseRepo.findOne).not.toHaveBeenCalled();
+    expect(txOrderRepo.save).not.toHaveBeenCalled();
+    expect(txLicenseRepo.save).not.toHaveBeenCalled();
+    expect(revenueLedgerService.recordRefund).not.toHaveBeenCalled();
+  });
+
+  it('revokes a current license without rewriting its original creator', async () => {
+    const activeLicense = createLicense({
+      id: 41,
+      orderId: 31,
+      status: 'active',
+      createdBy: null,
+      expiresAt: new Date('2026-08-01T00:00:00.000Z'),
+    });
+    txLicenseRepo.findOne.mockResolvedValue(activeLicense);
+
+    const result = await service.revokeLicense(41, 9, 'Platform policy revocation');
+
+    expect(result).toMatchObject({
+      status: 'revoked',
+      revokeReason: 'Platform policy revocation',
+      createdBy: null,
+    });
+    expect(result.revokedAt).toBeInstanceOf(Date);
+    expect(result.expiresAt).toEqual(result.revokedAt);
   });
 });
 

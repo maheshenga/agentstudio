@@ -1,12 +1,31 @@
 import { TenantContext } from '../../common/tenant/tenant.context';
 import { AppCommercePlatformController } from './app-commerce-platform.controller';
+import { AppOrderService } from './services/app-order.service';
 import { AppPricePlanService } from './services/app-price-plan.service';
+import { AppRevenueLedgerService } from './services/app-revenue-ledger.service';
+import { AppSettlementService } from './services/app-settlement.service';
 
 describe('AppCommercePlatformController', () => {
   const pricePlanService = {
     listPlatformPlans: jest.fn(),
     savePlan: jest.fn(),
     updateStatus: jest.fn(),
+  };
+  const orderService = {
+    listPlatformOrders: jest.fn(),
+    listPlatformLicenses: jest.fn(),
+    recordFullRefund: jest.fn(),
+    revokeLicense: jest.fn(),
+    toResponse: jest.fn((value) => value),
+    toLicenseResponse: jest.fn((value) => value),
+  };
+  const revenueLedgerService = { getPlatformOverview: jest.fn() };
+  const settlementService = {
+    listPlatformSettlements: jest.fn(),
+    createBatch: jest.fn(),
+    approveBatch: jest.fn(),
+    markPaid: jest.fn(),
+    cancelBatch: jest.fn(),
   };
   let controller: AppCommercePlatformController;
 
@@ -15,8 +34,21 @@ describe('AppCommercePlatformController', () => {
     jest.spyOn(TenantContext, 'run').mockImplementation((_, callback) => callback() as any);
     pricePlanService.savePlan.mockResolvedValue({ code: 'pro_monthly' });
     pricePlanService.updateStatus.mockResolvedValue({ code: 'pro_monthly', status: 0 });
+    orderService.listPlatformOrders.mockResolvedValue({ list: [], total: 0 });
+    orderService.listPlatformLicenses.mockResolvedValue({ list: [], total: 0 });
+    orderService.recordFullRefund.mockResolvedValue({ orderNo: 'AO1', status: 'refunded' });
+    orderService.revokeLicense.mockResolvedValue({ id: 41, status: 'revoked' });
+    revenueLedgerService.getPlatformOverview.mockResolvedValue({ totals: {}, apps: [] });
+    settlementService.listPlatformSettlements.mockResolvedValue({ list: [], total: 0 });
+    settlementService.createBatch.mockResolvedValue({ id: 51, status: 'draft' });
+    settlementService.approveBatch.mockResolvedValue({ id: 51, status: 'approved' });
+    settlementService.markPaid.mockResolvedValue({ id: 51, status: 'paid' });
+    settlementService.cancelBatch.mockResolvedValue({ id: 51, status: 'cancelled' });
     controller = new AppCommercePlatformController(
       pricePlanService as unknown as AppPricePlanService,
+      orderService as unknown as AppOrderService,
+      revenueLedgerService as unknown as AppRevenueLedgerService,
+      settlementService as unknown as AppSettlementService,
     );
   });
 
@@ -79,5 +111,49 @@ describe('AppCommercePlatformController', () => {
       0,
       9,
     );
+  });
+
+  it('records a full refund only with the authenticated platform operator and bounded fields', async () => {
+    await controller.refundOrder(
+      'AO20260713000000001000001',
+      { reason: 'Provider refund confirmed', provider_reference: 'REFUND-1' },
+      { userId: 9 } as any,
+    );
+
+    expect(orderService.recordFullRefund).toHaveBeenCalledWith(
+      'AO20260713000000001000001',
+      9,
+      'Provider refund confirmed',
+      'REFUND-1',
+    );
+    expect(Reflect.getMetadata('requirePermission', controller.refundOrder)).toEqual([
+      'app:commerce:manage',
+    ]);
+  });
+
+  it('exposes platform order, license, revenue, and settlement operations outside tenant scope', async () => {
+    await controller.listOrders({}, { userId: 9 } as any);
+    await controller.listLicenses({}, { userId: 9 } as any);
+    await controller.getRevenue({}, { userId: 9 } as any);
+    await controller.listSettlements({}, { userId: 9 } as any);
+    await controller.revokeLicense(41, { reason: 'Policy revocation' }, { userId: 9 } as any);
+    await controller.createSettlement({ developer_id: 17, period: '2026-06' }, { userId: 9 } as any);
+    await controller.approveSettlement(51, { note: 'Reviewed' }, { userId: 9 } as any);
+    await controller.markSettlementPaid(
+      51,
+      { payment_reference: 'BANK-20260713-1' },
+      { userId: 9 } as any,
+    );
+
+    expect(orderService.revokeLicense).toHaveBeenCalledWith(41, 9, 'Policy revocation');
+    expect(settlementService.createBatch).toHaveBeenCalledWith(17, '2026-06', 9);
+    expect(settlementService.approveBatch).toHaveBeenCalledWith(51, 9, 'Reviewed');
+    expect(settlementService.markPaid).toHaveBeenCalledWith(51, 9, 'BANK-20260713-1');
+    expect(Reflect.getMetadata('requirePermission', controller.listOrders)).toEqual([
+      'app:commerce:view',
+    ]);
+    expect(Reflect.getMetadata('requirePermission', controller.createSettlement)).toEqual([
+      'app:settlement:manage',
+    ]);
   });
 });

@@ -5,6 +5,7 @@ import { AppPackageEntity } from '../app/entities/app-package.entity';
 import { SaasPlanEntity } from '../saas/entities/saas-plan.entity';
 import { SaasSubscriptionEntity } from '../saas/entities/saas-subscription.entity';
 import { AppCommercePlatformController } from './app-commerce-platform.controller';
+import { AppCommerceDeveloperController } from './app-commerce-developer.controller';
 import { AppCommerceTenantController } from './app-commerce-tenant.controller';
 import { AppOrderEntity } from './entities/app-order.entity';
 import { AppPricePlanEntity } from './entities/app-price-plan.entity';
@@ -15,6 +16,7 @@ import { AppLicenseAccessService } from './services/app-license-access.service';
 import { AppOrderService } from './services/app-order.service';
 import { AppPricePlanService } from './services/app-price-plan.service';
 import { AppRevenueLedgerService } from './services/app-revenue-ledger.service';
+import { AppSettlementService } from './services/app-settlement.service';
 
 @Module({
   imports: [
@@ -29,12 +31,17 @@ import { AppRevenueLedgerService } from './services/app-revenue-ledger.service';
       SaasPlanEntity,
     ]),
   ],
-  controllers: [AppCommercePlatformController, AppCommerceTenantController],
+  controllers: [
+    AppCommercePlatformController,
+    AppCommerceTenantController,
+    AppCommerceDeveloperController,
+  ],
   providers: [
     AppPricePlanService,
     AppLicenseAccessService,
     AppRevenueLedgerService,
     AppOrderService,
+    AppSettlementService,
   ],
   exports: [
     TypeOrmModule,
@@ -42,6 +49,7 @@ import { AppRevenueLedgerService } from './services/app-revenue-ledger.service';
     AppLicenseAccessService,
     AppRevenueLedgerService,
     AppOrderService,
+    AppSettlementService,
   ],
 })
 export class AppCommerceModule {}
