@@ -164,6 +164,9 @@ importers:
       mime-types:
         specifier: ^3.0.2
         version: 3.0.2
+      multer:
+        specifier: 2.1.1
+        version: 2.1.1
       mysql2:
         specifier: ^3.22.5
         version: 3.22.5(@types/node@25.9.4)
