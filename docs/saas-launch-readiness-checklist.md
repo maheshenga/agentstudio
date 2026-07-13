@@ -531,6 +531,48 @@ Current local environment evidence on 2026-07-12:
 - The required `APP_RUNTIME_E2E_*` database, seeded platform identity, isolated Redis, HTTP, webhook, and redirect fixture variables are not configured in this worktree session.
 - The live E2E was therefore not started. No database name, credential, Redis DB, or public upstream was guessed, and no shared resource was touched.
 
+## P11 Certified Developer Service Verification - 2026-07-13
+
+Deterministic gate:
+
+```powershell
+cd server
+pnpm.cmd run verify:app-developer-service-live-e2e-contract
+pnpm.cmd exec jest app-developer-service-entities.spec.ts create-certified-developer-service-runtime.spec.ts app-developer-certification.service.spec.ts app-developer-profile.controller.spec.ts app-developer-certification.controller.spec.ts seed-certified-developer-service-menus.spec.ts app-review-snapshot.service.spec.ts app-developer.service.spec.ts app-developer.controller.spec.ts app-platform.service.spec.ts app-service-package.service.spec.ts app-service-runtime.service.spec.ts app-service-platform.controller.spec.ts app-service-invocation-policy.service.spec.ts app-runtime.constants.spec.ts app-runtime.controller.spec.ts app-service-loopback.transport.spec.ts --runInBand
+pnpm.cmd run build
+
+cd ../web
+pnpm.cmd run verify:app-developer-readiness
+pnpm.cmd run verify:app-service-runtime-readiness
+pnpm.cmd run verify:app-developer-service-readiness
+pnpm.cmd run verify:app-runtime-sdk
+pnpm.cmd run verify:app-runtime-readiness
+pnpm.cmd run build
+
+cd ..
+node scripts/run-saas-readiness.cjs
+git diff --check
+```
+
+The contract verifies Linux-only execution, disposable MySQL and isolated Redis ownership, a non-root runtime user, runtime and PM2 paths outside the repository and production roots, initially disabled feature flags, two distinct platform reviewers, a distinct certified developer, immutable service submission snapshots, independent candidate review, same-tenant invocation, undeclared/foreign-tenant/foreign-developer denial, disabled/expired certification denial, quota and circuit rejection, P10 administrator-service compatibility, payload-free metrics, bounded redacted logs, signal cleanup, and zero owned PM2/release/database/Redis residue.
+
+Run the live gate only from Linux with the protected environment names documented in [app-developer-service-runtime-baota.md](deployment/app-developer-service-runtime-baota.md):
+
+```powershell
+cd server
+pnpm.cmd run verify:app-developer-service-live-e2e
+```
+
+The gate refuses Windows/macOS, Redis DB `0`, a non-empty Redis logical database, production-like database names, root runtime users, shared or non-empty PM2 state, runtime paths inside the repository or production roots, and missing isolation variables. It does not use `sudo`, shell mode, dependency installers, lifecycle scripts, request-provided commands, or credential output.
+
+Keep `APP_DEVELOPER_SERVICE_ENABLED` disabled in production until migrations, two-reviewer readiness, the P10/P9 regression gates, host firewall rules, candidate health, tenant install/consent, seven-day retention, circuit visibility, rollback readiness, and a 15-minute observation window are complete.
+
+Current local environment evidence on 2026-07-13:
+
+- The P11 live script parses and exits before resource creation when the required `APP_DEVELOPER_SERVICE_E2E_*` isolation variables are absent.
+- This Windows worktree is not a valid live environment; no database, Redis DB, PM2 home, runtime directory, reviewer credential, or tenant identity was guessed.
+- A green disposable Linux run remains required before production enablement.
+
 ## Known Out-of-Scope Items
 
 - Invoice functionality is intentionally excluded.
