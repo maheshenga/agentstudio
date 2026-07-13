@@ -279,7 +279,7 @@ interface TenantAppCommerceAccess {
 }
 ```
 
-- [ ] **Step 1: Write failing pricing and access tests**
+- [x] **Step 1: Write failing pricing and access tests**
 
 Cover:
 
@@ -296,7 +296,7 @@ it('rejects paid plans without explicit developer_share_bps');
 it('rejects duplicate active price-plan codes per application');
 ```
 
-- [ ] **Step 2: Run pricing/access tests to verify RED**
+- [x] **Step 2: Run pricing/access tests to verify RED**
 
 ```powershell
 pnpm.cmd run test -- app-price-plan.service.spec.ts app-license-access.service.spec.ts app-commerce-platform.controller.spec.ts app-commerce-tenant.controller.spec.ts --runInBand
@@ -304,7 +304,7 @@ pnpm.cmd run test -- app-price-plan.service.spec.ts app-license-access.service.s
 
 Expected: FAIL because services and controllers do not exist.
 
-- [ ] **Step 3: Implement price validation and platform CRUD**
+- [x] **Step 3: Implement price validation and platform CRUD**
 
 Platform routes:
 
@@ -324,7 +324,7 @@ app:commerce:manage
 
 Normalize plan codes to `^[a-z][a-z0-9_]{2,49}$`, deduplicate included SaaS plan codes and tenant IDs, and return integer cents only.
 
-- [ ] **Step 4: Implement tenant access evaluation**
+- [x] **Step 4: Implement tenant access evaluation**
 
 Tenant route:
 
@@ -342,14 +342,14 @@ Evaluation order:
 6. historical expired/refunded/revoked license -> actionable state;
 7. otherwise -> `purchase_required`.
 
-- [ ] **Step 5: Run Task 2 tests and build**
+- [x] **Step 5: Run Task 2 tests and build**
 
 ```powershell
 pnpm.cmd run test -- app-price-plan.service.spec.ts app-license-access.service.spec.ts app-commerce-platform.controller.spec.ts app-commerce-tenant.controller.spec.ts --runInBand
 pnpm.cmd run build
 ```
 
-- [ ] **Step 6: Review and commit Task 2**
+- [x] **Step 6: Review and commit Task 2**
 
 ```powershell
 git add server/src/module/app-commerce
