@@ -61,7 +61,9 @@ describe('AppPricePlanService', () => {
     const plans = await service.listTenantPlans(7, 23);
 
     expect(planRepo.find).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { appId: 7, status: 1 } }),
+      expect.objectContaining({
+        where: expect.objectContaining({ appId: expect.any(Object), status: 1 }),
+      }),
     );
     expect(plans.map((plan) => plan.code)).toEqual(['free_all', 'tenant_pro']);
     expect(plans[1]).toMatchObject({
@@ -74,6 +76,35 @@ describe('AppPricePlanService', () => {
     expect(plans[1]).not.toHaveProperty('tenant_ids');
     expect(plans[1]).not.toHaveProperty('included_plan_codes');
     expect(plans[1]).not.toHaveProperty('status');
+  });
+
+  it('loads applicable plans for many apps in one bounded repository query', async () => {
+    planRepo.find.mockResolvedValue([
+      createPlan({ appId: 7, code: 'free_all' }),
+      createPlan({
+        id: 2,
+        appId: 8,
+        code: 'tenant_paid',
+        pricingModel: 'subscription',
+        billingPeriod: 'monthly',
+        amountCents: 9900,
+        developerShareBps: 7000,
+        saleScope: 'selected_tenants',
+        tenantIds: [23],
+      }),
+      createPlan({ id: 3, appId: 8, code: 'other_tenant', saleScope: 'selected_tenants', tenantIds: [99] }),
+    ]);
+
+    const plansByAppId = await service.listApplicablePlansForApps([7, 8], 23);
+
+    expect(planRepo.find).toHaveBeenCalledTimes(1);
+    expect(planRepo.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ appId: expect.any(Object), status: 1 }),
+      }),
+    );
+    expect(plansByAppId.get(7)?.map((plan) => plan.code)).toEqual(['free_all']);
+    expect(plansByAppId.get(8)?.map((plan) => plan.code)).toEqual(['tenant_paid']);
   });
 
   it('rejects free or included plans with a non-zero amount or developer share', async () => {

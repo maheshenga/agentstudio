@@ -16,6 +16,7 @@ describe('AppLicenseAccessService', () => {
   const configService = { get: jest.fn() };
   const pricePlanService = {
     listApplicablePlans: jest.fn(),
+    listApplicablePlansForApps: jest.fn(),
     toTenantVisiblePlans: jest.fn(),
   };
   const licenseRepo = { find: jest.fn() };
@@ -31,6 +32,7 @@ describe('AppLicenseAccessService', () => {
       key === 'appMarketplace.commerce.enabled' ? true : fallback,
     );
     pricePlanService.listApplicablePlans.mockResolvedValue([]);
+    pricePlanService.listApplicablePlansForApps.mockResolvedValue(new Map());
     pricePlanService.toTenantVisiblePlans.mockImplementation((plans: AppPricePlanEntity[]) =>
       plans.map((plan) => ({
         id: plan.id,
@@ -95,6 +97,64 @@ describe('AppLicenseAccessService', () => {
       can_open: true,
       action: 'install',
     });
+  });
+
+  it('loads marketplace commerce state with bounded plan and license queries', async () => {
+    const freePlan = createPlan({ appId: 7, pricingModel: 'free' });
+    const paidPlan = createPlan({ id: 2, appId: 8, code: 'paid_monthly' });
+    pricePlanService.listApplicablePlansForApps.mockResolvedValue(
+      new Map([
+        [7, [freePlan]],
+        [8, [paidPlan]],
+      ]),
+    );
+    licenseRepo.find.mockResolvedValue([
+      createLicense({
+        id: 2,
+        appId: 8,
+        status: 'active',
+        expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+      }),
+    ]);
+
+    const states = await service.getAccessStates(23, [
+      { id: 7, code: 'free_tool', installed: false },
+      { id: 8, code: 'paid_tool', installed: true },
+    ]);
+
+    expect(states.get(7)).toMatchObject({ access_status: 'free', action: 'install' });
+    expect(states.get(8)).toMatchObject({ access_status: 'licensed', action: 'open' });
+    expect(pricePlanService.listApplicablePlansForApps).toHaveBeenCalledTimes(1);
+    expect(licenseRepo.find).toHaveBeenCalledTimes(1);
+    expect(subscriptionRepo.findOne).not.toHaveBeenCalled();
+  });
+
+  it('keeps bulk included access only while the matching SaaS subscription is active', async () => {
+    const includedPlan = createPlan({
+      appId: 7,
+      pricingModel: 'included',
+      includedPlanCodes: ['pro'],
+      amountCents: 0,
+      developerShareBps: 0,
+    });
+    pricePlanService.listApplicablePlansForApps.mockResolvedValue(
+      new Map([[7, [includedPlan]]]),
+    );
+    subscriptionRepo.findOne.mockResolvedValue({ tenantId: 23, planId: 5, status: 'active' });
+    saasPlanRepo.findOne.mockResolvedValue({ id: 5, code: 'pro', status: 1 });
+
+    await expect(
+      service.getAccessStates(23, [{ id: 7, code: 'included_tool', installed: true }]),
+    ).resolves.toEqual(
+      new Map([[7, expect.objectContaining({ access_status: 'included', action: 'open' })]]),
+    );
+
+    subscriptionRepo.findOne.mockResolvedValue(null);
+    await expect(
+      service.getAccessStates(23, [{ id: 7, code: 'included_tool', installed: true }]),
+    ).resolves.toEqual(
+      new Map([[7, expect.objectContaining({ access_status: 'purchase_required' })]]),
+    );
   });
 
   it('returns included access only for an active matching SaaS subscription plan code', async () => {

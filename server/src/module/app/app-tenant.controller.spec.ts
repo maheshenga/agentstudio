@@ -7,7 +7,7 @@ jest.mock('../../common/utils/tenant.util', () => ({
 }));
 
 describe('AppTenantController iframe exchange', () => {
-  const service = { exchangeIframeLaunch: jest.fn() };
+  const service = { exchangeIframeLaunch: jest.fn(), listMarketplace: jest.fn() };
   const mockedGetTenantId = getTenantId as jest.MockedFunction<typeof getTenantId>;
   let controller: AppTenantController;
 
@@ -20,6 +20,15 @@ describe('AppTenantController iframe exchange', () => {
       expires_at: '2026-07-12T08:00:00.000Z',
       capabilities: ['context.read'],
     });
+    service.listMarketplace.mockResolvedValue([
+      {
+        code: 'paid_tool',
+        commerce: { access_status: 'purchase_required' },
+        can_install: false,
+        can_open: false,
+        commerce_action: 'purchase',
+      },
+    ]);
   });
 
   it('uses JWT tenant and user identity and remains protected by the platform guard', async () => {
@@ -47,5 +56,18 @@ describe('AppTenantController iframe exchange', () => {
       controller.exchangeIframeLaunch({ launch_token: 'signed-launch-token' }, {} as any),
     ).resolves.toMatchObject({ code: 401 });
     expect(service.exchangeIframeLaunch).not.toHaveBeenCalled();
+  });
+
+  it('returns actionable commerce state from the tenant marketplace', async () => {
+    await expect(controller.marketplace()).resolves.toMatchObject({
+      data: [
+        {
+          code: 'paid_tool',
+          commerce: { access_status: 'purchase_required' },
+          commerce_action: 'purchase',
+        },
+      ],
+    });
+    expect(service.listMarketplace).toHaveBeenCalledWith(23);
   });
 });

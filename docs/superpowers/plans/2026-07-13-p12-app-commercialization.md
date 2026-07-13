@@ -529,7 +529,7 @@ git commit -m "feat(app): accept application payments"
 - Produces marketplace fields: `commerce`, `can_install`, `can_open`, `commerce_action`
 - Adds open denial reasons: `license_required`, `license_expired`, `license_revoked`
 
-- [ ] **Step 1: Write failing authority tests**
+- [x] **Step 1: Write failing authority tests**
 
 Cover:
 
@@ -545,17 +545,17 @@ it('does not revoke a paid license when the tenant uninstalls the app');
 it('returns an actionable commerce state instead of Tenant has not enabled this module');
 ```
 
-- [ ] **Step 2: Run authority tests to verify RED**
+- [x] **Step 2: Run authority tests to verify RED**
 
 ```powershell
 pnpm.cmd run test -- app-tenant.service.spec.ts app-runtime-session.service.spec.ts app-service-invocation-policy.service.spec.ts app-tenant.controller.spec.ts --runInBand
 ```
 
-- [ ] **Step 3: Add commerce state to marketplace and installed responses**
+- [x] **Step 3: Add commerce state to marketplace and installed responses**
 
 Load price/access state in bounded batches. Do not run one price/license/subscription query per application. The service may add one query per table and build maps by app ID and tenant ID.
 
-- [ ] **Step 4: Enforce access at every authority transition**
+- [x] **Step 4: Enforce access at every authority transition**
 
 Call the access service:
 
@@ -567,7 +567,7 @@ Call the access service:
 
 Use stable generic denial messages and store only bounded reason codes in open/runtime audit rows.
 
-- [ ] **Step 5: Run Task 5 tests and readiness gates**
+- [x] **Step 5: Run Task 5 tests and readiness gates**
 
 ```powershell
 pnpm.cmd run test -- app-tenant.service.spec.ts app-runtime-session.service.spec.ts app-service-invocation-policy.service.spec.ts app-tenant.controller.spec.ts --runInBand
@@ -576,7 +576,7 @@ pnpm.cmd run verify:app-developer-service-readiness
 pnpm.cmd run build
 ```
 
-- [ ] **Step 6: Review and commit Task 5**
+- [x] **Step 6: Review and commit Task 5**
 
 ```powershell
 git add server/src/module/app

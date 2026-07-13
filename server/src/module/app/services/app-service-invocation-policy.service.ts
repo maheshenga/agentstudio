@@ -13,6 +13,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, LessThan, Repository } from 'typeorm';
 
 import { RedisService } from '../../../redis/redis.service';
+import { AppLicenseAccessService } from '../../app-commerce/services/app-license-access.service';
 import { SaasModuleService } from '../../saas/services/saas-module.service';
 import { SystemModuleAccessService } from '../../system-module/services/system-module-access.service';
 import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
@@ -55,6 +56,7 @@ export class AppServiceInvocationPolicyService {
     private readonly configService: ConfigService,
     private readonly saasModuleService: SaasModuleService,
     private readonly systemModuleAccessService: SystemModuleAccessService,
+    private readonly appLicenseAccessService: AppLicenseAccessService,
     private readonly runtimeService: AppServiceRuntimeService,
   ) {}
 
@@ -383,6 +385,11 @@ export class AppServiceInvocationPolicyService {
 
   private async hasCurrentEntitlement(tenantId: number, app: AppPackageEntity) {
     try {
+      const commerce = await this.appLicenseAccessService.getAccessState(tenantId, {
+        ...app,
+        installed: true,
+      });
+      if (!commerce.can_open) return false;
       if (app.saasModuleCode) {
         await this.saasModuleService.assertTenantModuleEnabled(tenantId, app.saasModuleCode);
       }

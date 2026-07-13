@@ -70,27 +70,100 @@ export class AppLicenseAccessService {
 
     const plans = await this.pricePlanService.listApplicablePlans(Number(app.id), Number(tenantId));
     const tenantPlans = this.pricePlanService.toTenantVisiblePlans(plans);
+    if (plans.length === 0 || plans.some((plan) => plan.pricingModel === 'free')) {
+      return this.evaluateAccess(plans, [], null, installed, tenantPlans);
+    }
+    const currentSaasPlanCode = plans.some((plan) => plan.pricingModel === 'included')
+      ? await this.getCurrentSaasPlanCode(tenantId)
+      : null;
+    if (this.matchesIncludedPlan(plans, currentSaasPlanCode)) {
+      return this.evaluateAccess(plans, [], currentSaasPlanCode, installed, tenantPlans);
+    }
+    const licenses = await this.loadLicenses(tenantId, [Number(app.id)]);
+    return this.evaluateAccess(plans, licenses, currentSaasPlanCode, installed, tenantPlans);
+  }
+
+  async getAccessStates(
+    tenantId: number,
+    apps: AppCommerceSubject[],
+  ): Promise<Map<number, TenantAppCommerceAccess>> {
+    const subjects = [...new Map((apps || []).map((app) => [Number(app.id), app])).values()]
+      .filter((app) => Number.isInteger(Number(app.id)) && Number(app.id) > 0);
+    if (subjects.length === 0) return new Map();
+    if (!this.configService.get<boolean>('appMarketplace.commerce.enabled', false)) {
+      return new Map(
+        subjects.map((app) => [
+          Number(app.id),
+          this.entitledAccess('legacy_free', Boolean(app.installed), [], null, false),
+        ]),
+      );
+    }
+
+    const plansByAppId = await this.pricePlanService.listApplicablePlansForApps(
+      subjects.map((app) => Number(app.id)),
+      Number(tenantId),
+    );
+    const hasIncludedPlans = [...plansByAppId.values()].some((plans) =>
+      plans.some((plan) => plan.pricingModel === 'included'),
+    );
+    const currentSaasPlanCode = hasIncludedPlans
+      ? await this.getCurrentSaasPlanCode(tenantId)
+      : null;
+    const licensedAppIds = subjects
+      .filter((app) => {
+        const plans = plansByAppId.get(Number(app.id)) || [];
+        return (
+          plans.length > 0 &&
+          !plans.some((plan) => plan.pricingModel === 'free') &&
+          !this.matchesIncludedPlan(plans, currentSaasPlanCode)
+        );
+      })
+      .map((app) => Number(app.id));
+    const licenses = licensedAppIds.length
+      ? await this.loadLicenses(tenantId, licensedAppIds)
+      : [];
+    const licensesByAppId = new Map<number, TenantAppLicenseEntity[]>();
+    for (const license of licenses) {
+      const appLicenses = licensesByAppId.get(Number(license.appId)) || [];
+      appLicenses.push(license);
+      licensesByAppId.set(Number(license.appId), appLicenses);
+    }
+
+    return new Map(
+      subjects.map((app) => {
+        const appId = Number(app.id);
+        const plans = plansByAppId.get(appId) || [];
+        return [
+          appId,
+          this.evaluateAccess(
+            plans,
+            licensesByAppId.get(appId) || [],
+            currentSaasPlanCode,
+            Boolean(app.installed),
+            this.pricePlanService.toTenantVisiblePlans(plans),
+          ),
+        ];
+      }),
+    );
+  }
+
+  private evaluateAccess(
+    plans: AppPricePlanEntity[],
+    licenses: TenantAppLicenseEntity[],
+    currentSaasPlanCode: string | null,
+    installed: boolean,
+    tenantPlans: TenantVisibleAppPricePlan[],
+  ): TenantAppCommerceAccess {
     if (plans.length === 0) {
       return this.entitledAccess('legacy_free', installed, tenantPlans);
     }
-
     if (plans.some((plan) => plan.pricingModel === 'free')) {
       return this.entitledAccess('free', installed, tenantPlans);
     }
-
-    const includedPlans = plans.filter((plan) => plan.pricingModel === 'included');
-    if (includedPlans.length > 0 && (await this.hasIncludedSubscription(tenantId, includedPlans))) {
+    if (this.matchesIncludedPlan(plans, currentSaasPlanCode)) {
       return this.entitledAccess('included', installed, tenantPlans);
     }
 
-    const licenses = await this.licenseRepo.find({
-      where: {
-        tenantId: Number(tenantId),
-        appId: Number(app.id),
-        status: In(['active', 'trialing', 'expired', 'revoked', 'refunded']),
-      },
-      order: { createTime: 'DESC', id: 'DESC' },
-    });
     const now = new Date();
     const current = licenses.find((license) => this.isCurrentLicense(license, now));
     if (current) {
@@ -130,7 +203,7 @@ export class AppLicenseAccessService {
     );
   }
 
-  private async hasIncludedSubscription(tenantId: number, plans: AppPricePlanEntity[]) {
+  private async getCurrentSaasPlanCode(tenantId: number): Promise<string | null> {
     const now = new Date();
     const subscription = await this.subscriptionRepo.findOne({
       where: [
@@ -149,19 +222,32 @@ export class AppLicenseAccessService {
       ],
       order: { createTime: 'DESC', id: 'DESC' },
     });
-    if (!subscription) return false;
+    if (!subscription) return null;
 
     const saasPlan = await this.saasPlanRepo.findOne({
       where: { id: Number(subscription.planId), status: 1 },
     });
-    if (!saasPlan?.code) return false;
+    return saasPlan?.code ? String(saasPlan.code).trim().toLowerCase() : null;
+  }
 
-    const currentCode = String(saasPlan.code).trim().toLowerCase();
+  private matchesIncludedPlan(plans: AppPricePlanEntity[], currentCode: string | null) {
+    if (!currentCode) return false;
     return plans.some((plan) =>
       (plan.includedPlanCodes || []).some(
         (code) => String(code).trim().toLowerCase() === currentCode,
       ),
     );
+  }
+
+  private loadLicenses(tenantId: number, appIds: number[]) {
+    return this.licenseRepo.find({
+      where: {
+        tenantId: Number(tenantId),
+        appId: In(appIds),
+        status: In(['active', 'trialing', 'expired', 'revoked', 'refunded']),
+      },
+      order: { createTime: 'DESC', id: 'DESC' },
+    });
   }
 
   private isCurrentLicense(license: TenantAppLicenseEntity, now: Date) {

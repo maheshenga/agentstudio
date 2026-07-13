@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
+import { AppLicenseAccessService } from '../../app-commerce/services/app-license-access.service';
 import { AppCapabilityGrantEntity } from '../entities/app-capability-grant.entity';
 import { AppOpenLogEntity } from '../entities/app-open-log.entity';
 import { AppPackageEntity } from '../entities/app-package.entity';
@@ -43,6 +44,10 @@ describe('AppTenantService', () => {
   const systemModuleAccessService = {
     diagnoseModuleAccess: jest.fn(),
     assertModuleAccess: jest.fn(),
+  };
+  const appLicenseAccessService = {
+    getAccessState: jest.fn(),
+    getAccessStates: jest.fn(),
   };
   const appRuntimeContextService = {
     buildBootstrap: jest.fn(),
@@ -96,6 +101,22 @@ describe('AppTenantService', () => {
       suggestions: [],
     });
     systemModuleAccessService.assertModuleAccess.mockResolvedValue(true);
+    appLicenseAccessService.getAccessState.mockResolvedValue(
+      commerceAccess({ commerce_enabled: false, access_status: 'legacy_free' }),
+    );
+    appLicenseAccessService.getAccessStates.mockImplementation(
+      async (_tenantId: number, apps: Array<{ id: number; installed?: boolean }>) =>
+        new Map(
+          apps.map((app) => [
+            Number(app.id),
+            commerceAccess({
+              commerce_enabled: false,
+              access_status: 'legacy_free',
+              action: app.installed ? 'open' : 'install',
+            }),
+          ]),
+        ),
+    );
     appRuntimeContextService.buildBootstrap.mockResolvedValue(null);
     appRuntimeSessionService.isEnabled.mockReturnValue(false);
     appRuntimeSessionService.issue.mockResolvedValue({
@@ -128,6 +149,7 @@ describe('AppTenantService', () => {
         { provide: getRepositoryToken(AppOpenLogEntity), useValue: openLogRepo },
         { provide: SaasModuleService, useValue: saasModuleService },
         { provide: SystemModuleAccessService, useValue: systemModuleAccessService },
+        { provide: AppLicenseAccessService, useValue: appLicenseAccessService },
         { provide: AppRuntimeContextService, useValue: appRuntimeContextService },
         { provide: AppRuntimeSessionService, useValue: appRuntimeSessionService },
         { provide: AppIframeLaunchService, useValue: appIframeLaunchService },
@@ -1253,4 +1275,163 @@ describe('AppTenantService', () => {
 
     await expect(service.installApp(23, 'missing', 7)).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('adds actionable commerce state to marketplace records with one bounded bulk lookup', async () => {
+    appRepo.find.mockResolvedValue([
+      {
+        id: 1,
+        code: 'legacy_tool',
+        name: 'Legacy Tool',
+        type: 'internal',
+        status: 'published',
+        visibility: 'marketplace',
+      },
+      {
+        id: 2,
+        code: 'paid_tool',
+        name: 'Paid Tool',
+        type: 'internal',
+        status: 'published',
+        visibility: 'marketplace',
+      },
+    ]);
+    installRepo.find.mockResolvedValue([{ tenantId: 23, appId: 1, enabled: 1 }]);
+    appLicenseAccessService.getAccessStates.mockResolvedValue(
+      new Map([
+        [1, commerceAccess({ commerce_enabled: true, access_status: 'legacy_free', action: 'open' })],
+        [
+          2,
+          commerceAccess({
+            commerce_enabled: true,
+            access_status: 'purchase_required',
+            can_install: false,
+            can_open: false,
+            action: 'purchase',
+          }),
+        ],
+      ]),
+    );
+
+    await expect(service.listMarketplace(23)).resolves.toEqual([
+      expect.objectContaining({
+        code: 'legacy_tool',
+        commerce: expect.objectContaining({ access_status: 'legacy_free' }),
+        can_install: true,
+        can_open: true,
+        commerce_action: 'open',
+      }),
+      expect.objectContaining({
+        code: 'paid_tool',
+        commerce: expect.objectContaining({ access_status: 'purchase_required' }),
+        can_install: false,
+        can_open: false,
+        commerce_action: 'purchase',
+      }),
+    ]);
+    expect(appLicenseAccessService.getAccessStates).toHaveBeenCalledTimes(1);
+    expect(appLicenseAccessService.getAccessState).not.toHaveBeenCalled();
+  });
+
+  it('blocks install for a paid app without a current license before module checks', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 7,
+      code: 'paid_tool',
+      name: 'Paid Tool',
+      type: 'internal',
+      status: 'published',
+      visibility: 'marketplace',
+      saasModuleCode: 'recruiting',
+    });
+    appLicenseAccessService.getAccessState.mockResolvedValue(
+      commerceAccess({
+        commerce_enabled: true,
+        access_status: 'purchase_required',
+        can_install: false,
+        can_open: false,
+        action: 'purchase',
+      }),
+    );
+    saasModuleService.assertTenantModuleEnabled.mockRejectedValue(
+      new BadRequestException('Tenant has not enabled this module'),
+    );
+
+    await expect(service.installApp(23, 'paid_tool', 7)).rejects.toThrow(
+      'Application license is required',
+    );
+    expect(saasModuleService.assertTenantModuleEnabled).not.toHaveBeenCalled();
+    expect(installRepo.save).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['expired', 'license_expired', 'Application license has expired'],
+    ['revoked', 'license_revoked', 'Application license is inactive'],
+  ])('blocks open for an %s license with a stable audit reason', async (status, reasonCode, message) => {
+    appRepo.findOne.mockResolvedValue({
+      id: 7,
+      code: 'paid_tool',
+      name: 'Paid Tool',
+      type: 'internal',
+      status: 'published',
+      visibility: 'marketplace',
+    });
+    installRepo.findOne.mockResolvedValue({ id: 5, tenantId: 23, appId: 7, enabled: 1 });
+    appLicenseAccessService.getAccessState.mockResolvedValue(
+      commerceAccess({
+        commerce_enabled: true,
+        access_status: status,
+        can_install: false,
+        can_open: false,
+        action: status === 'expired' ? 'renew' : 'contact_admin',
+      }),
+    );
+
+    await expect(service.getOpenMetadata(23, 'paid_tool', 7)).rejects.toThrow(message);
+    expect(openLogRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ reasonCode, failureMessage: message }),
+    );
+  });
+
+  it('allows included access while the matching subscription remains active', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 7,
+      code: 'included_tool',
+      name: 'Included Tool',
+      type: 'internal',
+      status: 'published',
+      visibility: 'marketplace',
+    });
+    installRepo.findOne.mockResolvedValue(null);
+    appLicenseAccessService.getAccessState.mockResolvedValue(
+      commerceAccess({ commerce_enabled: true, access_status: 'included' }),
+    );
+
+    await expect(service.installApp(23, 'included_tool', 7)).resolves.toMatchObject({
+      app_id: 7,
+      enabled: true,
+    });
+  });
+
+  it('does not inspect or mutate a paid license when uninstalling an app', async () => {
+    appRepo.findOne.mockResolvedValue({ id: 7, code: 'paid_tool' });
+    installRepo.findOne.mockResolvedValue({ id: 5, tenantId: 23, appId: 7, enabled: 1 });
+
+    await service.uninstallApp(23, 'paid_tool');
+
+    expect(appLicenseAccessService.getAccessState).not.toHaveBeenCalled();
+    expect(appRuntimeSessionService.revokeInstall).toHaveBeenCalledWith(23, 5, 'uninstalled');
+    expect(installRepo.save).toHaveBeenCalledWith(expect.objectContaining({ enabled: 0 }));
+  });
 });
+
+function commerceAccess(overrides: Record<string, unknown> = {}) {
+  return {
+    commerce_enabled: true,
+    access_status: 'free',
+    can_install: true,
+    can_open: true,
+    action: 'install',
+    license_expires_at: null,
+    plans: [],
+    ...overrides,
+  };
+}

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 
 import { AppPackageEntity } from '../../app/entities/app-package.entity';
 import type {
@@ -57,17 +57,38 @@ export class AppPricePlanService {
 
   async listApplicablePlans(appId: number, tenantId: number): Promise<AppPricePlanEntity[]> {
     const normalizedAppId = this.requirePositiveId(appId, 'Application');
-    const normalizedTenantId = this.requirePositiveId(tenantId, 'Tenant');
+    return (await this.listApplicablePlansForApps([normalizedAppId], tenantId)).get(normalizedAppId) || [];
+  }
+
+  async listApplicablePlansForApps(
+    appIds: number[],
+    tenantId: number,
+  ): Promise<Map<number, AppPricePlanEntity[]>> {
+    const normalizedAppIds = this.normalizePositiveIds(appIds, 'Application');
+    if (normalizedAppIds.length === 0) return new Map();
     const plans = await this.planRepo.find({
-      where: { appId: normalizedAppId, status: 1 },
+      where: {
+        appId: In(normalizedAppIds),
+        status: 1,
+      },
       order: { sort: 'ASC', id: 'ASC' },
     });
-
-    return plans.filter((plan) => {
-      if (Number(plan.status) !== 1) return false;
-      if (plan.saleScope !== 'selected_tenants') return true;
-      return this.normalizeTenantIds(plan.tenantIds).includes(normalizedTenantId);
-    });
+    const normalizedTenantId = this.requirePositiveId(tenantId, 'Tenant');
+    const result = new Map<number, AppPricePlanEntity[]>(
+      normalizedAppIds.map((appId) => [appId, []]),
+    );
+    for (const plan of plans) {
+      if (Number(plan.status) !== 1) continue;
+      if (
+        plan.saleScope === 'selected_tenants' &&
+        !this.normalizeTenantIds(plan.tenantIds).includes(normalizedTenantId)
+      ) {
+        continue;
+      }
+      const appId = Number(plan.appId);
+      if (result.has(appId)) result.get(appId)?.push(plan);
+    }
+    return result;
   }
 
   toTenantVisiblePlans(plans: AppPricePlanEntity[]): TenantVisibleAppPricePlan[] {
@@ -296,6 +317,15 @@ export class AppPricePlanService {
     const normalized = Number(value);
     if (!Number.isInteger(normalized) || normalized <= 0) {
       throw new BadRequestException(`${label} id is required`);
+    }
+    return normalized;
+  }
+
+  private normalizePositiveIds(values: number[], label: string) {
+    const normalized = [...new Set((values || []).map(Number))];
+    if (normalized.length === 0) return [];
+    if (normalized.some((value) => !Number.isInteger(value) || value <= 0)) {
+      throw new BadRequestException(`${label} ids must be positive integers`);
     }
     return normalized;
   }

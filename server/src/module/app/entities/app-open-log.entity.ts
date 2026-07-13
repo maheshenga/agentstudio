@@ -39,6 +39,9 @@ export class AppOpenLogEntity {
     | 'missing_plan_module'
     | 'missing_system_module'
     | 'system_module_unavailable'
+    | 'license_required'
+    | 'license_expired'
+    | 'license_revoked'
     | 'published_version_missing'
     | 'open_metadata_error';
 

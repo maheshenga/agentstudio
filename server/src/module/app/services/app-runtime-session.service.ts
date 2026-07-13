@@ -10,6 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes } from 'crypto';
 import { IsNull, Repository } from 'typeorm';
 
+import { AppLicenseAccessService } from '../../app-commerce/services/app-license-access.service';
 import { SysUserTenantEntity } from '../../system/user/entities/user-tenant.entity';
 import { SaasModuleService } from '../../saas/services/saas-module.service';
 import { SystemModuleAccessService } from '../../system-module/services/system-module-access.service';
@@ -66,6 +67,7 @@ export class AppRuntimeSessionService {
     private readonly capabilityPolicy: AppCapabilityPolicyService,
     private readonly saasModuleService: SaasModuleService,
     private readonly systemModuleAccessService: SystemModuleAccessService,
+    private readonly appLicenseAccessService: AppLicenseAccessService,
     private readonly redisService: RedisService,
   ) {}
 
@@ -179,7 +181,7 @@ export class AppRuntimeSessionService {
       }),
       this.appRepo.findOne({
         where: { id: input.appId, status: 'published', deleteTime: IsNull() },
-        select: { id: true, saasModuleCode: true, systemModuleCode: true },
+        select: { id: true, code: true, saasModuleCode: true, systemModuleCode: true },
       }),
       this.versionRepo.findOne({
         where: {
@@ -201,6 +203,11 @@ export class AppRuntimeSessionService {
 
   private async hasCurrentEntitlement(tenantId: number, app: AppPackageEntity) {
     try {
+      const commerce = await this.appLicenseAccessService.getAccessState(tenantId, {
+        ...app,
+        installed: true,
+      });
+      if (!commerce.can_open) return false;
       if (app.saasModuleCode) {
         await this.saasModuleService.assertTenantModuleEnabled(tenantId, app.saasModuleCode);
       }

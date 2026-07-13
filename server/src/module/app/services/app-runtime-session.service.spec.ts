@@ -8,6 +8,7 @@ import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { IsNull } from 'typeorm';
 
+import { AppLicenseAccessService } from '../../app-commerce/services/app-license-access.service';
 import { SysUserTenantEntity } from '../../system/user/entities/user-tenant.entity';
 import { AppPackageEntity } from '../entities/app-package.entity';
 import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
@@ -38,6 +39,7 @@ describe('AppRuntimeSessionService', () => {
   const capabilityPolicy = { resolveGrantedCapabilities: jest.fn() };
   const saasModuleService = { assertTenantModuleEnabled: jest.fn() };
   const systemModuleAccessService = { assertModuleAccess: jest.fn() };
+  const appLicenseAccessService = { getAccessState: jest.fn() };
   const redisClient = { eval: jest.fn() };
   const redisService = { getClient: jest.fn(() => redisClient) };
 
@@ -93,6 +95,15 @@ describe('AppRuntimeSessionService', () => {
     capabilityPolicy.resolveGrantedCapabilities.mockResolvedValue(['context.read']);
     saasModuleService.assertTenantModuleEnabled.mockResolvedValue(true);
     systemModuleAccessService.assertModuleAccess.mockResolvedValue(true);
+    appLicenseAccessService.getAccessState.mockResolvedValue({
+      commerce_enabled: false,
+      access_status: 'legacy_free',
+      can_install: true,
+      can_open: true,
+      action: 'open',
+      license_expires_at: null,
+      plans: [],
+    });
     redisClient.eval.mockResolvedValue([1, 60]);
 
     const module = await Test.createTestingModule({
@@ -107,6 +118,7 @@ describe('AppRuntimeSessionService', () => {
         { provide: AppCapabilityPolicyService, useValue: capabilityPolicy },
         { provide: SaasModuleService, useValue: saasModuleService },
         { provide: SystemModuleAccessService, useValue: systemModuleAccessService },
+        { provide: AppLicenseAccessService, useValue: appLicenseAccessService },
         { provide: RedisService, useValue: redisService },
       ],
     }).compile();
@@ -356,6 +368,31 @@ describe('AppRuntimeSessionService', () => {
       moduleCode: 'job_board',
       requiredSaasModuleCode: 'recruiting',
     });
+    expect(auditRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'denied', reasonCode: 'entitlement_inactive' }),
+    );
+  });
+
+  it('denies runtime-session issue and authorization after the application license is lost', async () => {
+    appLicenseAccessService.getAccessState.mockResolvedValue({
+      commerce_enabled: true,
+      access_status: 'expired',
+      can_install: false,
+      can_open: false,
+      action: 'renew',
+      license_expires_at: '2026-07-01T00:00:00.000Z',
+      plans: [],
+    });
+
+    await expect(
+      service.issue({ ...issueInput, capabilities: ['context.read'] }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(sessionRepo.save).not.toHaveBeenCalled();
+
+    sessionRepo.findOne.mockResolvedValue(activeSession());
+    await expect(service.authorize('raw-runtime-token', 'context.read', {})).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
     expect(auditRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: 'denied', reasonCode: 'entitlement_inactive' }),
     );

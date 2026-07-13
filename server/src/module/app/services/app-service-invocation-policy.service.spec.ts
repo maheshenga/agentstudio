@@ -6,6 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 
+import { AppLicenseAccessService } from '../../app-commerce/services/app-license-access.service';
 import type { AuthorizedAppRuntimeSession } from './app-runtime-session.service';
 import { AppServiceInvocationPolicyService } from './app-service-invocation-policy.service';
 
@@ -72,6 +73,7 @@ describe('AppServiceInvocationPolicyService', () => {
   const redisService = { getClient: jest.fn(() => redisClient) };
   const saasModuleService = { assertTenantModuleEnabled: jest.fn() };
   const systemModuleAccessService = { assertModuleAccess: jest.fn() };
+  const appLicenseAccessService = { getAccessState: jest.fn() };
   const runtimeService = { invokeAuthorized: jest.fn() };
   const configService = {
     get: jest.fn((key: string, fallback?: unknown) => {
@@ -99,6 +101,15 @@ describe('AppServiceInvocationPolicyService', () => {
     redisClient.eval.mockReset();
     saasModuleService.assertTenantModuleEnabled.mockReset().mockResolvedValue(undefined);
     systemModuleAccessService.assertModuleAccess.mockReset().mockResolvedValue(undefined);
+    appLicenseAccessService.getAccessState.mockReset().mockResolvedValue({
+      commerce_enabled: false,
+      access_status: 'legacy_free',
+      can_install: true,
+      can_open: true,
+      action: 'open',
+      license_expires_at: null,
+      plans: [],
+    });
     runtimeService.invokeAuthorized.mockReset();
     versionRepo.findOne
       .mockResolvedValueOnce(callerVersion)
@@ -126,6 +137,7 @@ describe('AppServiceInvocationPolicyService', () => {
       configService as any,
       saasModuleService as any,
       systemModuleAccessService as any,
+      appLicenseAccessService as any,
       runtimeService as any,
     );
   });
@@ -233,6 +245,31 @@ describe('AppServiceInvocationPolicyService', () => {
     await expect(service.invoke(session, 'workflow_service', {})).rejects.toBeInstanceOf(
       ForbiddenException,
     );
+    expect(redisClient.eval).not.toHaveBeenCalled();
+    expect(invocationRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'rejected', errorCode: 'service_target_not_entitled' }),
+    );
+  });
+
+  it('denies restricted service target invocation when the target license is inactive', async () => {
+    appLicenseAccessService.getAccessState.mockResolvedValue({
+      commerce_enabled: true,
+      access_status: 'revoked',
+      can_install: false,
+      can_open: false,
+      action: 'contact_admin',
+      license_expires_at: null,
+      plans: [],
+    });
+
+    await expect(service.invoke(session, 'workflow_service', {})).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(appLicenseAccessService.getAccessState).toHaveBeenCalledWith(
+      23,
+      expect.objectContaining({ id: 40, code: 'workflow_service' }),
+    );
+    expect(runtimeService.invokeAuthorized).not.toHaveBeenCalled();
     expect(redisClient.eval).not.toHaveBeenCalled();
     expect(invocationRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: 'rejected', errorCode: 'service_target_not_entitled' }),

@@ -3,6 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, IsNull, Repository } from 'typeorm';
 
 import { normalizeExternalHttpUrl } from '../../../common/utils/safe-url.util';
+import {
+  AppLicenseAccessService,
+  type TenantAppCommerceAccess,
+} from '../../app-commerce/services/app-license-access.service';
 import { SaasModuleService } from '../../saas/services/saas-module.service';
 import { SystemModuleAccessService } from '../../system-module/services/system-module-access.service';
 import { normalizeAppCapabilities } from '../app-runtime.constants';
@@ -47,6 +51,9 @@ const APP_OPEN_FAILURE_MESSAGES: Record<AppOpenFailureReason, string> = {
   missing_plan_module: 'Required plan module is not enabled',
   missing_system_module: 'Required tenant module is not enabled',
   system_module_unavailable: 'Required system module is unavailable',
+  license_required: 'Application license is required',
+  license_expired: 'Application license has expired',
+  license_revoked: 'Application license is inactive',
   published_version_missing: 'App has no published version',
   open_metadata_error: 'Unable to open app',
 };
@@ -64,6 +71,7 @@ export class AppTenantService {
     private readonly openLogRepo: Repository<AppOpenLogEntity>,
     private readonly saasModuleService: SaasModuleService,
     private readonly systemModuleAccessService: SystemModuleAccessService,
+    private readonly appLicenseAccessService: AppLicenseAccessService,
     private readonly appRuntimeContextService: AppRuntimeContextService,
     private readonly appRuntimeSessionService: AppRuntimeSessionService,
     private readonly appIframeLaunchService: AppIframeLaunchService,
@@ -72,27 +80,38 @@ export class AppTenantService {
   ) {}
 
   async listMarketplace(tenantId: number) {
-    const [apps, installs] = await Promise.all([
+    const [allApps, installs] = await Promise.all([
       this.appRepo.find({ where: { deleteTime: IsNull() }, order: { sort: 'ASC', id: 'ASC' } }),
       this.installRepo.find({ where: { tenantId, deleteTime: IsNull() }, order: { id: 'ASC' } }),
     ]);
+    const apps = allApps
+      .filter((app) => app.status === 'published')
+      .filter((app) =>
+        ['marketplace', 'tenant', 'platform'].includes(app.visibility || 'marketplace'),
+      );
     const installByAppId = new Map(installs.map((install) => [Number(install.appId), install]));
     const capabilityStateByAppId = await this.loadCapabilityStates(tenantId, apps, installByAppId);
+    const commerceByAppId = await this.appLicenseAccessService.getAccessStates(
+      tenantId,
+      apps.map((app) => ({
+        ...app,
+        installed: Number(installByAppId.get(Number(app.id))?.enabled) === 1,
+      })),
+    );
 
     return Promise.all(
-      apps
-        .filter((app) => app.status === 'published')
-        .filter((app) =>
-          ['marketplace', 'tenant', 'platform'].includes(app.visibility || 'marketplace'),
-        )
-        .map(async (app) => {
+      apps.map(async (app) => {
           const install = installByAppId.get(Number(app.id));
+          const installed = Boolean(install && Number(install.enabled) === 1);
           const capabilityState =
             capabilityStateByAppId.get(Number(app.id)) || this.emptyCapabilityState();
+          const availability = await this.getAppAvailability(tenantId, app);
+          const commerce = this.requireCommerceState(commerceByAppId, app.id);
           return {
             ...this.toAppResponse(app),
-            ...(await this.getAppAvailability(tenantId, app)),
-            installed: Boolean(install && Number(install.enabled) === 1),
+            ...availability,
+            installed,
+            ...this.toCommerceResponse(commerce, availability, installed),
             ...this.toCapabilityResponse(capabilityState),
           };
         }),
@@ -113,6 +132,13 @@ export class AppTenantService {
     const appById = new Map(apps.map((app) => [Number(app.id), app]));
     const installByAppId = new Map(installs.map((install) => [Number(install.appId), install]));
     const capabilityStateByAppId = await this.loadCapabilityStates(tenantId, apps, installByAppId);
+    const commerceByAppId = await this.appLicenseAccessService.getAccessStates(
+      tenantId,
+      apps.map((app) => ({
+        ...app,
+        installed: Number(installByAppId.get(Number(app.id))?.enabled) === 1,
+      })),
+    );
 
     return Promise.all(
       installs.map(async (install) => {
@@ -123,10 +149,12 @@ export class AppTenantService {
           ...this.toInstallResponse(install),
           ...this.toCapabilityResponse(capabilityState),
           app: app
-            ? {
-                ...this.toAppResponse(app),
-                ...(await this.getAppAvailability(tenantId, app)),
-              }
+            ? await this.toInstalledAppResponse(
+                tenantId,
+                app,
+                Number(install.enabled) === 1,
+                commerceByAppId,
+              )
             : null,
         };
       }),
@@ -135,6 +163,10 @@ export class AppTenantService {
 
   async installApp(tenantId: number, code: string, userId?: number, capabilities: string[] = []) {
     const app = await this.findPublishedApp(code);
+    this.assertCommerceAccess(
+      await this.appLicenseAccessService.getAccessState(tenantId, { ...app, installed: false }),
+      'install',
+    );
     this.assertAvailability(await this.getAppAvailability(tenantId, app));
     const version =
       app.type === 'static'
@@ -293,6 +325,15 @@ export class AppTenantService {
       });
       if (!install) {
         return await fail('app_not_installed', new BadRequestException('App is not installed'));
+      }
+
+      const commerce = await this.appLicenseAccessService.getAccessState(tenantId, {
+        ...app,
+        installed: true,
+      });
+      if (!commerce.can_open) {
+        const denial = this.commerceDenial(commerce);
+        return await fail(denial.reasonCode, new BadRequestException(denial.message));
       }
 
       const availability = await this.getAppAvailability(tenantId, app);
@@ -458,6 +499,67 @@ export class AppTenantService {
     } catch {
       return;
     }
+  }
+
+  private async toInstalledAppResponse(
+    tenantId: number,
+    app: AppPackageEntity,
+    installed: boolean,
+    commerceByAppId: Map<number, TenantAppCommerceAccess>,
+  ) {
+    const availability = await this.getAppAvailability(tenantId, app);
+    const commerce = this.requireCommerceState(commerceByAppId, app.id);
+    return {
+      ...this.toAppResponse(app),
+      ...availability,
+      ...this.toCommerceResponse(commerce, availability, installed),
+    };
+  }
+
+  private toCommerceResponse(
+    commerce: TenantAppCommerceAccess,
+    availability: AppAvailability,
+    installed: boolean,
+  ) {
+    return {
+      commerce,
+      can_install: availability.available && commerce.can_install,
+      can_open: availability.available && installed && commerce.can_open,
+      commerce_action: commerce.action,
+    };
+  }
+
+  private requireCommerceState(
+    states: Map<number, TenantAppCommerceAccess>,
+    appId: number,
+  ) {
+    const state = states.get(Number(appId));
+    if (!state) throw new BadRequestException('Application license state is unavailable');
+    return state;
+  }
+
+  private assertCommerceAccess(
+    commerce: TenantAppCommerceAccess,
+    transition: 'install' | 'open',
+  ) {
+    const allowed = transition === 'install' ? commerce.can_install : commerce.can_open;
+    if (!allowed) throw new BadRequestException(this.commerceDenial(commerce).message);
+  }
+
+  private commerceDenial(commerce: TenantAppCommerceAccess): {
+    reasonCode: Extract<
+      AppOpenFailureReason,
+      'license_required' | 'license_expired' | 'license_revoked'
+    >;
+    message: string;
+  } {
+    if (commerce.access_status === 'expired') {
+      return { reasonCode: 'license_expired', message: APP_OPEN_FAILURE_MESSAGES.license_expired };
+    }
+    if (commerce.access_status === 'revoked') {
+      return { reasonCode: 'license_revoked', message: APP_OPEN_FAILURE_MESSAGES.license_revoked };
+    }
+    return { reasonCode: 'license_required', message: APP_OPEN_FAILURE_MESSAGES.license_required };
   }
 
   private assertAvailability(availability: AppAvailability) {
