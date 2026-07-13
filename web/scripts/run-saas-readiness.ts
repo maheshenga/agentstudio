@@ -18,6 +18,7 @@ const checks = [
   'verify-saas-public-brand-surfaces.ts',
   'verify-saas-public-origin.ts',
   'verify-app-developer-readiness.ts',
+  'verify-app-commerce-readiness.ts',
   'verify-app-service-runtime-readiness.ts',
   'verify-app-developer-service-readiness.ts',
   'verify-saas-readiness-command.ts'

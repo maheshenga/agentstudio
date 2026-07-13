@@ -774,6 +774,8 @@ git commit -m "feat(app): add commerce workspaces"
 - Create: `server/scripts/verify-app-commerce-live-e2e-contract.ts`
 - Create: `server/scripts/verify-app-commerce-live-e2e.ts`
 - Modify: `server/package.json`
+- Modify: `server/src/module/saas/services/saas-provisioning.service.ts`
+- Modify: `server/src/module/saas/services/saas-provisioning.service.spec.ts`
 - Modify: `web/scripts/run-saas-readiness.ts`
 - Create: `docs/deployment/app-commerce-baota.md`
 - Modify: `docs/saas-launch-readiness-checklist.md`
@@ -783,7 +785,7 @@ git commit -m "feat(app): add commerce workspaces"
 - Produces: `pnpm run verify:app-commerce-live-e2e`
 - Adds P12 deterministic readiness to repository SaaS readiness.
 
-- [ ] **Step 1: Write the live contract gate before the live script**
+- [x] **Step 1: Write the live contract gate before the live script**
 
 Require:
 
@@ -806,22 +808,22 @@ cleanup on success, failure, and signal
 no credential, token, callback payload, environment, path, or provider-key output
 ```
 
-- [ ] **Step 2: Run live contract to verify RED**
+- [x] **Step 2: Run live contract to verify RED**
 
 ```powershell
 cd server
 pnpm.cmd run verify:app-commerce-live-e2e-contract
 ```
 
-- [ ] **Step 3: Implement the disposable live lifecycle**
+- [x] **Step 3: Implement the disposable live lifecycle**
 
 The gate creates a disposable app, developer, two tenants, free/included/paid/trial plans, paid order, license, charge/refund ledger, and settlement rows. It proves cross-tenant purchase/open denial, replay safety, runtime invalidation after refund, and cleanup. Real Alipay network calls are not made; the existing development confirmation path is used only in an explicitly non-production disposable backend.
 
-- [ ] **Step 4: Write the disabled-first Baota runbook**
+- [x] **Step 4: Write the disabled-first Baota runbook**
 
 Document backup, migration, payment callback verification, initially disabled feature flag, internal free/paid smoke, developer share review, refund recording, settlement approval, observation, rollback, and cleanup. Use variable names only and include no credentials, provider keys, environment values, concrete runtime paths, or production identifiers.
 
-- [ ] **Step 5: Run focused P12 backend gates**
+- [x] **Step 5: Run focused P12 backend gates**
 
 ```powershell
 pnpm.cmd run test -- app-commerce-entities.spec.ts create-app-commercialization.spec.ts seed-app-commercialization-menus.spec.ts app-price-plan.service.spec.ts app-license-access.service.spec.ts app-order.service.spec.ts app-revenue-ledger.service.spec.ts app-settlement.service.spec.ts app-commerce-platform.controller.spec.ts app-commerce-tenant.controller.spec.ts app-commerce-developer.controller.spec.ts saas-payment.service.spec.ts saas-payment.controller.spec.ts app-tenant.service.spec.ts app-runtime-session.service.spec.ts app-service-invocation-policy.service.spec.ts --runInBand
@@ -830,7 +832,7 @@ pnpm.cmd run verify:app-commerce-live-e2e-contract
 pnpm.cmd run build
 ```
 
-- [ ] **Step 6: Run focused P12 frontend gates**
+- [x] **Step 6: Run focused P12 frontend gates**
 
 ```powershell
 cd ../web
@@ -843,11 +845,11 @@ pnpm.cmd run verify:saas-readiness
 pnpm.cmd run build
 ```
 
-- [ ] **Step 7: Run or safely block the live gate**
+- [x] **Step 7: Run or safely block the live gate**
 
 Run the live gate only in an explicitly disposable environment. On Windows or absent isolation variables, it must exit before resource creation and report variable names only. A green disposable Linux run remains required before production enablement.
 
-- [ ] **Step 8: Perform final security and scope review**
+- [x] **Step 8: Perform final security and scope review**
 
 Verify:
 
@@ -861,7 +863,7 @@ Verify:
 - plan/resource-pack orders, current SaaS revenue report, marketplace, analytics, P9, P10, and P11 remain green;
 - no coupon, tax, foreign currency, usage charging, automatic renewal, stored payment method, automated payout, or invoice behavior entered the diff.
 
-- [ ] **Step 9: Inspect diff and commit final P12 verification**
+- [x] **Step 9: Inspect diff and commit final P12 verification**
 
 ```powershell
 git diff --check

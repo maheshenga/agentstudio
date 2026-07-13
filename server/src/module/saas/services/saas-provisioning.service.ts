@@ -40,6 +40,7 @@ const TENANT_OWNER_ADMIN_MENU_CODES = [
   'AppInstalledApps',
   'AppOpenRunner',
   'AppTenantUsage',
+  'AppTenantOrders',
 ] as const;
 const TENANT_MEMBER_MENU_CODES = [
   ...TENANT_BASELINE_MENU_CODES,
@@ -47,6 +48,7 @@ const TENANT_MEMBER_MENU_CODES = [
   'AppMarketplace',
   'AppInstalledApps',
   'AppOpenRunner',
+  'AppTenantOrders',
 ] as const;
 const TENANT_OWNER_ADMIN_PERMISSION_SLUGS = [
   'tenant:billing:view',
@@ -66,6 +68,8 @@ const TENANT_OWNER_ADMIN_PERMISSION_SLUGS = [
   'app:tenant:marketplace',
   'app:tenant:install',
   'app:tenant:open',
+  'app:tenant:purchase',
+  'app:tenant:orders',
   'app:analytics:tenant',
 ] as const;
 const TENANT_MEMBER_PERMISSION_SLUGS = [
@@ -75,6 +79,7 @@ const TENANT_MEMBER_PERMISSION_SLUGS = [
   'tenant:module:list',
   'app:tenant:marketplace',
   'app:tenant:open',
+  'app:tenant:orders',
 ] as const;
 
 @Injectable()

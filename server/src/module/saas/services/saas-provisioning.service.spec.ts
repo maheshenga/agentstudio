@@ -77,6 +77,9 @@ describe('SaasProvisioningService', () => {
     { id: 527, code: null, slug: 'app:tenant:install' },
     { id: 528, code: null, slug: 'app:tenant:open' },
     { id: 529, code: null, slug: 'app:analytics:tenant' },
+    { id: 530, code: 'AppTenantOrders', slug: null },
+    { id: 531, code: null, slug: 'app:tenant:purchase' },
+    { id: 532, code: null, slug: 'app:tenant:orders' },
   ];
 
   beforeEach(async () => {
@@ -333,6 +336,37 @@ describe('SaasProvisioningService', () => {
     );
 
     expect(saasQuotaService.initializeTenantQuota).toHaveBeenCalledWith(202, 9, manager);
+  });
+
+  it('grants future tenant roles the application commerce workspace and permissions', async () => {
+    await service.signup({
+      username: 'commerce-owner',
+      password: 'Secret123!',
+      realname: 'Commerce Owner',
+      tenant_name: 'Commerce Tenant',
+      phone: '',
+      email: '',
+      industry: '',
+      team_size: '',
+    });
+
+    const roleMenuRows = manager.insert.mock.calls
+      .filter(([entity]) => entity === SysRoleMenuEntity)
+      .flatMap(([, values]) => values as Array<{ roleId: number; menuId: number }>);
+
+    expect(roleMenuRows).toEqual(
+      expect.arrayContaining([
+        { roleId: 301, menuId: 530 },
+        { roleId: 301, menuId: 531 },
+        { roleId: 301, menuId: 532 },
+        { roleId: 302, menuId: 530 },
+        { roleId: 302, menuId: 531 },
+        { roleId: 302, menuId: 532 },
+        { roleId: 303, menuId: 530 },
+        { roleId: 303, menuId: 532 },
+      ]),
+    );
+    expect(roleMenuRows).not.toContainEqual({ roleId: 303, menuId: 531 });
   });
 
   it('creates a tenant from the platform with an explicit tenant code and defaults to the free plan when no plan code is provided', async () => {

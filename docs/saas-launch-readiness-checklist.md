@@ -573,9 +573,63 @@ Current local environment evidence on 2026-07-13:
 - This Windows worktree is not a valid live environment; no database, Redis DB, PM2 home, runtime directory, reviewer credential, or tenant identity was guessed.
 - A green disposable Linux run remains required before production enablement.
 
+## P12 Application Commerce Verification - 2026-07-13
+
+Deterministic gate:
+
+```powershell
+cd server
+pnpm.cmd run verify:app-commerce-live-e2e-contract
+pnpm.cmd run test -- app-commerce-entities.spec.ts create-app-commercialization.spec.ts seed-app-commercialization-menus.spec.ts app-price-plan.service.spec.ts app-license-access.service.spec.ts app-order.service.spec.ts app-revenue-ledger.service.spec.ts app-settlement.service.spec.ts app-commerce-platform.controller.spec.ts app-commerce-tenant.controller.spec.ts app-commerce-developer.controller.spec.ts saas-payment.service.spec.ts saas-payment.controller.spec.ts app-tenant.service.spec.ts app-runtime-session.service.spec.ts app-service-invocation-policy.service.spec.ts saas-provisioning.service.spec.ts --runInBand
+pnpm.cmd run verify:saas-readiness
+pnpm.cmd run build
+
+cd ../web
+pnpm.cmd run verify:app-commerce-readiness
+pnpm.cmd run verify:app-developer-readiness
+pnpm.cmd run verify:app-developer-service-readiness
+pnpm.cmd run verify:app-runtime-sdk
+pnpm.cmd run verify:app-runtime-readiness
+pnpm.cmd run verify:saas-readiness
+pnpm.cmd run build
+```
+
+The contract verifies a disabled-first feature launch, disposable MySQL ownership, atomic isolated non-zero Redis ownership, legacy/free/included/paid access, a single-use trial, backend-owned order snapshots, cross-tenant denial, development payment replay safety, runtime invalidation after expiry/refund/revocation/uninstall, immutable refund ledger values, developer ownership isolation, manual settlement transitions, signal cleanup, and zero owned database/Redis residue.
+
+Run the live gate only on Linux with these protected variable names. Do not print or persist their values:
+
+```text
+APP_COMMERCE_E2E_DB_HOST
+APP_COMMERCE_E2E_DB_PORT
+APP_COMMERCE_E2E_DB_USERNAME
+APP_COMMERCE_E2E_DB_PASSWORD
+APP_COMMERCE_E2E_PLATFORM_USERNAME
+APP_COMMERCE_E2E_PLATFORM_PASSWORD
+APP_COMMERCE_E2E_REDIS_HOST
+APP_COMMERCE_E2E_REDIS_PORT
+APP_COMMERCE_E2E_REDIS_PASSWORD
+APP_COMMERCE_E2E_REDIS_DB
+APP_COMMERCE_E2E_REDIS_ISOLATED
+```
+
+```powershell
+cd server
+pnpm.cmd run verify:app-commerce-live-e2e
+```
+
+The live gate refuses Windows/macOS, Redis DB `0`, non-isolated or non-empty Redis state, production-like database names, and missing protected variables before creating resources. It starts the disposable backend with `APP_COMMERCE_ENABLED` false, restarts the same database with the flag true, keeps `NODE_ENV` set to test, uses only the development payment confirmation route, and never calls the Alipay network.
+
+Production rollout follows [app-commerce-baota.md](deployment/app-commerce-baota.md). Keep `APP_COMMERCE_ENABLED` disabled until backup, migration, callback reachability, internal free/paid smoke, developer share review, full refund recording, manual settlement review, rollback readiness, and a 15-minute observation window are complete.
+
+Current local environment evidence on 2026-07-13:
+
+- The P12 live script parses and exits before resource creation on Windows.
+- No database, Redis logical database, platform identity, credential, application code, order, provider reference, or production path was guessed.
+- A green disposable Linux run remains required before production enablement.
+
 ## Known Out-of-Scope Items
 
 - Invoice functionality is intentionally excluded.
-- Backend-executable service plugins, app revenue sharing, and app-store SEO landing pages are intentionally excluded from P0.
+- Coupons, tax, foreign currency, usage charging, automatic renewal, stored payment methods, automatic payout, invoices, and app-store SEO landing pages remain intentionally excluded.
 - External payment settlement still depends on real Alipay credentials and callback reachability.
 - The automated browser smoke verifies public signup rendering and protected-route login redirects. Seeded browser UI order and development-payment coverage is available through the optional live browser E2E gate, but remains outside the default repository gate because it depends on live seeded data and mutates orders.

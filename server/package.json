@@ -51,6 +51,8 @@
     "verify:app-service-runtime-live-e2e": "tsx scripts/verify-app-service-runtime-live-e2e.ts",
     "verify:app-developer-service-live-e2e-contract": "tsx scripts/verify-app-developer-service-live-e2e-contract.ts",
     "verify:app-developer-service-live-e2e": "tsx scripts/verify-app-developer-service-live-e2e.ts",
+    "verify:app-commerce-live-e2e-contract": "tsx scripts/verify-app-commerce-live-e2e-contract.ts",
+    "verify:app-commerce-live-e2e": "tsx scripts/verify-app-commerce-live-e2e.ts",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json",
