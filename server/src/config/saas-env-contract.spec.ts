@@ -33,6 +33,9 @@ const CONFIGURATION_ENV_KEYS_REQUIRING_SCHEMA = [
   'TAIXU_QDRANT_TIMEOUT',
   'TAIXU_QDRANT_EMBED_BATCH',
   'TAIXU_TAVILY_API_KEY',
+  'APP_PACKAGE_MAX_FILE_MB',
+  'APP_PACKAGE_MAX_UNCOMPRESSED_MB',
+  'APP_PACKAGE_MAX_COMPRESSION_RATIO',
   'APP_RUNTIME_STORAGE_DIR',
   'APP_RUNTIME_STORAGE_MAX_FILE_MB',
   'APP_RUNTIME_STORAGE_QUOTA_MB',
@@ -114,6 +117,22 @@ describe('SaaS environment contract readiness', () => {
     expect(schema).toMatch(
       /APP_RUNTIME_LAUNCH_SECRET:\s*Joi\.when\([\s\S]*then:\s*Joi\.string\(\)\.min\(32\)\.required\(\)/,
     );
+  });
+
+  it('bounds application archive extraction settings', () => {
+    const schema = readProjectFile('server/src/config/env.validation.ts');
+    const example = parseEnvExample(readProjectFile('server/.env.example'));
+
+    expect(schema).toMatch(/APP_PACKAGE_MAX_FILE_MB:[\s\S]*min\(1\)[\s\S]*max\(100\)[\s\S]*default\(25\)/);
+    expect(schema).toMatch(
+      /APP_PACKAGE_MAX_UNCOMPRESSED_MB:[\s\S]*min\(1\)[\s\S]*max\(2048\)[\s\S]*default\(200\)/,
+    );
+    expect(schema).toMatch(
+      /APP_PACKAGE_MAX_COMPRESSION_RATIO:[\s\S]*min\(1\)[\s\S]*max\(1000\)[\s\S]*default\(100\)/,
+    );
+    expect(example.APP_PACKAGE_MAX_FILE_MB).toBe('25');
+    expect(example.APP_PACKAGE_MAX_UNCOMPRESSED_MB).toBe('200');
+    expect(example.APP_PACKAGE_MAX_COMPRESSION_RATIO).toBe('100');
   });
 
   it('keeps service runtime disabled and validates its low-privilege process bounds', () => {

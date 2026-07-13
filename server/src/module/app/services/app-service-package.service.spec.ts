@@ -226,12 +226,45 @@ describe('AppServicePackageService', () => {
     ).rejects.toThrow('Service package symbolic links are not allowed');
   });
 
+  it('applies shared compression limits before scanning a service package', async () => {
+    const storage = new AppPackageStorageService({
+      get: jest.fn((key: string, fallback?: unknown) => {
+        if (key === 'appMarketplace.serviceRuntime.rootDir') return tempRoot;
+        if (key === 'appMarketplace.maxPackageSizeMb') return 10;
+        if (key === 'appMarketplace.maxPackageFileMb') return 2;
+        if (key === 'appMarketplace.maxPackageUncompressedMb') return 4;
+        if (key === 'appMarketplace.maxPackageCompressionRatio') return 2;
+        return fallback;
+      }),
+    } as any);
+    service = new AppServicePackageService(new AppManifestService(), storage);
+
+    await expect(
+      service.scanAndInstall({
+        appCode: 'admin_echo_service',
+        zipBuffer: await createZip(manifest, `${validSource}\n/*${'A'.repeat(256 * 1024)}*/`),
+      }),
+    ).rejects.toThrow('Service package compression ratio exceeds the limit');
+  });
+
   it.each([
     ["const cp = require('node:child_process'); exports.health=async()=>({}); exports.invoke=async()=>({});", 'forbidden_module'],
     ["exports.health=async()=>({}); exports.invoke=async()=>fetch('https://example.com');", 'forbidden_global'],
     ["exports.health=async()=>({}); exports.invoke=async()=>process.env.SECRET;", 'forbidden_global'],
     ["exports.health=async()=>({}); exports.invoke=async()=>eval('1');", 'forbidden_call'],
     ["exports.health=async()=>({}); exports.invoke=async()=>Function('return 1')();", 'forbidden_call'],
+    [
+      "exports.health=async()=>({}); exports.invoke=async()=>({}).constructor.constructor('return process')();",
+      'forbidden_constructor_escape',
+    ],
+    [
+      "exports.health=async()=>({}); exports.invoke=async()=>({})['constructor']['constructor']('return process')();",
+      'forbidden_constructor_escape',
+    ],
+    [
+      "exports.health=async()=>({}); exports.invoke=async()=>({})['__proto__'];",
+      'forbidden_constructor_escape',
+    ],
     ["exports.health=async()=>({}); exports.invoke=async()=>import('./other.js');", 'dynamic_import'],
     ["const load = require; exports.health=async()=>({}); exports.invoke=async()=>load('fs');", 'forbidden_module'],
     ["exports.health=async()=>({}); exports.invoke=async()=>module.require('fs');", 'forbidden_module'],

@@ -35,8 +35,7 @@ describe('AppPlatformController service uploads', () => {
 
   it('declares a fixed multipart file-size limit for service uploads', () => {
     const source = fs.readFileSync(path.join(__dirname, 'app-platform.controller.ts'), 'utf8');
-    expect(source).toMatch(
-      /service-upload[\s\S]*FileInterceptor\('file',[\s\S]*fileSize:\s*50\s*\*\s*1024\s*\*\s*1024/,
-    );
+    expect(source).toMatch(/versions\/upload[\s\S]*FileInterceptor\('file', APP_UPLOAD_MULTER_OPTIONS\)/);
+    expect(source).toMatch(/service-upload[\s\S]*FileInterceptor\('file', APP_UPLOAD_MULTER_OPTIONS\)/);
   });
 });

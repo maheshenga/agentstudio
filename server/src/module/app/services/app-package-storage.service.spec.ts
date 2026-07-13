@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { randomBytes } from 'crypto';
 
 import JSZip from 'jszip';
 
@@ -129,6 +130,70 @@ describe('AppPackageStorageService', () => {
         zipBuffer: buffer,
       }),
     ).rejects.toThrow('App package contains too many files');
+  });
+
+  it('rejects static packages whose total uncompressed size exceeds the limit', async () => {
+    service = new AppPackageStorageService({
+      get: jest.fn((key: string, fallback?: unknown) => {
+        if (key === 'appMarketplace.packageDir') return packageRoot;
+        if (key === 'appMarketplace.publicDir') return publicRoot;
+        if (key === 'appMarketplace.maxPackageSizeMb') return 50;
+        if (key === 'appMarketplace.maxPackageFileMb') return 1;
+        if (key === 'appMarketplace.maxPackageUncompressedMb') return 1;
+        if (key === 'appMarketplace.maxPackageCompressionRatio') return 100;
+        return fallback;
+      }),
+    } as any);
+    const zip = new JSZip();
+    zip.file('dist/a.bin', randomBytes(700 * 1024));
+    zip.file('dist/b.bin', randomBytes(700 * 1024));
+    const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+
+    await expect(
+      service.extractStaticPackage({ appCode: 'job_board', version: '1.0.0', zipBuffer: buffer }),
+    ).rejects.toThrow('App package uncompressed size exceeds the limit');
+  });
+
+  it('rejects static packages containing a file larger than the per-file limit', async () => {
+    service = new AppPackageStorageService({
+      get: jest.fn((key: string, fallback?: unknown) => {
+        if (key === 'appMarketplace.packageDir') return packageRoot;
+        if (key === 'appMarketplace.publicDir') return publicRoot;
+        if (key === 'appMarketplace.maxPackageSizeMb') return 50;
+        if (key === 'appMarketplace.maxPackageFileMb') return 1;
+        if (key === 'appMarketplace.maxPackageUncompressedMb') return 4;
+        if (key === 'appMarketplace.maxPackageCompressionRatio') return 100;
+        return fallback;
+      }),
+    } as any);
+    const zip = new JSZip();
+    zip.file('dist/large.bin', randomBytes(2 * 1024 * 1024));
+    const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+
+    await expect(
+      service.extractStaticPackage({ appCode: 'job_board', version: '1.0.0', zipBuffer: buffer }),
+    ).rejects.toThrow('App package file exceeds the limit');
+  });
+
+  it('rejects static packages with an excessive compression ratio', async () => {
+    service = new AppPackageStorageService({
+      get: jest.fn((key: string, fallback?: unknown) => {
+        if (key === 'appMarketplace.packageDir') return packageRoot;
+        if (key === 'appMarketplace.publicDir') return publicRoot;
+        if (key === 'appMarketplace.maxPackageSizeMb') return 50;
+        if (key === 'appMarketplace.maxPackageFileMb') return 1;
+        if (key === 'appMarketplace.maxPackageUncompressedMb') return 2;
+        if (key === 'appMarketplace.maxPackageCompressionRatio') return 2;
+        return fallback;
+      }),
+    } as any);
+    const zip = new JSZip();
+    zip.file('dist/repeated.txt', 'A'.repeat(256 * 1024));
+    const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+
+    await expect(
+      service.extractStaticPackage({ appCode: 'job_board', version: '1.0.0', zipBuffer: buffer }),
+    ).rejects.toThrow('App package compression ratio exceeds the limit');
   });
 
   it('rejects publishing from outside the package root', async () => {

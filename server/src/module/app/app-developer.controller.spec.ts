@@ -51,6 +51,13 @@ describe('AppDeveloperController', () => {
     expect(service.uploadVersion).toHaveBeenCalledWith('creator_portal', file, 17);
   });
 
+  it('limits developer package uploads before buffering', () => {
+    const source = fs.readFileSync(path.join(__dirname, 'app-developer.controller.ts'), 'utf8');
+    expect(source).toMatch(
+      /versions\/upload[\s\S]*FileInterceptor\('file', APP_UPLOAD_MULTER_OPTIONS\)/,
+    );
+  });
+
   it('uses the authenticated developer identity for service observability', async () => {
     service.getServiceOverview.mockResolvedValue({ days: 7, services: [] });
     service.getServiceLogs.mockResolvedValue({ app_code: 'workflow_service', stdout: '', stderr: '' });
@@ -62,3 +69,5 @@ describe('AppDeveloperController', () => {
     expect(service.getServiceLogs).toHaveBeenCalledWith('workflow_service', 17, 250);
   });
 });
+import * as fs from 'fs';
+import * as path from 'path';

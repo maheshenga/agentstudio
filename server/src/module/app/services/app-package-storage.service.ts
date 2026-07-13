@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import JSZip from 'jszip';
@@ -25,6 +26,13 @@ export interface ExtractStaticPackageInput {
 export interface ExtractStaticPackageResult {
   packagePath: string;
 }
+
+type ZipEntryWithSizes = JSZip.JSZipObject & {
+  _data?: {
+    compressedSize?: unknown;
+    uncompressedSize?: unknown;
+  };
+};
 
 @Injectable()
 export class AppPackageStorageService {
@@ -61,6 +69,45 @@ export class AppPackageStorageService {
   getMaxPackageFiles() {
     const maxFiles = Number(this.config.get<number>('appMarketplace.maxPackageFiles') ?? 500);
     return Math.max(1, maxFiles);
+  }
+
+  getMaxPackageFileBytes() {
+    const maxMb = Number(this.config.get<number>('appMarketplace.maxPackageFileMb') ?? 25);
+    return Math.max(1, maxMb) * 1024 * 1024;
+  }
+
+  getMaxPackageUncompressedBytes() {
+    const maxMb = Number(
+      this.config.get<number>('appMarketplace.maxPackageUncompressedMb') ?? 200,
+    );
+    return Math.max(1, maxMb) * 1024 * 1024;
+  }
+
+  getMaxPackageCompressionRatio() {
+    const ratio = Number(
+      this.config.get<number>('appMarketplace.maxPackageCompressionRatio') ?? 100,
+    );
+    return Math.max(1, ratio);
+  }
+
+  assertArchiveLimits(zipFiles: JSZip.JSZipObject[], packageLabel = 'App package') {
+    let totalUncompressedBytes = 0;
+    for (const zipFile of zipFiles) {
+      const { compressedSize, uncompressedSize } = this.getZipEntrySizes(zipFile, packageLabel);
+      if (uncompressedSize > this.getMaxPackageFileBytes()) {
+        throw new BadRequestException(`${packageLabel} file exceeds the limit`);
+      }
+      totalUncompressedBytes += uncompressedSize;
+      if (totalUncompressedBytes > this.getMaxPackageUncompressedBytes()) {
+        throw new BadRequestException(`${packageLabel} uncompressed size exceeds the limit`);
+      }
+      if (
+        uncompressedSize > 0 &&
+        uncompressedSize / Math.max(1, compressedSize) > this.getMaxPackageCompressionRatio()
+      ) {
+        throw new BadRequestException(`${packageLabel} compression ratio exceeds the limit`);
+      }
+    }
   }
 
   resolvePackagePath(...segments: string[]) {
@@ -102,19 +149,37 @@ export class AppPackageStorageService {
     if (zipFiles.length > this.getMaxPackageFiles()) {
       throw new BadRequestException('App package contains too many files');
     }
+    this.assertArchiveLimits(zipFiles);
 
     const packagePath = this.resolvePackagePath(appCode, version);
-    fs.rmSync(packagePath, { recursive: true, force: true });
-    fs.mkdirSync(packagePath, { recursive: true });
-
-    for (const zipFile of zipFiles) {
-      const entryName = this.normalizeRelativeFile(this.getZipEntryName(zipFile));
-      const targetPath = path.resolve(packagePath, ...entryName.split('/'));
-      if (!this.isPathInside(targetPath, packagePath)) {
-        throw new BadRequestException('Invalid app package path');
+    const stagingPath = this.resolvePackagePath(
+      appCode,
+      `.staging-${version}-${randomUUID()}`,
+    );
+    await fs.promises.mkdir(stagingPath, { recursive: true });
+    let actualUncompressedBytes = 0;
+    try {
+      for (const zipFile of zipFiles) {
+        const entryName = this.normalizeRelativeFile(this.getZipEntryName(zipFile));
+        const targetPath = path.resolve(stagingPath, ...entryName.split('/'));
+        if (!this.isPathInside(targetPath, stagingPath)) {
+          throw new BadRequestException('Invalid app package path');
+        }
+        const fileBuffer = await zipFile.async('nodebuffer');
+        if (fileBuffer.length > this.getMaxPackageFileBytes()) {
+          throw new BadRequestException('App package file exceeds the limit');
+        }
+        actualUncompressedBytes += fileBuffer.length;
+        if (actualUncompressedBytes > this.getMaxPackageUncompressedBytes()) {
+          throw new BadRequestException('App package uncompressed size exceeds the limit');
+        }
+        await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+        await fs.promises.writeFile(targetPath, fileBuffer);
       }
-      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-      fs.writeFileSync(targetPath, await zipFile.async('nodebuffer'));
+      await fs.promises.rm(packagePath, { recursive: true, force: true });
+      await fs.promises.rename(stagingPath, packagePath);
+    } finally {
+      await fs.promises.rm(stagingPath, { recursive: true, force: true });
     }
 
     return { packagePath };
@@ -192,5 +257,20 @@ export class AppPackageStorageService {
 
   private getZipEntryName(zipFile: JSZip.JSZipObject) {
     return String((zipFile as any).unsafeOriginalName || zipFile.name || '');
+  }
+
+  private getZipEntrySizes(zipFile: JSZip.JSZipObject, packageLabel: string) {
+    const data = (zipFile as ZipEntryWithSizes)._data;
+    const compressedSize = Number(data?.compressedSize);
+    const uncompressedSize = Number(data?.uncompressedSize);
+    if (
+      !Number.isSafeInteger(compressedSize) ||
+      compressedSize < 0 ||
+      !Number.isSafeInteger(uncompressedSize) ||
+      uncompressedSize < 0
+    ) {
+      throw new BadRequestException(`${packageLabel} has invalid archive metadata`);
+    }
+    return { compressedSize, uncompressedSize };
   }
 }

@@ -8,6 +8,7 @@ import { ResultData } from '../../common/utils/result';
 import { User } from '../system/user/user.decorator';
 import type { UserDto } from '../system/user/user.decorator';
 import { CreateDeveloperAppDto, UpdateDeveloperAppDto } from './dto/app-developer.dto';
+import { APP_UPLOAD_MULTER_OPTIONS } from './app-upload.constants';
 import { AppDeveloperService } from './services/app-developer.service';
 
 @ApiTags('App Developer')
@@ -85,7 +86,7 @@ export class AppDeveloperController {
   }
 
   @Post(':code/versions/upload')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', APP_UPLOAD_MULTER_OPTIONS))
   @ApiOperation({ summary: 'Upload a version for my app' })
   @RequirePermission('app:developer:upload')
   uploadVersion(

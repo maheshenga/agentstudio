@@ -59,6 +59,7 @@ const FORBIDDEN_GLOBALS = new Set([
   'module',
 ]);
 const FORBIDDEN_CALLS = new Set(['eval', 'Function']);
+const FORBIDDEN_MEMBER_NAMES = new Set(['constructor', 'prototype', '__proto__']);
 const MAX_FINDINGS = 50;
 const MAX_MANIFEST_BYTES = 64 * 1024;
 
@@ -79,6 +80,7 @@ export class AppServicePackageService {
 
     const zip = await this.loadZip(input.zipBuffer);
     const archiveFiles = this.validateArchive(zip);
+    this.storage.assertArchiveLimits([...archiveFiles.values()], 'Service package');
     const manifestBuffer = await archiveFiles.get('app.manifest.json')!.async('nodebuffer');
     if (manifestBuffer.length > MAX_MANIFEST_BYTES) {
       throw new BadRequestException('Service manifest is too large');
@@ -92,7 +94,7 @@ export class AppServicePackageService {
     }
 
     const entryBuffer = await archiveFiles.get(manifest.entry)!.async('nodebuffer');
-    if (entryBuffer.length > this.storage.getMaxPackageSizeBytes()) {
+    if (entryBuffer.length > this.storage.getMaxPackageFileBytes()) {
       throw new BadRequestException('Service entry is too large');
     }
     const source = entryBuffer.toString('utf8');
@@ -284,6 +286,10 @@ export class AppServicePackageService {
         }
       },
       MemberExpression: (node) => {
+        const memberName = this.getStaticMemberName(node);
+        if (FORBIDDEN_MEMBER_NAMES.has(memberName)) {
+          addFinding('forbidden_constructor_escape', node);
+        }
         if (
           node.object?.type === 'Identifier' &&
           node.object.name === 'module' &&
@@ -315,6 +321,7 @@ export class AppServicePackageService {
         if (exportedName) exports.add(exportedName);
       },
     };
+    // Source scanning is defense in depth; service execution still requires process isolation.
     walk.simple(ast, visitors);
 
     if (!exports.has('health') || !exports.has('invoke')) {
@@ -336,6 +343,14 @@ export class AppServicePackageService {
     if (!member.computed && member.property.type === 'Identifier') return member.property.name;
     if (member.computed && member.property.type === 'Literal') {
       return String(member.property.value || '');
+    }
+    return '';
+  }
+
+  private getStaticMemberName(node: MemberExpression) {
+    if (!node.computed && node.property.type === 'Identifier') return node.property.name;
+    if (node.computed && node.property.type === 'Literal') {
+      return typeof node.property.value === 'string' ? node.property.value : '';
     }
     return '';
   }

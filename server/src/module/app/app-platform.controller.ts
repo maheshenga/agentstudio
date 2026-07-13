@@ -14,6 +14,7 @@ import {
   UpdateAppPackageDto,
   UpdateAppPackageStatusDto,
 } from './dto/app-platform.dto';
+import { APP_UPLOAD_MULTER_OPTIONS } from './app-upload.constants';
 import { AppPlatformService } from './services/app-platform.service';
 
 @ApiTags('App Platform')
@@ -71,7 +72,7 @@ export class AppPlatformController {
   }
 
   @Post(':code/versions/upload')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', APP_UPLOAD_MULTER_OPTIONS))
   @ApiOperation({ summary: 'Upload static app version package' })
   @RequirePermission('app:platform:upload')
   uploadVersion(@Param('code') code: string, @UploadedFile() file: Express.Multer.File, @User() user: UserDto) {
@@ -81,11 +82,7 @@ export class AppPlatformController {
   }
 
   @Post(':code/versions/service-upload')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      limits: { files: 1, fileSize: 50 * 1024 * 1024 },
-    }),
-  )
+  @UseInterceptors(FileInterceptor('file', APP_UPLOAD_MULTER_OPTIONS))
   @ApiOperation({ summary: 'Upload administrator service version package' })
   @RequirePermission('app:runtime:manage')
   uploadServiceVersion(
