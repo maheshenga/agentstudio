@@ -3,11 +3,18 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository } from 'typeorm';
 
 import { SaasModuleService } from '../../saas/services/saas-module.service';
-import { SAAS_TO_SYSTEM_MODULE_BRIDGE } from '../constants';
 import { SystemModuleDependencyEntity } from '../entities/system-module-dependency.entity';
 import { SystemModuleEntity } from '../entities/system-module.entity';
 import { SystemModuleSaasBridgeEntity } from '../entities/system-module-saas-bridge.entity';
 import { SystemTenantModuleEntity } from '../entities/system-tenant-module.entity';
+import {
+  isValidSystemModuleVersionRange,
+  satisfiesSystemModuleVersionRange,
+} from '../system-module-dependency.util';
+import {
+  isBaselineTenantSystemModule,
+  resolveSystemModuleCodesFromSaasModules,
+} from '../system-module-entitlement.util';
 
 export interface AssertModuleAccessOptions {
   tenantId?: number;
@@ -45,8 +52,6 @@ export interface SystemModuleAccessDiagnosis {
   permission?: string;
   system_module_status?: string;
 }
-
-const BASELINE_TENANT_SYSTEM_MODULES = new Set(['tenant_saas']);
 
 @Injectable()
 export class SystemModuleAccessService {
@@ -226,7 +231,7 @@ export class SystemModuleAccessService {
       return true;
     }
 
-    if (BASELINE_TENANT_SYSTEM_MODULES.has(moduleCode)) {
+    if (isBaselineTenantSystemModule(moduleCode)) {
       return true;
     }
 
@@ -237,22 +242,38 @@ export class SystemModuleAccessService {
   }
 
   private async findUnsatisfiedDependency(moduleCode: string) {
-    const requiredDependencies = await this.dependencyRepo.find({
-      where: { moduleCode, required: 1 },
-    });
-    if (!requiredDependencies.length) {
-      return undefined;
-    }
+    const visiting = new Set<string>();
+    const satisfied = new Set<string>();
+    const visit = async (currentModuleCode: string): Promise<string | undefined> => {
+      if (visiting.has(currentModuleCode)) return currentModuleCode;
+      if (satisfied.has(currentModuleCode)) return undefined;
 
-    for (const dependency of requiredDependencies) {
-      const dependencyModule = await this.moduleRepo.findOne({
-        where: { code: dependency.dependsOnCode, deleteTime: IsNull() },
+      visiting.add(currentModuleCode);
+      const requiredDependencies = await this.dependencyRepo.find({
+        where: { moduleCode: currentModuleCode, required: 1 },
       });
-      if (!dependencyModule || dependencyModule.status !== 'enabled') {
-        return dependency.dependsOnCode;
+      for (const dependency of requiredDependencies) {
+        const dependencyModule = await this.moduleRepo.findOne({
+          where: { code: dependency.dependsOnCode, deleteTime: IsNull() },
+        });
+        const versionRange = String(dependency.versionRange || '').trim();
+        if (
+          !dependencyModule ||
+          dependencyModule.status !== 'enabled' ||
+          !isValidSystemModuleVersionRange(versionRange) ||
+          !satisfiesSystemModuleVersionRange(dependencyModule.version, versionRange)
+        ) {
+          return dependency.dependsOnCode;
+        }
+        const nestedFailure = await visit(dependency.dependsOnCode);
+        if (nestedFailure) return nestedFailure;
       }
-    }
-    return undefined;
+      visiting.delete(currentModuleCode);
+      satisfied.add(currentModuleCode);
+      return undefined;
+    };
+
+    return visit(moduleCode);
   }
 
   private async loadTenantSaasModuleCodes(tenantId: number) {
@@ -273,16 +294,7 @@ export class SystemModuleAccessService {
       },
     });
 
-    if (bridgeRows.length) {
-      return new Set(
-        bridgeRows
-          .filter((row) => Number(row.enabled) === 1)
-          .map((row) => row.systemModuleCode)
-          .filter(Boolean),
-      );
-    }
-
-    return new Set(uniqueCodes.flatMap((saasModuleCode) => SAAS_TO_SYSTEM_MODULE_BRIDGE[saasModuleCode] || []));
+    return resolveSystemModuleCodesFromSaasModules(uniqueCodes, bridgeRows);
   }
 
   private getRequiredSaasModuleCodes(options: AssertModuleAccessOptions) {
@@ -309,7 +321,7 @@ export class SystemModuleAccessService {
       };
     }
 
-    if (BASELINE_TENANT_SYSTEM_MODULES.has(moduleCode)) {
+    if (isBaselineTenantSystemModule(moduleCode)) {
       return {
         enabled: true,
         source: 'system',

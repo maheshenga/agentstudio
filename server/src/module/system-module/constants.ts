@@ -26,6 +26,8 @@ export const SAAS_TO_SYSTEM_MODULE_BRIDGE: Record<string, string[]> = {
   advanced_report: ['saas_platform'],
 };
 
+export const BASELINE_TENANT_SYSTEM_MODULE_CODES = ['tenant_saas'] as const;
+
 export const SYSTEM_MODULE_EVENT_TYPES = [
   'install',
   'enable',

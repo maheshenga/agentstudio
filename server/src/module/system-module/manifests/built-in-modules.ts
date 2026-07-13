@@ -73,7 +73,7 @@ export const BUILT_IN_SYSTEM_MODULES: SystemModuleManifest[] = [
     entryRoute: '/saas-platform/usage',
     sort: 20,
     routes: ['/api/saas/platform'],
-    dependencies: [{ code: 'core_system' }],
+    dependencies: [{ code: 'core_system', versionRange: '^1.0.0' }],
     permissions: [
       { slug: 'saas:usage:index' },
       { slug: 'saas:plan:index' },
@@ -98,7 +98,10 @@ export const BUILT_IN_SYSTEM_MODULES: SystemModuleManifest[] = [
     entryRoute: '/tenant-saas/usage',
     sort: 30,
     routes: ['/api/saas/tenant'],
-    dependencies: [{ code: 'core_system' }, { code: 'saas_platform' }],
+    dependencies: [
+      { code: 'core_system', versionRange: '^1.0.0' },
+      { code: 'saas_platform', versionRange: '^1.0.0' },
+    ],
     permissions: [
       { slug: 'tenant:quota:view' },
       { slug: 'tenant:billing:view' },

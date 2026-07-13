@@ -212,6 +212,27 @@ describe('SystemModuleRegistryService', () => {
     };
   };
 
+  const manifest = (
+    code: string,
+    dependencies: Array<{ code: string; versionRange?: string; required?: boolean }> = [],
+    version = '1.0.0',
+  ) => ({
+    code,
+    name: code,
+    source: 'extension' as const,
+    version,
+    description: '',
+    category: 'test',
+    icon: '',
+    status: 'enabled' as const,
+    entryRoute: '',
+    sort: 100,
+    dependencies,
+    permissions: [],
+    apis: [],
+    configSchema: {},
+  });
+
   it('imports built-in manifests idempotently and includes core system and SaaS platform modules', async () => {
     const { service, dataSource, moduleRepo, dependencyRepo, eventRepo } = createService();
 
@@ -230,6 +251,30 @@ describe('SystemModuleRegistryService', () => {
       BUILT_IN_SYSTEM_MODULES.length,
     );
     expect(dataSource.transactionCalls).toBe(2);
+  });
+
+  it('rejects manifest dependency cycles before writing module metadata', async () => {
+    const { service, moduleRepo } = createService();
+
+    await expect(
+      service.importManifests([
+        manifest('module_alpha', [{ code: 'module_beta', versionRange: '^1.0.0' }]),
+        manifest('module_beta', [{ code: 'module_alpha', versionRange: '^1.0.0' }]),
+      ]),
+    ).rejects.toThrow('System module dependency cycle detected');
+    expect(moduleRepo.records).toEqual([]);
+  });
+
+  it('rejects manifest dependencies whose installed version is outside the declared range', async () => {
+    const { service, moduleRepo } = createService();
+
+    await expect(
+      service.importManifests([
+        manifest('core_system', [], '1.0.0'),
+        manifest('module_alpha', [{ code: 'core_system', versionRange: '^2.0.0' }]),
+      ]),
+    ).rejects.toThrow('System module dependency version is not satisfied');
+    expect(moduleRepo.records).toEqual([]);
   });
 
   it('preserves existing lifecycle status when manifests are re-synced', async () => {
@@ -716,10 +761,68 @@ describe('SystemModuleRegistryService', () => {
       expect.objectContaining({
         code: 'tenant_saas',
         tenant_enabled: true,
-        entitlement_source: 'plan',
+        entitlement_source: 'system',
       }),
       expect.objectContaining({
         code: 'ai_console',
+        tenant_enabled: true,
+        entitlement_source: 'plan',
+      }),
+    ]);
+  });
+
+  it('lists tenant SaaS as a system baseline before the tenant purchases any modules', async () => {
+    const { service, moduleRepo, saasModuleService } = createService();
+    await moduleRepo.save({
+      code: 'tenant_saas',
+      name: 'Tenant SaaS',
+      source: 'built_in',
+      version: '1.0.0',
+      description: '',
+      category: 'saas',
+      icon: 'Building2',
+      status: 'enabled',
+      entryRoute: '/tenant-saas/usage',
+      configSchema: {},
+      healthStatus: 'unknown',
+      sort: 30,
+    });
+    saasModuleService.listTenantModules.mockResolvedValue([]);
+
+    await expect(service.listTenantModules(23)).resolves.toEqual([
+      expect.objectContaining({
+        code: 'tenant_saas',
+        explicit_enabled: false,
+        plan_enabled: false,
+        tenant_enabled: true,
+        entitlement_source: 'system',
+      }),
+    ]);
+  });
+
+  it('merges database bridge overrides per SaaS module in tenant listings', async () => {
+    const { service, moduleRepo, bridgeRepo, saasModuleService } = createService();
+    await moduleRepo.save({ ...manifest('ai_console'), source: 'built_in' });
+    await moduleRepo.save({ ...manifest('saas_platform'), source: 'built_in' });
+    await bridgeRepo.save({
+      saasModuleCode: 'ai_chat',
+      systemModuleCode: 'ai_console',
+      enabled: 0,
+      source: 'platform',
+    });
+    saasModuleService.listTenantModules.mockResolvedValue([
+      { code: 'ai_chat' },
+      { code: 'advanced_report' },
+    ]);
+
+    await expect(service.listTenantModules(23)).resolves.toEqual([
+      expect.objectContaining({
+        code: 'ai_console',
+        tenant_enabled: false,
+        entitlement_source: null,
+      }),
+      expect.objectContaining({
+        code: 'saas_platform',
         tenant_enabled: true,
         entitlement_source: 'plan',
       }),

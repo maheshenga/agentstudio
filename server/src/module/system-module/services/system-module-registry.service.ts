@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, IsNull, Repository } from 'typeorm';
 
 import { SaasModuleService } from '../../saas/services/saas-module.service';
-import { SAAS_TO_SYSTEM_MODULE_BRIDGE, SYSTEM_MODULE_STATUSES } from '../constants';
+import { SYSTEM_MODULE_STATUSES } from '../constants';
 import type { SystemModuleEventType, SystemModuleStatus } from '../constants';
 import { SystemModuleApiEntity } from '../entities/system-module-api.entity';
 import { SystemModuleDependencyEntity } from '../entities/system-module-dependency.entity';
@@ -14,6 +14,17 @@ import { SystemModuleSaasBridgeEntity } from '../entities/system-module-saas-bri
 import { SystemTenantModuleEntity } from '../entities/system-tenant-module.entity';
 import { BUILT_IN_SYSTEM_MODULES, SystemModuleManifest } from '../manifests/built-in-modules';
 import { PluginModuleManifestDto } from '../dto/plugin-module-manifest.dto';
+import {
+  findSystemModuleDependencyCycle,
+  isValidSystemModuleVersion,
+  isValidSystemModuleVersionRange,
+  satisfiesSystemModuleVersionRange,
+  type SystemModuleDependencyLike,
+} from '../system-module-dependency.util';
+import {
+  isBaselineTenantSystemModule,
+  resolveSystemModuleCodesFromSaasModules,
+} from '../system-module-entitlement.util';
 
 export interface SystemModuleListQuery {
   keyword?: string;
@@ -133,6 +144,7 @@ export class SystemModuleRegistryService implements OnModuleInit {
     const apiRepo = manager.getRepository(SystemModuleApiEntity);
     const eventRepo = manager.getRepository(SystemModuleEventEntity);
     const imported = [];
+    await this.validateManifestDependencies(moduleRepo, dependencyRepo, manifests);
 
     for (const manifest of manifests) {
       const inserted = await this.insertManifestModule(moduleRepo, manifest);
@@ -274,7 +286,8 @@ export class SystemModuleRegistryService implements OnModuleInit {
       const tenantModule = tenantModuleByCode.get(module.code);
       const explicitlyEnabled = tenantModule ? Number(tenantModule.enabled) === 1 : false;
       const planEnabled = planEntitledModuleCodes.has(module.code);
-      const tenantEnabled = explicitlyEnabled || planEnabled;
+      const baselineEnabled = isBaselineTenantSystemModule(module.code);
+      const tenantEnabled = explicitlyEnabled || baselineEnabled || planEnabled;
       return {
         ...this.toResponse(module),
         explicit_enabled: explicitlyEnabled,
@@ -282,6 +295,8 @@ export class SystemModuleRegistryService implements OnModuleInit {
         tenant_enabled: tenantEnabled,
         entitlement_source: explicitlyEnabled
           ? tenantModule?.source || 'platform'
+          : baselineEnabled
+            ? 'system'
           : planEnabled
             ? 'plan'
             : null,
@@ -618,18 +633,61 @@ export class SystemModuleRegistryService implements OnModuleInit {
       },
     });
 
-    if (bridgeRows.length) {
-      return new Set(
-        bridgeRows
-          .filter((row) => Number(row.enabled) === 1)
-          .map((row) => row.systemModuleCode)
-          .filter(Boolean),
+    return resolveSystemModuleCodesFromSaasModules(uniqueCodes, bridgeRows);
+  }
+
+  private async validateManifestDependencies(
+    moduleRepo: Repository<SystemModuleEntity>,
+    dependencyRepo: Repository<SystemModuleDependencyEntity>,
+    manifests: SystemModuleManifest[],
+  ) {
+    const [existingModules, existingDependencies] = await Promise.all([
+      moduleRepo.find({ where: { deleteTime: IsNull() } }),
+      dependencyRepo.find(),
+    ]);
+    const versionByCode = new Map(existingModules.map((module) => [module.code, module.version]));
+    const dependenciesByModule = new Map<string, SystemModuleDependencyLike[]>();
+    for (const dependency of existingDependencies) {
+      if (Number(dependency.required) === 0) continue;
+      const dependencies = dependenciesByModule.get(dependency.moduleCode) || [];
+      dependencies.push(dependency);
+      dependenciesByModule.set(dependency.moduleCode, dependencies);
+    }
+
+    for (const manifest of manifests) {
+      if (!isValidSystemModuleVersion(manifest.version)) {
+        throw new BadRequestException('System module version is invalid');
+      }
+      versionByCode.set(manifest.code, manifest.version);
+      dependenciesByModule.set(
+        manifest.code,
+        manifest.dependencies
+          .filter((dependency) => dependency.required !== false)
+          .map((dependency) => ({
+            moduleCode: manifest.code,
+            dependsOnCode: dependency.code,
+            versionRange: dependency.versionRange || '',
+            required: 1,
+          })),
       );
     }
 
-    return new Set(
-      uniqueCodes.flatMap((saasModuleCode) => SAAS_TO_SYSTEM_MODULE_BRIDGE[saasModuleCode] || []),
-    );
+    const dependencies = [...dependenciesByModule.values()].flat();
+    for (const dependency of dependencies) {
+      if (!isValidSystemModuleVersionRange(dependency.versionRange)) {
+        throw new BadRequestException('System module dependency version range is invalid');
+      }
+      const installedVersion = versionByCode.get(dependency.dependsOnCode);
+      if (
+        installedVersion &&
+        !satisfiesSystemModuleVersionRange(installedVersion, dependency.versionRange)
+      ) {
+        throw new BadRequestException('System module dependency version is not satisfied');
+      }
+    }
+    if (findSystemModuleDependencyCycle(dependencies)) {
+      throw new BadRequestException('System module dependency cycle detected');
+    }
   }
 
   private statusToEventType(status: SystemModuleStatus): SystemModuleEventType {

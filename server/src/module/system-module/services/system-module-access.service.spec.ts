@@ -395,6 +395,34 @@ describe('SystemModuleAccessService', () => {
     expect(saasModuleService.listTenantModules).not.toHaveBeenCalled();
   });
 
+  it('merges database bridge overrides per SaaS module without dropping other static mappings', async () => {
+    const { service } = createService({
+      modules: [enabledModule('ai_console'), enabledModule('saas_platform')],
+      bridgeRows: [
+        {
+          saasModuleCode: 'ai_chat',
+          systemModuleCode: 'ai_console',
+          enabled: 0,
+        },
+      ],
+    });
+
+    await expect(
+      service.assertModuleAccess({
+        tenantId: 10,
+        moduleCode: 'saas_platform',
+        saasModuleCodes: ['ai_chat', 'advanced_report'],
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      service.assertModuleAccess({
+        tenantId: 10,
+        moduleCode: 'ai_console',
+        saasModuleCodes: ['ai_chat', 'advanced_report'],
+      }),
+    ).rejects.toThrow('Tenant has not enabled this module');
+  });
+
   it('denies SaaS bridge entitlement when tenant plan modules do not map to the system module', async () => {
     const { service } = createService({
       modules: [enabledModule('taixu_workspace')],
@@ -443,6 +471,56 @@ describe('SystemModuleAccessService', () => {
     await expect(service.assertModuleAccess({ moduleCode: 'ai_console' })).rejects.toBeInstanceOf(
       BadRequestException,
     );
+    await expect(service.assertModuleAccess({ moduleCode: 'ai_console' })).rejects.toThrow(
+      'Module dependency is not satisfied',
+    );
+  });
+
+  it('denies access when a required dependency version is outside the declared range', async () => {
+    const { service } = createService({
+      modules: [enabledModule('ai_console'), enabledModule('core_system')],
+      dependencies: [
+        {
+          moduleCode: 'ai_console',
+          dependsOnCode: 'core_system',
+          versionRange: '^2.0.0',
+          required: 1,
+        },
+      ],
+    });
+
+    await expect(service.assertModuleAccess({ moduleCode: 'ai_console' })).rejects.toThrow(
+      'Module dependency is not satisfied',
+    );
+  });
+
+  it('denies access when a transitive required dependency is disabled', async () => {
+    const { service } = createService({
+      modules: [
+        enabledModule('ai_console'),
+        enabledModule('core_system'),
+        { ...enabledModule('ops_monitor'), status: 'disabled' },
+      ],
+      dependencies: [
+        { moduleCode: 'ai_console', dependsOnCode: 'core_system', required: 1 },
+        { moduleCode: 'core_system', dependsOnCode: 'ops_monitor', required: 1 },
+      ],
+    });
+
+    await expect(service.assertModuleAccess({ moduleCode: 'ai_console' })).rejects.toThrow(
+      'Module dependency is not satisfied',
+    );
+  });
+
+  it('fails closed when stored required dependencies contain a cycle', async () => {
+    const { service } = createService({
+      modules: [enabledModule('ai_console'), enabledModule('core_system')],
+      dependencies: [
+        { moduleCode: 'ai_console', dependsOnCode: 'core_system', required: 1 },
+        { moduleCode: 'core_system', dependsOnCode: 'ai_console', required: 1 },
+      ],
+    });
+
     await expect(service.assertModuleAccess({ moduleCode: 'ai_console' })).rejects.toThrow(
       'Module dependency is not satisfied',
     );

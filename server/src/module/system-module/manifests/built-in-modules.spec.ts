@@ -35,6 +35,16 @@ describe('BUILT_IN_SYSTEM_MODULES', () => {
     );
   });
 
+  it('pins built-in required dependencies to compatible semantic version ranges', () => {
+    expect(findModule('saas_platform').dependencies).toEqual([
+      { code: 'core_system', versionRange: '^1.0.0' },
+    ]);
+    expect(findModule('tenant_saas').dependencies).toEqual([
+      { code: 'core_system', versionRange: '^1.0.0' },
+      { code: 'saas_platform', versionRange: '^1.0.0' },
+    ]);
+  });
+
   it('uses real AI and Taixu permission slugs and API routes in built-in manifests', () => {
     expect(findModule('ai_console').permissions.map((item) => item.slug)).toEqual(
       expect.arrayContaining(['ai:chat:use', 'ai:provider:list', 'ai:model:list']),
