@@ -19,6 +19,46 @@ export interface SaveDeveloperAppParams {
   icon?: string
   summary?: string
   description?: string
+  runtime_type?: 'static' | 'service'
+}
+
+export interface DeveloperServiceRuntimeRecord {
+  app_code: string
+  app_name: string
+  version: string
+  role: 'active' | 'candidate' | 'standby' | 'unavailable'
+  process_status: 'starting' | 'online' | 'stopped' | 'failed'
+  health_status: 'unknown' | 'checking' | 'healthy' | 'unhealthy'
+  circuit_state: 'closed' | 'open' | 'half_open'
+  restart_count: number
+  success_count: number
+  failure_count: number
+  rejected_count: number
+  total_count: number
+  success_rate: number
+  p50_duration_ms: number
+  p95_duration_ms: number
+  last_invoke_time: string | null
+  last_success_time: string | null
+}
+
+export interface DeveloperServiceOverview {
+  days: 1 | 7 | 30
+  total_services: number
+  total_invocations: number
+  total_success: number
+  total_failure: number
+  total_rejected: number
+  success_rate: number
+  services: DeveloperServiceRuntimeRecord[]
+}
+
+export interface DeveloperServiceLogResponse {
+  app_code: string
+  version: string
+  role: 'active' | 'candidate' | 'standby'
+  stdout: string
+  stderr: string
 }
 
 export function fetchDeveloperApps() {
@@ -50,5 +90,19 @@ export function uploadDeveloperAppVersion(code: string, file: File) {
 export function submitDeveloperAppVersion(code: string, version: string) {
   return request.post<AppPackageVersionRecord>({
     url: `/api/app-developer/apps/${code}/versions/${version}/submit`
+  })
+}
+
+export function fetchDeveloperServiceOverview(days: 1 | 7 | 30 = 7) {
+  return request.get<DeveloperServiceOverview>({
+    url: '/api/app-developer/apps/service-overview',
+    params: { days }
+  })
+}
+
+export function fetchDeveloperServiceLogs(code: string, lines = 100) {
+  return request.get<DeveloperServiceLogResponse>({
+    url: `/api/app-developer/apps/${encodeURIComponent(code)}/runtime/logs`,
+    params: { lines }
   })
 }

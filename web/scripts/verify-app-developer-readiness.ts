@@ -27,7 +27,8 @@ const expectedFiles = [
   'web/src/views/app-center/developer/index.vue',
   'server/src/module/app/app-developer.controller.ts',
   'server/src/module/app/services/app-developer.service.ts',
-  'server/src/migrations/1760000000035-SeedAppDeveloperMenus.ts'
+  'server/src/migrations/1760000000035-SeedAppDeveloperMenus.ts',
+  'server/src/migrations/1760000000043-SeedCertifiedDeveloperServiceMenus.ts'
 ]
 
 for (const file of expectedFiles) {
@@ -112,15 +113,30 @@ for (const token of [
   'app:developer:create',
   'app:developer:update',
   'app:developer:upload',
-  'app:developer:submit',
-  "IN ('admin', 'super_admin')"
+  'app:developer:submit'
 ]) {
   assertIncludes(menuMigration, token, 'developer app menu migration')
 }
-assert(
-  !menuMigration.includes("REGEXP '^tenant:[0-9]+:member$'"),
-  'developer permissions must not be granted to every tenant member'
+const certifiedMenuMigration = readFile(
+  'server/src/migrations/1760000000043-SeedCertifiedDeveloperServiceMenus.ts'
 )
+for (const token of [
+  "REGEXP '^tenant:[0-9]+:(owner|admin|member)$'",
+  'AppDeveloperApps',
+  'app:developer:create',
+  'app:developer:upload',
+  'app:developer:observability'
+]) {
+  assertIncludes(certifiedMenuMigration, token, 'certified developer menu migration')
+}
+
+for (const token of [
+  "runtimeType === 'service'",
+  "assertRuntimeApproved(developerId, 'service')",
+  'uploadServiceVersion'
+]) {
+  assertIncludes(serviceSource, token, 'developer service certification guard')
+}
 
 const packageJson = JSON.parse(readFile('web/package.json'))
 assert(

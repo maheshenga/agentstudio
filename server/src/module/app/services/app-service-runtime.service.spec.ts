@@ -597,6 +597,24 @@ describe('AppServiceRuntimeService', () => {
     }
   });
 
+  it('returns bounded developer logs without process identifiers or runtime paths', async () => {
+    processManager.logs.mockResolvedValue({ stdout: 'ok', stderr: '[REDACTED]' });
+
+    const logs = await service.getDeveloperRuntimeLogs(app(), 999);
+
+    expect(processManager.logs).toHaveBeenCalledWith(instance(101).processName, 200);
+    expect(logs).toEqual({
+      app_code: 'admin_echo_service',
+      version: '1.0.0',
+      role: 'active',
+      stdout: 'ok',
+      stderr: '[REDACTED]',
+    });
+    expect(JSON.stringify(logs)).not.toMatch(
+      /process_name|loopback_port|release_dir|environment|command|package_path/i,
+    );
+  });
+
   it('allocates only an unused loopback port from the configured range', async () => {
     const blocker = createServer();
     await new Promise<void>((resolve) => blocker.listen(0, '127.0.0.1', resolve));

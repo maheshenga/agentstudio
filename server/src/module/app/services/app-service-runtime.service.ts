@@ -624,6 +624,32 @@ export class AppServiceRuntimeService {
     };
   }
 
+  async getDeveloperRuntimeLogs(app: AppPackageEntity, lines = 100) {
+    if (app.type !== 'service') throw new BadRequestException('App is not a service runtime');
+    const instances = await this.instanceRepo.find({
+      where: { appId: app.id },
+      order: { id: 'DESC' },
+    });
+    const instance =
+      instances.find((item) => item.role === 'active') ||
+      instances.find((item) => item.role === 'candidate') ||
+      instances.find((item) => item.role === 'standby');
+    if (!instance) throw new NotFoundException('Service runtime instance not found');
+    const version = await this.versionRepo.findOne({
+      where: { id: instance.versionId, appId: app.id },
+    });
+    if (!version) throw new NotFoundException('Service runtime version not found');
+    const boundedLines = Math.min(200, Math.max(1, Math.trunc(Number(lines) || 100)));
+    const logs = await this.processManager.logs(instance.processName, boundedLines);
+    return {
+      app_code: app.code,
+      version: version.version,
+      role: instance.role,
+      stdout: logs.stdout,
+      stderr: logs.stderr,
+    };
+  }
+
   private async prepareCandidate(
     manager: EntityManager,
     appCode: string,

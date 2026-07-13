@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
@@ -32,6 +32,32 @@ export class AppDeveloperController {
     return this.runOutsideTenant(user, () =>
       this.appDeveloperService
         .createApp(body, user.userId, this.resolveDeveloperName(user))
+        .then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Get('service-overview')
+  @ApiOperation({ summary: 'Get owned service runtime overview' })
+  @RequirePermission('app:developer:observability')
+  getServiceOverview(@Query('days') days: string | undefined, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () =>
+      this.appDeveloperService
+        .getServiceOverview(user.userId, Number(days || 7))
+        .then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Get(':code/runtime/logs')
+  @ApiOperation({ summary: 'Get bounded redacted logs for my service app' })
+  @RequirePermission('app:developer:observability')
+  getServiceLogs(
+    @Param('code') code: string,
+    @Query('lines') lines: string | undefined,
+    @User() user: UserDto,
+  ) {
+    return this.runOutsideTenant(user, () =>
+      this.appDeveloperService
+        .getServiceLogs(code, user.userId, Number(lines || 100))
         .then((data) => ResultData.ok(data)),
     );
   }

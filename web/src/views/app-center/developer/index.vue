@@ -16,6 +16,49 @@
         </div>
       </template>
 
+      <div class="developer-apps-page__certification">
+        <div>
+          <div class="developer-apps-page__certification-title">
+            Developer certification
+            <ElTag :type="certificationTagType" effect="light">{{ certificationLabel }}</ElTag>
+          </div>
+          <p>{{ certificationDescription }}</p>
+          <div
+            v-if="profile?.approved_runtime_types.length"
+            class="developer-apps-page__runtime-tags"
+          >
+            <ElTag
+              v-for="runtime in profile.approved_runtime_types"
+              :key="runtime"
+              size="small"
+              effect="plain"
+            >
+              {{ runtime }}
+            </ElTag>
+          </div>
+        </div>
+        <div class="developer-apps-page__certification-actions">
+          <ElButton :icon="DataLine" @click="goObservability">Observability</ElButton>
+          <ElButton
+            v-if="profileError"
+            type="primary"
+            link
+            :loading="profileLoading"
+            @click="loadProfile"
+          >
+            Retry status
+          </ElButton>
+          <ElButton
+            v-if="canApplyCertification"
+            type="primary"
+            :loading="profileLoading"
+            @click="openCertificationDialog"
+          >
+            Apply
+          </ElButton>
+        </div>
+      </div>
+
       <div class="developer-apps-page__filters">
         <ElInput
           v-model="filters.keyword"
@@ -196,6 +239,17 @@
       width="720px"
     >
       <ElForm ref="formRef" :model="form" :rules="formRules" label-width="112px">
+        <ElFormItem v-if="!editingCode" label="Runtime" prop="runtime_type">
+          <ElSegmented v-model="form.runtime_type" :options="runtimeOptions" />
+        </ElFormItem>
+        <ElAlert
+          v-if="!editingCode && form.runtime_type === 'service'"
+          type="info"
+          title="Service packages require active service certification and restricted review."
+          :closable="false"
+          show-icon
+          class="developer-apps-page__runtime-alert"
+        />
         <div class="developer-apps-page__form-grid">
           <ElFormItem label="Code" prop="code">
             <ElInput
@@ -240,7 +294,7 @@
       </template>
     </ElDialog>
 
-    <ElDialog v-model="uploadDialogVisible" title="Upload Static Version" width="620px">
+    <ElDialog v-model="uploadDialogVisible" :title="uploadDialogTitle" width="620px">
       <div class="developer-apps-page__upload-target">
         <span>{{ uploadAppName || uploadAppCode }}</span>
         <code>{{ uploadAppCode }}</code>
@@ -256,7 +310,11 @@
         :on-remove="handleUploadRemove"
       >
         <ElIcon class="el-icon--upload"><UploadFilled /></ElIcon>
-        <div class="el-upload__text">Drop ZIP package here or <em>select file</em></div>
+        <div class="el-upload__text">
+          Drop {{ uploadRuntimeType === 'service' ? 'built service' : 'static' }} ZIP package here
+          or
+          <em>select file</em>
+        </div>
       </ElUpload>
       <template #footer>
         <ElButton @click="uploadDialogVisible = false">Cancel</ElButton>
@@ -323,6 +381,29 @@
               </span>
             </template>
           </ElTableColumn>
+          <ElTableColumn label="Automated Review" min-width="180">
+            <template #default="{ row }">
+              <ElTag
+                v-if="row.scan_result"
+                :type="row.scan_result.passed ? 'success' : 'danger'"
+                effect="light"
+              >
+                {{ row.scan_result.passed ? 'Passed' : 'Blocked' }}
+              </ElTag>
+              <div v-if="row.scan_result?.findings?.length" class="developer-apps-page__muted">
+                {{ row.scan_result.findings.length }} finding(s)
+              </div>
+              <span v-else-if="!row.scan_result" class="developer-apps-page__muted">-</span>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="Frozen Snapshot" min-width="180">
+            <template #default="{ row }">
+              <ElTag v-if="row.review_snapshot_hash" type="info" effect="plain">Frozen</ElTag>
+              <div class="developer-apps-page__hash" :title="row.review_snapshot_hash || ''">
+                {{ shortHash(row.review_snapshot_hash) }}
+              </div>
+            </template>
+          </ElTableColumn>
           <ElTableColumn label="Package" min-width="180">
             <template #default="{ row }">
               <div>{{ formatFileSize(row.file_size) }}</div>
@@ -355,6 +436,48 @@
         </ElTable>
       </template>
     </ElDrawer>
+
+    <ElDialog v-model="certificationDialogVisible" title="Developer Certification" width="640px">
+      <ElForm label-width="150px">
+        <ElFormItem label="Display name" required>
+          <ElInput v-model="certificationForm.display_name" maxlength="100" />
+        </ElFormItem>
+        <ElFormItem label="HTTPS website">
+          <ElInput
+            v-model="certificationForm.website"
+            maxlength="255"
+            placeholder="https://example.com"
+          />
+        </ElFormItem>
+        <ElFormItem label="Requested runtimes" required>
+          <ElCheckboxGroup v-model="certificationForm.requested_runtime_types">
+            <ElCheckbox
+              v-for="runtime in certificationRuntimeTypes"
+              :key="runtime"
+              :value="runtime"
+            >
+              {{ runtime }}
+            </ElCheckbox>
+          </ElCheckboxGroup>
+        </ElFormItem>
+        <ElFormItem label="Application statement" required>
+          <ElInput
+            v-model="certificationForm.statement"
+            type="textarea"
+            :rows="5"
+            minlength="20"
+            maxlength="2000"
+            show-word-limit
+          />
+        </ElFormItem>
+      </ElForm>
+      <template #footer>
+        <ElButton @click="certificationDialogVisible = false">Cancel</ElButton>
+        <ElButton type="primary" :loading="applyingCertification" @click="submitCertification">
+          Submit application
+        </ElButton>
+      </template>
+    </ElDialog>
   </div>
 </template>
 
@@ -369,6 +492,7 @@
   } from 'element-plus'
   import {
     Check,
+    DataLine,
     Edit,
     Plus,
     Refresh,
@@ -388,6 +512,12 @@
     type DeveloperAppRecord,
     type SaveDeveloperAppParams
   } from '@/api/app-developer'
+  import {
+    applyDeveloperCertification,
+    fetchOwnDeveloperProfile,
+    type DeveloperCertificationProfile,
+    type DeveloperRuntimeType
+  } from '@/api/app-developer-certification'
   import type {
     AppPackageDetailRecord,
     AppPackageStatus,
@@ -396,20 +526,27 @@
 
   defineOptions({ name: 'AppCenterDeveloperPage' })
 
+  const router = useRouter()
   const records = ref<DeveloperAppRecord[]>([])
   const selectedApp = ref<AppPackageDetailRecord>()
+  const profile = ref<DeveloperCertificationProfile | null>(null)
   const loading = ref(false)
+  const profileLoading = ref(false)
   const saving = ref(false)
   const uploading = ref(false)
+  const applyingCertification = ref(false)
   const detailLoading = ref(false)
   const loadError = ref('')
+  const profileError = ref('')
   const detailError = ref('')
   const editingCode = ref('')
   const uploadAppCode = ref('')
   const uploadAppName = ref('')
+  const uploadRuntimeType = ref<'static' | 'service'>('static')
   const resubmittingVersion = ref('')
   const formDialogVisible = ref(false)
   const uploadDialogVisible = ref(false)
+  const certificationDialogVisible = ref(false)
   const versionsDrawerVisible = ref(false)
   const formRef = ref<FormInstance>()
   const uploadRef = ref<UploadInstance>()
@@ -431,10 +568,18 @@
   const form = reactive({
     code: '',
     name: '',
+    runtime_type: 'static' as 'static' | 'service',
     category: '',
     icon: '',
     summary: '',
     description: ''
+  })
+  const certificationRuntimeTypes: DeveloperRuntimeType[] = ['static', 'iframe', 'service']
+  const certificationForm = reactive({
+    display_name: '',
+    website: '',
+    statement: '',
+    requested_runtime_types: ['static'] as DeveloperRuntimeType[]
   })
   const formRules: FormRules = {
     code: [
@@ -457,7 +602,56 @@
     hour12: false
   })
   const { width: viewportWidth } = useWindowSize()
-  const versionsDrawerSize = computed(() => (viewportWidth.value <= 800 ? '100%' : '760px'))
+  const versionsDrawerSize = computed(() => (viewportWidth.value <= 800 ? '100%' : '920px'))
+  const serviceRuntimeApproved = computed(
+    () =>
+      !profileError.value &&
+      profile.value?.certification_status === 'certified' &&
+      !profile.value.disabled &&
+      profile.value.approved_runtime_types.includes('service')
+  )
+  const runtimeOptions = computed(() => [
+    { label: 'Static app', value: 'static' },
+    { label: 'Service plugin', value: 'service', disabled: !serviceRuntimeApproved.value }
+  ])
+  const uploadDialogTitle = computed(() =>
+    uploadRuntimeType.value === 'service' ? 'Upload Service Version' : 'Upload Static Version'
+  )
+  const canApplyCertification = computed(
+    () =>
+      !profileLoading.value &&
+      !profileError.value &&
+      (!profile.value ||
+        profile.value.certification_status === 'rejected' ||
+        profile.value.certification_status === 'expired')
+  )
+  const certificationLabel = computed(() => {
+    if (profileLoading.value) return 'Loading'
+    if (profileError.value) return 'Unavailable'
+    if (!profile.value) return 'Not applied'
+    return profile.value.disabled ? 'Disabled' : profile.value.certification_status
+  })
+  const certificationDescription = computed(() => {
+    if (profileLoading.value) return 'Loading certification status.'
+    if (profileError.value) return profileError.value
+    if (!profile.value)
+      return 'Static apps are available now. Apply to submit restricted service plugins.'
+    if (profile.value.disabled) return profile.value.review_message || 'Certification is disabled.'
+    if (profile.value.certification_status === 'pending')
+      return 'Application is awaiting platform review.'
+    if (profile.value.certification_status === 'certified') {
+      return `Approved runtimes: ${profile.value.approved_runtime_types.join(', ') || '-'}`
+    }
+    return profile.value.review_message || 'Submit an updated application to continue.'
+  })
+  const certificationTagType = computed(() => {
+    if (profileError.value) return 'danger'
+    if (profile.value?.disabled || profile.value?.certification_status === 'rejected')
+      return 'danger'
+    if (profile.value?.certification_status === 'certified') return 'success'
+    if (profile.value?.certification_status === 'pending') return 'warning'
+    return 'info'
+  })
 
   const filteredRecords = computed(() => {
     const keyword = filters.keyword.trim().toLowerCase()
@@ -572,7 +766,8 @@
   }
 
   function canUpload(row: DeveloperAppRecord) {
-    return row.status !== 'disabled' && row.status !== 'archived'
+    if (row.status === 'disabled' || row.status === 'archived') return false
+    return row.type !== 'service' || serviceRuntimeApproved.value
   }
 
   function resetFilters() {
@@ -584,6 +779,7 @@
     Object.assign(form, {
       code: '',
       name: '',
+      runtime_type: 'static',
       category: '',
       icon: '',
       summary: '',
@@ -603,6 +799,19 @@
       ElMessage.error(loadError.value)
     } finally {
       loading.value = false
+    }
+  }
+
+  async function loadProfile() {
+    profileLoading.value = true
+    profileError.value = ''
+    profile.value = null
+    try {
+      profile.value = await fetchOwnDeveloperProfile()
+    } catch {
+      profileError.value = 'Certification status failed to load. Retry before applying.'
+    } finally {
+      profileLoading.value = false
     }
   }
 
@@ -641,7 +850,11 @@
         await updateDeveloperApp(editingCode.value, params)
         ElMessage.success('App updated')
       } else {
-        await createDeveloperApp({ ...params, code: form.code.trim() })
+        const runtimeParams =
+          form.runtime_type === 'service'
+            ? { runtime_type: 'service' as const }
+            : { runtime_type: 'static' as const }
+        await createDeveloperApp({ ...params, ...runtimeParams, code: form.code.trim() })
         ElMessage.success('App created')
       }
       formDialogVisible.value = false
@@ -671,6 +884,7 @@
     if (!canUpload(row)) return
     uploadAppCode.value = row.code
     uploadAppName.value = row.name
+    uploadRuntimeType.value = row.type === 'service' ? 'service' : 'static'
     uploadFiles.value = []
     selectedFile.value = undefined
     uploadRef.value?.clearFiles()
@@ -724,8 +938,51 @@
     }
   }
 
+  function goObservability() {
+    router.push('/app-center/developer-runtime')
+  }
+
+  function openCertificationDialog() {
+    if (profileLoading.value || profileError.value) return
+    Object.assign(certificationForm, {
+      display_name: profile.value?.display_name || '',
+      website: profile.value?.website || '',
+      statement: profile.value?.statement || '',
+      requested_runtime_types: profile.value?.requested_runtime_types?.length
+        ? [...profile.value.requested_runtime_types]
+        : ['static', 'service']
+    })
+    certificationDialogVisible.value = true
+  }
+
+  async function submitCertification() {
+    const displayName = certificationForm.display_name.trim()
+    const statement = certificationForm.statement.trim()
+    if (displayName.length < 2 || statement.length < 20) {
+      ElMessage.warning('Display name and a 20 character statement are required')
+      return
+    }
+    if (!certificationForm.requested_runtime_types.length) {
+      ElMessage.warning('Select at least one runtime')
+      return
+    }
+    applyingCertification.value = true
+    try {
+      profile.value = await applyDeveloperCertification({
+        display_name: displayName,
+        website: certificationForm.website.trim() || undefined,
+        statement,
+        requested_runtime_types: certificationForm.requested_runtime_types
+      })
+      certificationDialogVisible.value = false
+      ElMessage.success('Certification application submitted')
+    } finally {
+      applyingCertification.value = false
+    }
+  }
+
   onMounted(() => {
-    loadApps()
+    Promise.all([loadApps(), loadProfile()])
   })
 </script>
 
@@ -766,6 +1023,42 @@
     color: var(--el-text-color-secondary);
     font-size: 13px;
     line-height: 1.5;
+  }
+
+  .developer-apps-page__certification,
+  .developer-apps-page__certification-title,
+  .developer-apps-page__certification-actions,
+  .developer-apps-page__runtime-tags {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .developer-apps-page__certification {
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding: 14px 16px;
+    border: 1px solid var(--el-border-color-lighter);
+    background: var(--el-fill-color-extra-light);
+  }
+
+  .developer-apps-page__certification-title {
+    font-weight: 600;
+  }
+
+  .developer-apps-page__certification p {
+    margin: 5px 0 0;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+  }
+
+  .developer-apps-page__runtime-tags {
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+
+  .developer-apps-page__runtime-alert {
+    margin-bottom: 16px;
   }
 
   .developer-apps-page__filters {
@@ -896,12 +1189,14 @@
 
   @media (max-width: 760px) {
     .developer-apps-page__header,
+    .developer-apps-page__certification,
     .developer-apps-page__form-grid {
       display: grid;
       grid-template-columns: 1fr;
     }
 
     .developer-apps-page__header-actions,
+    .developer-apps-page__certification-actions,
     .developer-apps-page__keyword,
     .developer-apps-page__status-filter {
       width: 100%;

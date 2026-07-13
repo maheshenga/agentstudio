@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { IsNull, LessThan, Repository } from 'typeorm';
 
 import { RedisService } from '../../../redis/redis.service';
 import { SaasModuleService } from '../../saas/services/saas-module.service';
@@ -38,6 +38,8 @@ interface InvocationContext {
 
 @Injectable()
 export class AppServiceInvocationPolicyService {
+  private cleanupNotBefore = 0;
+
   constructor(
     @InjectRepository(AppPackageEntity)
     private readonly appRepo: Repository<AppPackageEntity>,
@@ -129,6 +131,7 @@ export class AppServiceInvocationPolicyService {
       };
     } finally {
       await this.releaseLease(session, target, lease.key);
+      this.scheduleRetentionCleanup();
     }
   }
 
@@ -511,5 +514,19 @@ export class AppServiceInvocationPolicyService {
     if (typeof value !== 'string' && typeof value !== 'number') return null;
     const parsed = Number(value);
     return Number.isSafeInteger(parsed) ? parsed : null;
+  }
+
+  private scheduleRetentionCleanup() {
+    const now = Date.now();
+    if (now < this.cleanupNotBefore) return;
+    this.cleanupNotBefore = now + 60 * 60 * 1000;
+    const retentionDays = this.clamp(
+      'appMarketplace.developerService.logRetentionDays',
+      7,
+      1,
+      30,
+    );
+    const cutoff = new Date(now - retentionDays * 24 * 60 * 60 * 1000);
+    void this.invocationRepo.delete({ createTime: LessThan(cutoff) }).catch(() => undefined);
   }
 }

@@ -722,7 +722,7 @@ git commit -m "feat(app): invoke restricted tenant services"
 - Produces: `AppDeveloperService.getServiceLogs(code: string, developerId: number, lines: number)`
 - Produces: frontend `DeveloperServiceOverview`, `DeveloperServiceRuntimeRecord`, `DeveloperServiceLogResponse`, and certification contracts
 
-- [ ] **Step 1: Write failing ownership and response-safety tests**
+- [x] **Step 1: Write failing ownership and response-safety tests**
 
 Cover:
 
@@ -735,7 +735,7 @@ it('clamps observability windows to 1, 7, or 30 days and log lines to 1..200');
 it('cleans invocation rows older than configured retention without blocking successful calls');
 ```
 
-- [ ] **Step 2: Run observability tests to verify RED**
+- [x] **Step 2: Run observability tests to verify RED**
 
 ```powershell
 pnpm run test -- app-developer.service.spec.ts app-developer.controller.spec.ts app-service-runtime.service.spec.ts --runInBand
@@ -743,7 +743,7 @@ pnpm run test -- app-developer.service.spec.ts app-developer.controller.spec.ts 
 
 Expected: FAIL because owned runtime endpoints and aggregates do not exist.
 
-- [ ] **Step 3: Implement owned observability APIs**
+- [x] **Step 3: Implement owned observability APIs**
 
 Routes:
 
@@ -754,23 +754,23 @@ GET /api/app-developer/apps/:code/runtime/logs?lines=100
 
 Always call `findOwnedApp(code, developerId)` before runtime/log queries. Overview returns app/version, process/health/circuit labels, restart count, success/failure/rejected counts, success rate, p50/p95 duration, last invoke, and last success. Logs return only `app_code`, `version`, `role`, `stdout`, and `stderr`, reusing the P10 redactor and 64 KB bound.
 
-- [ ] **Step 4: Build the platform certification page**
+- [x] **Step 4: Build the platform certification page**
 
 The page includes status/risk/runtime filters, applicant identity, requested runtimes, statement, website, timestamps, reviewer result, expiry, disabled state, and approve/reject/disable actions. Actions use dialogs with explicit expiry, runtime checkboxes, risk selection, and mandatory reason. Loading, empty, error, success, and retry states are required.
 
-- [ ] **Step 5: Extend the developer workspace**
+- [x] **Step 5: Extend the developer workspace**
 
 Add a compact certification banner, application action when absent/rejected/expired, approved runtime tags, service/static runtime selector, service package upload text, automated findings, frozen submission state, and a link to owned observability. Do not expose platform approve/publish/candidate controls.
 
-- [ ] **Step 6: Build owned service observability page**
+- [x] **Step 6: Build owned service observability page**
 
 Use unframed page sections with compact KPI rows, one service table, and a log drawer. Include 1/7/30-day segmented selection, refresh icon button, health/circuit tags, last invocation, success rate, p95 latency, bounded logs, loading skeletons, empty state, and retry alert. Do not render nested cards or sensitive runtime identifiers.
 
-- [ ] **Step 7: Add deterministic readiness assertions**
+- [x] **Step 7: Add deterministic readiness assertions**
 
 The P11 readiness script verifies all routes, permissions, menu components, certification restrictions, feature flag, snapshot fields, target-policy tokens, SDK method, ownership checks, safe UI fields, and exclusion of `package_path`, `publish_path`, `release_dir`, `loopback_port`, `process_name`, `environment`, `command_line`, `raw_source`, `token`, and `cookie` from developer APIs/UI. Update the existing developer readiness gate to require tenant-role workspace grants, static-app access without certification, and explicit certification guards before every service path.
 
-- [ ] **Step 8: Run Task 6 gates**
+- [x] **Step 8: Run Task 6 gates**
 
 ```powershell
 pnpm run test -- app-developer.service.spec.ts app-developer.controller.spec.ts app-service-runtime.service.spec.ts --runInBand
@@ -785,7 +785,7 @@ pnpm run build
 
 Expected: backend tests, three readiness gates, and frontend build pass.
 
-- [ ] **Step 9: Commit Task 6**
+- [x] **Step 9: Commit Task 6**
 
 ```powershell
 git add server/src/module/app web/src/api web/src/views/app-center web/src/views/app-platform/developers web/scripts web/package.json

@@ -66,6 +66,7 @@ describe('AppServiceInvocationPolicyService', () => {
   const invocationRepo = {
     create: jest.fn((value) => ({ ...value })),
     save: jest.fn(async (value) => ({ id: 1, ...value })),
+    delete: jest.fn(),
   };
   const redisClient = { eval: jest.fn() };
   const redisService = { getClient: jest.fn(() => redisClient) };
@@ -94,6 +95,7 @@ describe('AppServiceInvocationPolicyService', () => {
     instanceRepo.update.mockReset();
     invocationRepo.create.mockReset().mockImplementation((value) => ({ ...value }));
     invocationRepo.save.mockReset().mockImplementation(async (value) => ({ id: 1, ...value }));
+    invocationRepo.delete.mockReset().mockResolvedValue({ affected: 0 });
     redisClient.eval.mockReset();
     saasModuleService.assertTenantModuleEnabled.mockReset().mockResolvedValue(undefined);
     systemModuleAccessService.assertModuleAccess.mockReset().mockResolvedValue(undefined);
@@ -429,5 +431,28 @@ describe('AppServiceInvocationPolicyService', () => {
       { id: 70 },
       expect.objectContaining({ consecutiveFailures: expect.any(Number) }),
     );
+  });
+
+  it('schedules retention cleanup without blocking a successful invocation', async () => {
+    configService.get.mockImplementation((key: string, fallback?: unknown) => {
+      if (key === 'appMarketplace.developerService.logRetentionDays') return 7;
+      const values: Record<string, number> = {
+        'appMarketplace.developerService.concurrency': 20,
+        'appMarketplace.developerService.ratePerMinute': 60,
+        'appMarketplace.developerService.circuitFailures': 5,
+        'appMarketplace.developerService.circuitOpenSeconds': 60,
+      };
+      return values[key] ?? fallback;
+    });
+    invocationRepo.delete.mockRejectedValueOnce(new Error('cleanup unavailable'));
+
+    await expect(service.invoke(session, 'workflow_service', {})).resolves.toMatchObject({
+      status: 200,
+    });
+    await Promise.resolve();
+
+    expect(invocationRepo.delete).toHaveBeenCalledWith({
+      createTime: expect.anything(),
+    });
   });
 });

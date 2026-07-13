@@ -4,16 +4,24 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { AppPackageEntity } from '../entities/app-package.entity';
+import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
+import { AppServiceInstanceEntity } from '../entities/app-service-instance.entity';
+import { AppServiceInvocationEntity } from '../entities/app-service-invocation.entity';
 import { AppDeveloperService } from './app-developer.service';
 import { AppDeveloperCertificationService } from './app-developer-certification.service';
 import { AppPlatformService } from './app-platform.service';
+import { AppServiceRuntimeService } from './app-service-runtime.service';
 
 describe('AppDeveloperService', () => {
   let service: AppDeveloperService;
 
   const appRepo = {
     findOne: jest.fn(),
+    find: jest.fn(),
   };
+  const versionRepo = { find: jest.fn() };
+  const instanceRepo = { find: jest.fn() };
+  const invocationRepo = { query: jest.fn() };
   const platformService = {
     listDeveloperApps: jest.fn(),
     getApp: jest.fn(),
@@ -29,6 +37,9 @@ describe('AppDeveloperService', () => {
   const configService = {
     get: jest.fn(),
   };
+  const runtimeService = {
+    getDeveloperRuntimeLogs: jest.fn(),
+  };
   const file = {
     originalname: 'creator-portal.zip',
     mimetype: 'application/zip',
@@ -43,9 +54,13 @@ describe('AppDeveloperService', () => {
       providers: [
         AppDeveloperService,
         { provide: getRepositoryToken(AppPackageEntity), useValue: appRepo },
+        { provide: getRepositoryToken(AppPackageVersionEntity), useValue: versionRepo },
+        { provide: getRepositoryToken(AppServiceInstanceEntity), useValue: instanceRepo },
+        { provide: getRepositoryToken(AppServiceInvocationEntity), useValue: invocationRepo },
         { provide: AppPlatformService, useValue: platformService },
         { provide: AppDeveloperCertificationService, useValue: certificationService },
         { provide: ConfigService, useValue: configService },
+        { provide: AppServiceRuntimeService, useValue: runtimeService },
       ],
     }).compile();
 
@@ -265,5 +280,123 @@ describe('AppDeveloperService', () => {
     await service.submitVersion('creator_portal', '1.0.0', 17);
 
     expect(platformService.submitVersion).toHaveBeenCalledWith('creator_portal', '1.0.0', 17);
+  });
+
+  it('aggregates invocation totals only for service apps owned by the authenticated developer', async () => {
+    appRepo.find.mockResolvedValue([
+      {
+        id: 40,
+        code: 'workflow_service',
+        name: 'Workflow Service',
+        developerId: 17,
+        type: 'service',
+      },
+    ]);
+    versionRepo.find.mockResolvedValue([{ id: 60, appId: 40, version: '2.0.0' }]);
+    instanceRepo.find.mockResolvedValue([
+      {
+        id: 70,
+        appId: 40,
+        versionId: 60,
+        role: 'active',
+        processStatus: 'online',
+        healthStatus: 'healthy',
+        circuitState: 'open',
+        restartCount: 2,
+        processName: 'must-not-escape',
+        loopbackPort: 22001,
+        releaseDir: '/must-not-escape',
+      },
+    ]);
+    invocationRepo.query
+      .mockResolvedValueOnce([
+        {
+          target_app_id: '40',
+          success_count: '8',
+          failure_count: '1',
+          rejected_count: '1',
+          total_count: '10',
+          last_invoke_time: '2026-07-13T08:00:00.000Z',
+          last_success_time: '2026-07-13T07:59:00.000Z',
+        },
+      ])
+      .mockResolvedValueOnce([
+        { target_app_id: '40', p50_duration_ms: '120', p95_duration_ms: '400' },
+      ]);
+
+    const result = await service.getServiceOverview(17, 7);
+
+    expect(appRepo.find).toHaveBeenCalledWith({
+      where: expect.objectContaining({ developerId: 17, type: 'service' }),
+      order: { id: 'ASC' },
+    });
+    expect(invocationRepo.query.mock.calls[0][1][0]).toBe(17);
+    expect(invocationRepo.query.mock.calls[1][1][0]).toBe(17);
+    expect(result).toMatchObject({
+      days: 7,
+      total_services: 1,
+      total_invocations: 10,
+      total_success: 8,
+      total_failure: 1,
+      total_rejected: 1,
+      success_rate: 80,
+      services: [
+        expect.objectContaining({
+          app_code: 'workflow_service',
+          version: '2.0.0',
+          role: 'active',
+          process_status: 'online',
+          health_status: 'healthy',
+          circuit_state: 'open',
+          restart_count: 2,
+          p50_duration_ms: 120,
+          p95_duration_ms: 400,
+        }),
+      ],
+    });
+    expect(JSON.stringify(result)).not.toMatch(
+      /process_name|loopback_port|release_dir|package_path|environment|command|tenant_id|payload/i,
+    );
+  });
+
+  it('normalizes unsupported observability windows to a bounded value', async () => {
+    appRepo.find.mockResolvedValue([]);
+
+    await expect(service.getServiceOverview(17, 99 as any)).resolves.toMatchObject({
+      days: 30,
+      total_services: 0,
+      services: [],
+    });
+    expect(invocationRepo.query).not.toHaveBeenCalled();
+  });
+
+  it('returns bounded redacted logs for an owned service app', async () => {
+    const owned = { id: 40, code: 'workflow_service', developerId: 17, type: 'service' };
+    appRepo.findOne.mockResolvedValue(owned);
+    runtimeService.getDeveloperRuntimeLogs.mockResolvedValue({
+      app_code: 'workflow_service',
+      version: '2.0.0',
+      role: 'active',
+      stdout: 'ok',
+      stderr: '[REDACTED]',
+    });
+
+    await expect(service.getServiceLogs('workflow_service', 17, 999)).resolves.toEqual({
+      app_code: 'workflow_service',
+      version: '2.0.0',
+      role: 'active',
+      stdout: 'ok',
+      stderr: '[REDACTED]',
+    });
+    expect(runtimeService.getDeveloperRuntimeLogs).toHaveBeenCalledWith(owned, 200);
+  });
+
+  it('rejects a foreign service app before reading runtime logs', async () => {
+    appRepo.findOne.mockResolvedValue(null);
+
+    await expect(service.getServiceLogs('foreign_service', 17, 100)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(runtimeService.getDeveloperRuntimeLogs).not.toHaveBeenCalled();
   });
 });

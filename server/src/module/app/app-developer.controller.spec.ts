@@ -10,6 +10,8 @@ describe('AppDeveloperController', () => {
     updateApp: jest.fn(),
     uploadVersion: jest.fn(),
     submitVersion: jest.fn(),
+    getServiceOverview: jest.fn(),
+    getServiceLogs: jest.fn(),
   };
   let controller: AppDeveloperController;
 
@@ -47,5 +49,16 @@ describe('AppDeveloperController', () => {
     await controller.uploadVersion('creator_portal', file, { userId: 17 });
 
     expect(service.uploadVersion).toHaveBeenCalledWith('creator_portal', file, 17);
+  });
+
+  it('uses the authenticated developer identity for service observability', async () => {
+    service.getServiceOverview.mockResolvedValue({ days: 7, services: [] });
+    service.getServiceLogs.mockResolvedValue({ app_code: 'workflow_service', stdout: '', stderr: '' });
+
+    await controller.getServiceOverview('7', { userId: 17 });
+    await controller.getServiceLogs('workflow_service', '250', { userId: 17 });
+
+    expect(service.getServiceOverview).toHaveBeenCalledWith(17, 7);
+    expect(service.getServiceLogs).toHaveBeenCalledWith('workflow_service', 17, 250);
   });
 });
