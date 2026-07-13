@@ -46,10 +46,10 @@
             <ElFormItem prop="tenant_id">
               <ElSelect
                 class="w-full custom-height"
-                :placeholder="tenantList.length > 0 ? tenantSelectPlaceholder : tenantInputFirstPlaceholder"
+                :placeholder="tenantSelectPlaceholder"
                 v-model="formData.tenant_id"
                 :loading="loadingTenants"
-                :disabled="tenantList.length === 0"
+                :disabled="tenantSelectDisabled"
               >
                 <ElOption
                   v-for="tenant in tenantList"
@@ -188,9 +188,7 @@
 
   const systemName = ref(AppConfig.systemInfo.name)
   const formRef = ref<FormInstance>()
-  const tenantSelectPlaceholder = '请选择租户'
-  const tenantInputFirstPlaceholder = '请先输入用户名'
-  const defaultTenantLabel = '(默认)'
+  const legacySystemNames = new Set(['FssAdmin', 'FssAdmin后台管理系统'])
 
   const demoLoginEnabled = import.meta.env.VITE_DEMO_LOGIN === 'true'
   const formData = reactive({
@@ -204,6 +202,22 @@
 
   const tenantList = ref<Api.Auth.TenantItem[]>([])
   const loadingTenants = ref(false)
+  const tenantLookupAttempted = ref(false)
+  const tenantLookupFailed = ref(false)
+  const tenantSelectDisabled = computed(() => loadingTenants.value || tenantList.value.length === 0)
+  const tenantSelectPlaceholder = computed(() => {
+    const username = formData.username.trim()
+    const password = formData.password.trim()
+
+    if (username.length < 2) return t('login.tenant.accountRequired')
+    if (!password) return t('login.tenant.passwordRequired')
+    if (loadingTenants.value) return t('login.tenant.loading')
+    if (tenantList.value.length > 0) return t('login.tenant.select')
+    if (tenantLookupFailed.value) return t('login.tenant.error')
+    if (tenantLookupAttempted.value) return t('login.tenant.empty')
+    return t('login.tenant.pending')
+  })
+  const defaultTenantLabel = computed(() => t('login.tenant.default'))
 
   const rules = computed<FormRules>(() => ({
     username: [{ required: true, message: t('login.placeholder.username'), trigger: 'blur' }],
@@ -211,7 +225,7 @@
     ...(captchaEnabled.value
       ? { code: [{ required: true, message: t('login.placeholder.code'), trigger: 'blur' }] }
       : {}),
-    tenant_id: [{ required: true, message: '请选择租户', trigger: 'change' }]
+    tenant_id: [{ required: true, message: t('login.tenant.select'), trigger: 'change' }]
   }))
 
   const loading = ref(false)
@@ -239,7 +253,7 @@
     try {
       const res = await fetchPublicConfigValue('site_name')
       const name = res?.value?.trim()
-      if (name) {
+      if (name && !legacySystemNames.has(name)) {
         systemName.value = name
       }
     } catch (error) {
@@ -299,6 +313,8 @@
     tenantLookupRequestId++
     tenantList.value = []
     formData.tenant_id = undefined
+    tenantLookupAttempted.value = false
+    tenantLookupFailed.value = false
 
     if (username.length < 2 || !password) {
       loadingTenants.value = false
@@ -325,9 +341,12 @@
     const requestId = ++tenantLookupRequestId
     try {
       loadingTenants.value = true
+      tenantLookupAttempted.value = false
+      tenantLookupFailed.value = false
       const list = await fetchTenantsByCredentials(username, password)
       if (requestId !== tenantLookupRequestId) return
       tenantList.value = list || []
+      tenantLookupAttempted.value = true
       
       // 如果只有一个租户，自动选中
       if (tenantList.value.length === 1) {
@@ -343,6 +362,8 @@
       console.error('[Login] 加载租户列表失败:', error)
       if (requestId === tenantLookupRequestId) {
         tenantList.value = []
+        tenantLookupAttempted.value = true
+        tenantLookupFailed.value = true
       }
     } finally {
       if (requestId === tenantLookupRequestId) {

@@ -16,7 +16,31 @@ const criticalFiles: ReadableCopyExpectation[] = [
   {
     file: 'src/views/auth/login/index.vue',
     label: 'login page',
-    expectedReadable: ['请选择租户', '请先输入用户名', '注册成功']
+    expectedReadable: ['注册成功']
+  },
+  {
+    file: 'src/locales/langs/zh.json',
+    label: 'Chinese login locale',
+    expectedReadable: [
+      '请选择租户',
+      '请先输入账号',
+      '请先输入密码',
+      '正在查询可用租户',
+      '未找到可用租户',
+      '租户查询失败，请重试'
+    ]
+  },
+  {
+    file: 'src/locales/langs/en.json',
+    label: 'English login locale',
+    expectedReadable: [
+      'Select a tenant',
+      'Enter your account first',
+      'Enter your password first',
+      'Looking up available tenants',
+      'No available tenants found',
+      'Tenant lookup failed. Please retry'
+    ]
   },
   {
     file: 'src/views/saas/signup/index.vue',

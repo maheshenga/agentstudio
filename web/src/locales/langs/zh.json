@@ -166,6 +166,16 @@
       "code": "请输入验证码",
       "slider": "请拖动滑块完成验证"
     },
+    "tenant": {
+      "select": "请选择租户",
+      "accountRequired": "请先输入账号",
+      "passwordRequired": "请先输入密码",
+      "pending": "准备查询可用租户",
+      "loading": "正在查询可用租户",
+      "empty": "未找到可用租户",
+      "error": "租户查询失败，请重试",
+      "default": "(默认)"
+    },
     "sliderText": "按住滑块拖动",
     "sliderSuccessText": "验证成功",
     "rememberPwd": "记住密码",

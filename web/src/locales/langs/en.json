@@ -166,6 +166,16 @@
       "code": "Please enter the verification code",
       "slider": "Please slide to verify"
     },
+    "tenant": {
+      "select": "Select a tenant",
+      "accountRequired": "Enter your account first",
+      "passwordRequired": "Enter your password first",
+      "pending": "Preparing tenant lookup",
+      "loading": "Looking up available tenants",
+      "empty": "No available tenants found",
+      "error": "Tenant lookup failed. Please retry",
+      "default": "(Default)"
+    },
     "sliderText": "Please slide to verify",
     "sliderSuccessText": "Verification successful",
     "rememberPwd": "Remember password",

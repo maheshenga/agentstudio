@@ -58,6 +58,7 @@ const REQUIRED_BACKEND_SAAS_READINESS_SPECS = [
   'database-init-bootstrap-security.spec.ts',
   'database-init-sanitization.spec.ts',
   'verify-db-init-script.spec.ts',
+  'align-agentstudio-site-name.spec.ts',
   'seed-saas-foundation-data.spec.ts',
   'seed-saas-modules.spec.ts',
   'seed-system-modules.spec.ts',

@@ -497,7 +497,7 @@ CREATE TABLE `sa_system_config` (
 INSERT INTO `sa_system_config` VALUES ('1', '1', 'site_copyright', 'Copyright © 2026 FSSPHP Team', '版权信息', 'textarea', null, '96', '', '1', '1', '2026-01-01 00:00:00', '2026-03-22 20:34:45', null);
 INSERT INTO `sa_system_config` VALUES ('2', '1', 'site_desc', '基于Vue3 + FSSPHP 的极速开发框架', '网站描述', 'textarea', null, '97', null, '1', '1', '2026-01-01 00:00:00', '2026-04-23 21:36:30', null);
 INSERT INTO `sa_system_config` VALUES ('3', '1', 'site_keywords', 'FSSPHP, Workerman，symfony，Thinkphp，后台管理系统', '网站关键字', 'input', null, '98', null, '1', '1', '2026-01-01 00:00:00', '2026-04-23 21:36:23', null);
-INSERT INTO `sa_system_config` VALUES ('4', '1', 'site_name', 'FssAdmin后台管理系统', '网站名称', 'input', null, '99', null, '1', '1', '2026-01-01 00:00:00', '2026-04-23 21:36:24', null);
+INSERT INTO `sa_system_config` VALUES ('4', '1', 'site_name', 'AgentStudio', '网站名称', 'input', null, '99', null, '1', '1', '2026-01-01 00:00:00', '2026-04-23 21:36:24', null);
 INSERT INTO `sa_system_config` VALUES ('5', '1', 'site_record_number', '9527', '网站备案号', 'input', null, '95', null, '1', '1', '2026-01-01 00:00:00', '2026-01-01 00:00:00', null);
 INSERT INTO `sa_system_config` VALUES ('6', '2', 'upload_allow_file', 'txt,doc,docx,xls,xlsx,ppt,pptx,rar,zip,7z,gz,pdf,wps,md,jpg,png,jpeg,mp4,pem,crt', '文件类型', 'input', null, '0', null, '1', '1', '2026-01-01 00:00:00', '2026-01-01 00:00:00', null);
 INSERT INTO `sa_system_config` VALUES ('7', '2', 'upload_allow_image', 'jpg,jpeg,png,gif,svg,bmp', '图片类型', 'input', null, '0', null, '1', '1', '2026-01-01 00:00:00', '2026-01-01 00:00:00', null);

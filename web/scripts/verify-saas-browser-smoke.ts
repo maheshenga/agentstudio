@@ -48,7 +48,11 @@ function getMockBackendData(url: string) {
   }
 
   if (url.includes('/core/config/public/site_name')) {
-    return { key: 'site_name', value: 'AgentStudio' }
+    return { key: 'site_name', value: 'FssAdmin后台管理系统' }
+  }
+
+  if (url.includes('/core/tenants-by-credentials')) {
+    return []
   }
 
   if (url.includes('/core/captcha')) {
@@ -128,10 +132,12 @@ async function verifySignupPage(page: Page) {
   const inputCount = await page.locator('.signup-form input').count()
   const hasAgreement = (await page.locator('.signup-form .signup-form__agreement').count()) > 0
   const hasSubmit = (await page.locator('.signup-form__submit button').count()) > 0
+  const signupBrand = await page.locator('.login-left-view .logo .title').innerText()
 
   assert(inputCount >= 6, `SaaS signup page must render form inputs, got ${inputCount}`)
   assert(hasAgreement, 'SaaS signup page must render agreement checkbox')
   assert(hasSubmit, 'SaaS signup page must render submit button')
+  assert(signupBrand === 'AgentStudio', `SaaS signup brand must be AgentStudio, got ${signupBrand}`)
 }
 
 async function verifyLoginInitialState(context: BrowserContext) {
@@ -155,11 +161,45 @@ async function verifyLoginInitialState(context: BrowserContext) {
     const visibleValidationErrors = await page
       .locator('.login-form .el-form-item__error:visible')
       .count()
+    const loginBrand = await page.locator('.login-page-logo .title').innerText()
+    const accountInput = page.locator('input[placeholder="请输入账号"]')
+    const passwordInput = page.locator('input[placeholder="请输入密码"]')
+    const tenantPlaceholder = page.locator('.login-form .el-select__placeholder')
+    const initialTenantPlaceholder = await tenantPlaceholder.innerText()
+
+    await accountInput.fill('a')
+    await page.waitForTimeout(50)
+    const shortAccountTenantPlaceholder = await tenantPlaceholder.innerText()
+
+    await accountInput.fill('tenant-browser-smoke')
+    await page.waitForTimeout(50)
+    const passwordTenantPlaceholder = await tenantPlaceholder.innerText()
+
+    await passwordInput.fill('tenant-browser-password')
+    await page.waitForTimeout(700)
+    const emptyTenantPlaceholder = await tenantPlaceholder.innerText()
 
     assert(visibleWelcomeDialogs === 0, 'login page must not show the debug welcome dialog')
     assert(
       visibleValidationErrors === 0,
       `untouched login form must not show validation errors, got ${visibleValidationErrors}`
+    )
+    assert(loginBrand === 'AgentStudio', `login brand must be AgentStudio, got ${loginBrand}`)
+    assert(
+      initialTenantPlaceholder === '请先输入账号',
+      `initial tenant placeholder must request an account, got ${initialTenantPlaceholder}`
+    )
+    assert(
+      shortAccountTenantPlaceholder === '请先输入账号',
+      `short account placeholder must still request an account, got ${shortAccountTenantPlaceholder}`
+    )
+    assert(
+      passwordTenantPlaceholder === '请先输入密码',
+      `tenant placeholder must request a password after account entry, got ${passwordTenantPlaceholder}`
+    )
+    assert(
+      emptyTenantPlaceholder === '未找到可用租户',
+      `tenant placeholder must explain an empty lookup, got ${emptyTenantPlaceholder}`
     )
     assert(
       pageErrors.length === 0,
