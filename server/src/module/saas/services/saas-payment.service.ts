@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { createSign, createVerify } from 'crypto';
 import { Repository } from 'typeorm';
 
+import { AppOrderService } from '../../app-commerce/services/app-order.service';
 import { SAAS_ORDER_PAID, SAAS_ORDER_PENDING, SAAS_PAYMENT_ALIPAY } from '../constants';
 import { SaasPaymentNotifyLogEntity } from '../entities/saas-payment-notify-log.entity';
 import { SaasOrderService } from './saas-order.service';
@@ -84,7 +85,7 @@ interface AlipayConfig {
   gatewayUrl: string;
 }
 
-export type SaasPaymentOrderType = 'plan' | 'resource_pack';
+export type SaasPaymentOrderType = 'plan' | 'resource_pack' | 'app';
 
 type SaasPayableOrder = {
   orderNo: string;
@@ -97,6 +98,7 @@ export class SaasPaymentService {
   constructor(
     private readonly saasOrderService: SaasOrderService,
     private readonly saasResourcePackOrderService: SaasResourcePackOrderService,
+    private readonly appOrderService: AppOrderService,
     private readonly configService: ConfigService,
     private readonly paymentConfigService: SaasPaymentConfigService,
     @InjectRepository(SaasPaymentNotifyLogEntity)
@@ -276,6 +278,8 @@ export class SaasPaymentService {
 
       if (orderType === 'resource_pack') {
         await this.saasResourcePackOrderService.confirmAlipayPayment(orderNo, resolvedTradeNo);
+      } else if (orderType === 'app') {
+        await this.appOrderService.confirmAlipayPayment(orderNo, resolvedTradeNo);
       } else {
         await this.saasOrderService.confirmAlipayPayment(orderNo, resolvedTradeNo);
       }
@@ -385,6 +389,21 @@ export class SaasPaymentService {
     orderNo: string,
     orderType: SaasPaymentOrderType,
   ): Promise<SaasPayableOrder> {
+    if (orderType === 'app') {
+      const order = await this.appOrderService.findTenantOrder(tenantId, orderNo);
+      if (!order) {
+        throw new NotFoundException('Application order not found');
+      }
+      if (order.status !== SAAS_ORDER_PENDING) {
+        throw new BadRequestException('Only pending orders can be paid');
+      }
+      return {
+        orderNo: order.orderNo,
+        amountCents: order.amountCents,
+        subject: `Application ${order.appName || order.appCode}`,
+      };
+    }
+
     if (orderType === 'resource_pack') {
       const order = await this.saasResourcePackOrderService.findTenantOrder(tenantId, orderNo);
       if (!order) {
@@ -415,10 +434,16 @@ export class SaasPaymentService {
   }
 
   private async findPlatformPayableOrder(orderNo: string, orderType?: SaasPaymentOrderType) {
+    if (orderType === 'app') {
+      return this.appOrderService.findPlatformOrder(orderNo);
+    }
     if (orderType === 'resource_pack') {
       return this.saasResourcePackOrderService.findPlatformOrder(orderNo);
     }
-    return this.saasOrderService.findPlatformOrder(orderNo);
+    if (orderType === 'plan') {
+      return this.saasOrderService.findPlatformOrder(orderNo);
+    }
+    return null;
   }
 
   private async markPaymentRequested(
@@ -427,6 +452,10 @@ export class SaasPaymentService {
     orderType: SaasPaymentOrderType,
     now: Date,
   ): Promise<void> {
+    if (orderType === 'app') {
+      await this.appOrderService.markTenantPaymentRequested(tenantId, orderNo, now);
+      return;
+    }
     if (orderType === 'resource_pack') {
       await this.saasResourcePackOrderService.markTenantPaymentRequested(tenantId, orderNo, now);
       return;
@@ -535,7 +564,10 @@ export class SaasPaymentService {
     if (!orderNo) {
       return undefined;
     }
-    return orderNo.startsWith('RPO') ? 'resource_pack' : 'plan';
+    if (orderNo.startsWith('AO')) return 'app';
+    if (orderNo.startsWith('RPO')) return 'resource_pack';
+    if (orderNo.startsWith('SO')) return 'plan';
+    return undefined;
   }
 
   private toAlipayExpectedOrder(order: Record<string, any> | null | undefined): SaasAlipayExpectedOrder | null {

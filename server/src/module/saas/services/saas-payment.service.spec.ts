@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createSign, createVerify, generateKeyPairSync, type KeyObject } from 'crypto';
 
+import { AppOrderService } from '../../app-commerce/services/app-order.service';
 import { SAAS_ORDER_PAID, SAAS_ORDER_PENDING } from '../constants';
 import { SaasOrderService } from './saas-order.service';
 import { SaasPaymentConfigService } from './saas-payment-config.service';
@@ -16,6 +17,12 @@ describe('SaasPaymentService', () => {
     confirmAlipayPayment: jest.fn(),
   };
   const resourcePackOrderService = {
+    findTenantOrder: jest.fn(),
+    markTenantPaymentRequested: jest.fn(),
+    findPlatformOrder: jest.fn(),
+    confirmAlipayPayment: jest.fn(),
+  };
+  const appOrderService = {
     findTenantOrder: jest.fn(),
     markTenantPaymentRequested: jest.fn(),
     findPlatformOrder: jest.fn(),
@@ -40,6 +47,7 @@ describe('SaasPaymentService', () => {
     service = new SaasPaymentService(
       saasOrderService as unknown as SaasOrderService,
       resourcePackOrderService as unknown as SaasResourcePackOrderService,
+      appOrderService as unknown as AppOrderService,
       configService as unknown as ConfigService,
       paymentConfigService as unknown as SaasPaymentConfigService,
       paymentNotifyLogRepo as any,
@@ -47,6 +55,7 @@ describe('SaasPaymentService', () => {
     paymentConfigService.resolveAlipayConfig.mockResolvedValue(null);
     saasOrderService.markTenantPaymentRequested.mockResolvedValue(undefined);
     resourcePackOrderService.markTenantPaymentRequested.mockResolvedValue(undefined);
+    appOrderService.markTenantPaymentRequested.mockResolvedValue(undefined);
     paymentNotifyLogRepo.save.mockImplementation(async (input) => input);
   });
 
@@ -180,6 +189,64 @@ describe('SaasPaymentService', () => {
         .update(buildAlipaySignContent(params), 'utf8')
         .verify(publicKey, params.sign, 'base64'),
     ).toBe(true);
+  });
+
+  it('creates an Alipay page payment for an owned pending app order', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    appOrderService.findTenantOrder.mockResolvedValue({
+      orderNo: 'AO20260713000000001000001',
+      tenantId: 12,
+      status: 'pending',
+      appCode: 'workflow',
+      appName: 'Workflow',
+      amountCents: 9900,
+    });
+    configService.get.mockImplementation((key: string) => {
+      const values: Record<string, string | boolean> = {
+        'payment.alipay.enabled': true,
+        'payment.alipay.appId': '2026070200000001',
+        'payment.alipay.privateKey': privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+        'payment.alipay.publicKey': publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+        'payment.alipay.notifyUrl': 'http://127.0.0.1:8181/api/saas/payment/alipay/notify',
+        'payment.alipay.returnUrl': 'http://127.0.0.1:5731/#/app-center/orders',
+        'payment.alipay.gatewayUrl': 'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+      };
+      return values[key];
+    });
+
+    const result = await service.createAlipayPayment(
+      12,
+      'AO20260713000000001000001',
+      'app',
+    );
+
+    expect(appOrderService.findTenantOrder).toHaveBeenCalledWith(
+      12,
+      'AO20260713000000001000001',
+    );
+    expect(appOrderService.markTenantPaymentRequested).toHaveBeenCalledWith(
+      12,
+      'AO20260713000000001000001',
+      expect.any(Date),
+    );
+    const payUrl = new URL(result.pay_url || '');
+    expect(JSON.parse(payUrl.searchParams.get('biz_content') || '{}')).toEqual({
+      out_trade_no: 'AO20260713000000001000001',
+      total_amount: '99.00',
+      subject: 'Application Workflow',
+      product_code: 'FAST_INSTANT_TRADE_PAY',
+    });
+  });
+
+  it('rejects a cross-tenant create-payment request for an app order', async () => {
+    appOrderService.findTenantOrder.mockResolvedValue(null);
+
+    await expect(
+      service.createAlipayPayment(99, 'AO20260713000000001000001', 'app'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    expect(appOrderService.markTenantPaymentRequested).not.toHaveBeenCalled();
+    expect(saasOrderService.findTenantOrder).not.toHaveBeenCalled();
   });
 
   it('rejects without returning an Alipay URL when a plan order is no longer pending while marking payment requested', async () => {
@@ -523,6 +590,93 @@ describe('SaasPaymentService', () => {
     );
     expect(saasOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
     expect(paymentNotifyLogRepo.save).toHaveBeenCalledWith(expect.objectContaining({ result: 'confirmed' }));
+  });
+
+  it('derives app order type from the AO prefix and activates the app license after a valid callback', async () => {
+    appOrderService.findPlatformOrder.mockResolvedValue({
+      orderNo: 'AO20260713000000001000001',
+      amountCents: 9900,
+      status: 'pending',
+    });
+    jest.spyOn(service, 'verifyAlipayPaidNotify').mockResolvedValue({
+      valid: true,
+      tradeNo: 'TRADE-APP-1',
+    });
+    appOrderService.confirmAlipayPayment.mockResolvedValue({ status: 'paid' });
+
+    await expect(
+      service.handleAlipayNotify({
+        out_trade_no: 'AO20260713000000001000001',
+        trade_no: 'TRADE-APP-1',
+        trade_status: 'TRADE_SUCCESS',
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        ack: 'success',
+        outcome: 'confirmed',
+        order_type: 'app',
+      }),
+    );
+
+    expect(appOrderService.findPlatformOrder).toHaveBeenCalledWith(
+      'AO20260713000000001000001',
+    );
+    expect(appOrderService.confirmAlipayPayment).toHaveBeenCalledWith(
+      'AO20260713000000001000001',
+      'TRADE-APP-1',
+    );
+    expect(saasOrderService.findPlatformOrder).not.toHaveBeenCalled();
+    expect(resourcePackOrderService.findPlatformOrder).not.toHaveBeenCalled();
+  });
+
+  it('returns duplicate success for a replayed app callback', async () => {
+    appOrderService.findPlatformOrder.mockResolvedValue({
+      orderNo: 'AO20260713000000001000001',
+      amountCents: 9900,
+      status: 'paid',
+    });
+    jest.spyOn(service, 'verifyAlipayPaidNotify').mockResolvedValue({
+      valid: true,
+      tradeNo: 'TRADE-APP-1',
+    });
+
+    await expect(
+      service.handleAlipayNotify({
+        out_trade_no: 'AO20260713000000001000001',
+        trade_no: 'TRADE-APP-1',
+        trade_status: 'TRADE_SUCCESS',
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        ack: 'success',
+        outcome: 'duplicate',
+        order_type: 'app',
+        reason: 'order_already_paid',
+      }),
+    );
+
+    expect(appOrderService.confirmAlipayPayment).not.toHaveBeenCalled();
+  });
+
+  it('does not classify an unknown payment prefix as a plan order', async () => {
+    await expect(
+      service.handleAlipayNotify({
+        out_trade_no: 'XX20260713000000001000001',
+        trade_no: 'TRADE-UNKNOWN',
+        trade_status: 'TRADE_SUCCESS',
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        ack: 'fail',
+        outcome: 'failed',
+        order_type: undefined,
+        reason: 'order_not_found',
+      }),
+    );
+
+    expect(saasOrderService.findPlatformOrder).not.toHaveBeenCalled();
+    expect(resourcePackOrderService.findPlatformOrder).not.toHaveBeenCalled();
+    expect(appOrderService.findPlatformOrder).not.toHaveBeenCalled();
   });
 
   it('handles duplicate paid plan notify without confirming again', async () => {

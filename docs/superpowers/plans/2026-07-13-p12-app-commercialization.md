@@ -464,7 +464,7 @@ git commit -m "feat(app): activate tenant app licenses"
 - Extends: `SaasPaymentOrderType = 'plan' | 'resource_pack' | 'app'`
 - Consumes: `AppOrderService.findTenantOrder`, `findPlatformOrder`, `markTenantPaymentRequested`, `confirmDevPayment`, `confirmAlipayPayment`
 
-- [ ] **Step 1: Write failing payment adapter tests**
+- [x] **Step 1: Write failing payment adapter tests**
 
 Cover:
 
@@ -479,30 +479,30 @@ it('does not change plan or resource-pack payment behavior');
 it('confirms app payments through the development endpoint only outside production');
 ```
 
-- [ ] **Step 2: Run payment tests to verify RED**
+- [x] **Step 2: Run payment tests to verify RED**
 
 ```powershell
 pnpm.cmd run test -- saas-payment.service.spec.ts saas-payment.controller.spec.ts saas-main-flow.integration.spec.ts app-order.service.spec.ts --runInBand
 ```
 
-- [ ] **Step 3: Import the independent commerce module into SaaS payment**
+- [x] **Step 3: Import the independent commerce module into SaaS payment**
 
 `SaasModule` imports and re-exports `AppCommerceModule`. `AppCommerceModule` must still have no import of `SaasModule`.
 
-- [ ] **Step 4: Extend payment service and controller**
+- [x] **Step 4: Extend payment service and controller**
 
 Add app branches to payable-order resolution, payment-request marking, dev confirmation, platform order lookup, callback confirmation, and subject construction. Do not refactor plan/resource-pack behavior beyond extracting a three-way dispatch helper where required by tests.
 
 Add `app:tenant:purchase` to the payment creation permission alternatives.
 
-- [ ] **Step 5: Run Task 4 tests and build**
+- [x] **Step 5: Run Task 4 tests and build**
 
 ```powershell
 pnpm.cmd run test -- saas-payment.service.spec.ts saas-payment.controller.spec.ts saas-main-flow.integration.spec.ts app-order.service.spec.ts --runInBand
 pnpm.cmd run build
 ```
 
-- [ ] **Step 6: Review and commit Task 4**
+- [x] **Step 6: Review and commit Task 4**
 
 ```powershell
 git add server/src/module/saas server/src/module/app-commerce

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { AppCommerceModule } from '../app-commerce/app-commerce.module';
 import { TenantEntity } from '../system/tenant/entities/tenant.entity';
 import { SysUserTenantEntity } from '../system/user/entities/user-tenant.entity';
 import { SaasPlanFeatureEntity } from './entities/saas-plan-feature.entity';
@@ -38,6 +39,7 @@ import { SaasTenantMemberService } from './services/saas-tenant-member.service';
 
 @Module({
   imports: [
+    AppCommerceModule,
     TypeOrmModule.forFeature([
       SaasPlanEntity,
       SaasModuleEntity,
@@ -75,6 +77,7 @@ import { SaasTenantMemberService } from './services/saas-tenant-member.service';
     SaasTenantMemberService,
   ],
   exports: [
+    AppCommerceModule,
     SaasPlanService,
     SaasModuleService,
     SaasOrderService,

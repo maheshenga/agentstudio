@@ -1,7 +1,9 @@
+import { MODULE_METADATA } from '@nestjs/common/constants';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
+import { AppCommerceModule } from '../app-commerce/app-commerce.module';
 import { SaasModuleEntity } from './entities/saas-module.entity';
 import { SaasOrderEntity } from './entities/saas-order.entity';
 import { SaasPlanFeatureEntity } from './entities/saas-plan-feature.entity';
@@ -10,6 +12,7 @@ import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
 import { SaasModuleService } from './services/saas-module.service';
 import { SaasOrderService } from './services/saas-order.service';
 import { SaasQuotaService } from './services/saas-quota.service';
+import { SaasModule } from './saas.module';
 
 type EntityRecord = Record<string, any>;
 
@@ -198,5 +201,15 @@ describe('SaaS tenant main flow integration', () => {
       expect.objectContaining({ code: 'ai_chat', name: 'AI Chat' }),
       expect.objectContaining({ code: 'rag', name: 'RAG' }),
     ]);
+  });
+
+  it('imports and re-exports independent app commerce without a reverse SaaS module import', () => {
+    const saasImports = Reflect.getMetadata(MODULE_METADATA.IMPORTS, SaasModule) || [];
+    const saasExports = Reflect.getMetadata(MODULE_METADATA.EXPORTS, SaasModule) || [];
+    const commerceImports = Reflect.getMetadata(MODULE_METADATA.IMPORTS, AppCommerceModule) || [];
+
+    expect(saasImports).toContain(AppCommerceModule);
+    expect(saasExports).toContain(AppCommerceModule);
+    expect(commerceImports).not.toContain(SaasModule);
   });
 });

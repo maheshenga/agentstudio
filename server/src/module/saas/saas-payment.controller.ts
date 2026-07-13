@@ -6,6 +6,7 @@ import { Public } from '../../common/decorators/auth.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { ResultData } from '../../common/utils/result';
 import { getTenantId } from '../../common/utils/tenant.util';
+import { AppOrderService } from '../app-commerce/services/app-order.service';
 import { SaasOrderEntity } from './entities/saas-order.entity';
 import { SaasOrderService } from './services/saas-order.service';
 import { SaasPaymentService } from './services/saas-payment.service';
@@ -20,6 +21,7 @@ export class SaasPaymentController {
     private readonly saasOrderService: SaasOrderService,
     private readonly saasPaymentService: SaasPaymentService,
     private readonly saasResourcePackOrderService: SaasResourcePackOrderService,
+    private readonly appOrderService: AppOrderService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -40,12 +42,19 @@ export class SaasPaymentController {
         ),
       );
     }
+    if (body.order_type === 'app') {
+      return ResultData.ok(
+        this.appOrderService.toResponse(
+          await this.appOrderService.confirmDevPayment(tenantId, body.order_no),
+        ),
+      );
+    }
 
     return ResultData.ok(this.toOrderResponse(await this.saasOrderService.confirmDevPayment(tenantId, body.order_no)));
   }
 
   @Post('alipay/create')
-  @RequirePermission('tenant:billing:upgrade', 'tenant:resource-pack-order:pay')
+  @RequirePermission('tenant:billing:upgrade', 'tenant:resource-pack-order:pay', 'app:tenant:purchase')
   @ApiOperation({ summary: 'Create Alipay SaaS payment' })
   async createAlipayPayment(@Body() body: { order_no: string; order_type?: SaasPaymentOrderType }) {
     const tenantId = getTenantId();
