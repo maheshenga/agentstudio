@@ -138,6 +138,9 @@ export default () => ({
         process.env.APP_DEVELOPER_SERVICE_LOG_RETENTION_DAYS ?? 7,
       ),
     },
+    commerce: {
+      enabled: process.env.APP_COMMERCE_ENABLED === 'true',
+    },
   },
   log: {
     level: process.env.LOG_LEVEL ?? 'info',

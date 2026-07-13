@@ -136,6 +136,7 @@ export const envValidationSchema = Joi.object({
     .min(1)
     .max(30)
     .default(7),
+  APP_COMMERCE_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
 
   LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug').default('info'),
   LOG_DIR: Joi.string().default('logs'),

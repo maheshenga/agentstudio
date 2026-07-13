@@ -116,7 +116,7 @@
 - Produces: `AppRevenueLedgerType = 'charge' | 'refund' | 'adjustment'`
 - Produces: `AppSettlementStatus = 'draft' | 'approved' | 'paid' | 'cancelled'`
 
-- [ ] **Step 1: Write failing entity and migration tests**
+- [x] **Step 1: Write failing entity and migration tests**
 
 Cover:
 
@@ -153,7 +153,7 @@ uk_app_revenue_ledger_event
 uk_app_settlement_developer_period
 ```
 
-- [ ] **Step 2: Run Task 1 tests to verify RED**
+- [x] **Step 2: Run Task 1 tests to verify RED**
 
 ```powershell
 cd server
@@ -162,7 +162,7 @@ pnpm.cmd run test -- app-commerce-entities.spec.ts create-app-commercialization.
 
 Expected: FAIL because P12 entities, migration, module, and feature flag do not exist.
 
-- [ ] **Step 3: Implement the five entities and migration**
+- [x] **Step 3: Implement the five entities and migration**
 
 Use exact core fields:
 
@@ -209,7 +209,7 @@ interface AppOrderShape {
 
 The active-license unique key is a nullable generated column derived from tenant, application, and `active|trialing` status so historical rows remain possible while concurrent current licenses fail closed.
 
-- [ ] **Step 4: Add the disabled feature flag and module skeleton**
+- [x] **Step 4: Add the disabled feature flag and module skeleton**
 
 Add:
 
@@ -219,7 +219,7 @@ APP_COMMERCE_ENABLED=false
 
 `AppCommerceModule` initially registers and exports the five repositories. It must not import `SaasModule` or `AppMarketplaceModule`.
 
-- [ ] **Step 5: Run Task 1 tests and backend build**
+- [x] **Step 5: Run Task 1 tests and backend build**
 
 ```powershell
 pnpm.cmd run test -- app-commerce-entities.spec.ts create-app-commercialization.spec.ts saas-env-contract.spec.ts --runInBand
@@ -228,7 +228,7 @@ pnpm.cmd run build
 
 Expected: all Task 1 tests and build pass.
 
-- [ ] **Step 6: Review and commit Task 1**
+- [x] **Step 6: Review and commit Task 1**
 
 Verify no amount, revenue split, license, or settlement default grants paid access; no existing table is rewritten; no secrets or payment config enters the schema.
 

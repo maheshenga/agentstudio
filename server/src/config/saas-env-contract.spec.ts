@@ -57,6 +57,7 @@ const CONFIGURATION_ENV_KEYS_REQUIRING_SCHEMA = [
   'APP_DEVELOPER_SERVICE_CIRCUIT_FAILURES',
   'APP_DEVELOPER_SERVICE_CIRCUIT_OPEN_SECONDS',
   'APP_DEVELOPER_SERVICE_LOG_RETENTION_DAYS',
+  'APP_COMMERCE_ENABLED',
 ] as const;
 
 const UNSAFE_EXAMPLE_VALUES = new Map([
@@ -150,6 +151,14 @@ describe('SaaS environment contract readiness', () => {
       /APP_DEVELOPER_SERVICE_LOG_RETENTION_DAYS:[\s\S]*min\(1\)[\s\S]*max\(30\)[\s\S]*default\(7\)/,
     );
     expect(example.APP_DEVELOPER_SERVICE_ENABLED).toBe('false');
+  });
+
+  it('keeps application commerce disabled by default', () => {
+    const schema = readProjectFile('server/src/config/env.validation.ts');
+    const example = parseEnvExample(readProjectFile('server/.env.example'));
+
+    expect(schema).toMatch(/APP_COMMERCE_ENABLED:\s*Joi\.boolean\(\).*default\(false\)/s);
+    expect(example.APP_COMMERCE_ENABLED).toBe('false');
   });
 });
 
