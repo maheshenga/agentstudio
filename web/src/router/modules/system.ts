@@ -65,16 +65,6 @@ export const systemRoutes: AppRouteRecord = {
           { title: '删除', authMark: 'delete' }
         ]
       }
-    },
-    {
-      path: 'plugin',
-      name: 'PluginManager',
-      component: '/system/plugin',
-      meta: {
-        title: '插件管理',
-        keepAlive: true,
-        roles: ['R_SUPER', 'R_ADMIN']
-      }
     }
   ]
 }

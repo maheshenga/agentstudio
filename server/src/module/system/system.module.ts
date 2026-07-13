@@ -4,7 +4,6 @@ import { DeptModule } from './dept/dept.module';
 import { SysConfigModule } from './config/config.module';
 import { DictModule } from './dict/dict.module';
 import { MenuModule } from './menu/menu.module';
-import { PluginModule } from './plugin/plugin.module';
 import { PostModule } from './post/post.module';
 import { RoleModule } from './role/role.module';
 import { ToolModule } from './tool/tool.module';
@@ -20,7 +19,6 @@ import { SystemModuleRegistryModule } from '../system-module/system-module.modul
     DeptModule,
     DictModule,
     MenuModule,
-    PluginModule,
     PostModule,
     RoleModule,
     ToolModule,
@@ -34,7 +32,6 @@ import { SystemModuleRegistryModule } from '../system-module/system-module.modul
     DeptModule,
     DictModule,
     MenuModule,
-    PluginModule,
     PostModule,
     RoleModule,
     ToolModule,
