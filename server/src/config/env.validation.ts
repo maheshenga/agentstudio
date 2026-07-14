@@ -86,7 +86,22 @@ export const envValidationSchema = Joi.object({
     otherwise: Joi.string().allow('').default(''),
   }),
   APP_SERVICE_RUNTIME_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
-  APP_SERVICE_RUNTIME_DIR: Joi.string().default('../upload/app-service-runtime'),
+  APP_SERVICE_RUNTIME_DRIVER: Joi.when('NODE_ENV', {
+    is: 'production',
+    then: Joi.when('APP_SERVICE_RUNTIME_ENABLED', {
+      is: true,
+      then: Joi.string().valid('podman').required(),
+      otherwise: Joi.string().valid('pm2', 'podman').default('pm2'),
+    }),
+    otherwise: Joi.string().valid('pm2', 'podman').default('pm2'),
+  }),
+  APP_SERVICE_RUNTIME_DIR: Joi.when('APP_SERVICE_RUNTIME_ENABLED', {
+    is: true,
+    then: Joi.string()
+      .pattern(/^\/(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+$/)
+      .required(),
+    otherwise: Joi.string().default('../upload/app-service-runtime'),
+  }),
   APP_SERVICE_RUNTIME_USER: Joi.when('APP_SERVICE_RUNTIME_ENABLED', {
     is: true,
     then: Joi.string()
@@ -97,12 +112,73 @@ export const envValidationSchema = Joi.object({
   }),
   APP_SERVICE_PM2_HOME: Joi.when('APP_SERVICE_RUNTIME_ENABLED', {
     is: true,
-    then: Joi.string().trim().min(1).required(),
+    then: Joi.when('APP_SERVICE_RUNTIME_DRIVER', {
+      is: 'pm2',
+      then: Joi.string().trim().min(1).required(),
+      otherwise: Joi.string().allow('').default(''),
+    }),
     otherwise: Joi.string().allow('').default(''),
   }),
   APP_SERVICE_PM2_COMMAND: Joi.string().trim().min(1).default('pm2'),
   APP_SERVICE_RUNTIME_INTERPRETER: Joi.string().valid('node', 'bun').default('node'),
+  APP_SERVICE_PODMAN_COMMAND: Joi.when('APP_SERVICE_RUNTIME_DRIVER', {
+    is: 'podman',
+    then: Joi.string()
+      .pattern(/^\/(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+$/)
+      .default('/usr/bin/podman'),
+    otherwise: Joi.string().default('/usr/bin/podman'),
+  }),
+  APP_SERVICE_PODMAN_IMAGE: Joi.when('APP_SERVICE_RUNTIME_ENABLED', {
+    is: true,
+    then: Joi.when('APP_SERVICE_RUNTIME_DRIVER', {
+      is: 'podman',
+      then: Joi.string()
+        .pattern(
+          /^(?:[a-z0-9]+(?:[._-][a-z0-9]+)*(?::\d+)?\/)*(?:[a-z0-9]+(?:[._-][a-z0-9]+)*)@sha256:[a-f0-9]{64}$/,
+        )
+        .required(),
+      otherwise: Joi.string().allow('').default(''),
+    }),
+    otherwise: Joi.string().allow('').default(''),
+  }),
+  APP_SERVICE_PODMAN_HOME: Joi.when('APP_SERVICE_RUNTIME_ENABLED', {
+    is: true,
+    then: Joi.when('APP_SERVICE_RUNTIME_DRIVER', {
+      is: 'podman',
+      then: Joi.string()
+        .pattern(/^\/(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+$/)
+        .required(),
+      otherwise: Joi.string().allow('').default(''),
+    }),
+    otherwise: Joi.string().allow('').default(''),
+  }),
+  APP_SERVICE_PODMAN_XDG_RUNTIME_DIR: Joi.when('APP_SERVICE_RUNTIME_ENABLED', {
+    is: true,
+    then: Joi.when('APP_SERVICE_RUNTIME_DRIVER', {
+      is: 'podman',
+      then: Joi.string()
+        .pattern(/^\/(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+$/)
+        .required(),
+      otherwise: Joi.string().allow('').default(''),
+    }),
+    otherwise: Joi.string().allow('').default(''),
+  }),
+  APP_SERVICE_SOCKET_DIR: Joi.when('APP_SERVICE_RUNTIME_ENABLED', {
+    is: true,
+    then: Joi.when('APP_SERVICE_RUNTIME_DRIVER', {
+      is: 'podman',
+      then: Joi.string()
+        .pattern(/^\/(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+$/)
+        .required(),
+      otherwise: Joi.string().allow('').default(''),
+    }),
+    otherwise: Joi.string().allow('').default(''),
+  }),
   APP_SERVICE_MEMORY_MB: Joi.number().integer().min(128).max(2048).default(256),
+  APP_SERVICE_CPU_LIMIT: Joi.number().min(0.1).max(8).default(1),
+  APP_SERVICE_PIDS_LIMIT: Joi.number().integer().min(16).max(512).default(64),
+  APP_SERVICE_TMPFS_MB: Joi.number().integer().min(8).max(256).default(16),
+  APP_SERVICE_CONTAINER_UID: Joi.number().integer().min(1).max(2_147_483_647).default(65532),
   APP_SERVICE_REQUEST_TIMEOUT_MS: Joi.number().integer().min(1000).max(30000).default(15000),
   APP_SERVICE_MAX_BODY_MB: Joi.number().integer().min(1).max(10).default(2),
   APP_SERVICE_HEALTH_SUCCESS_COUNT: Joi.number().integer().min(1).max(10).default(3),
@@ -114,31 +190,12 @@ export const envValidationSchema = Joi.object({
       const minimum = Number(helpers.state.ancestors[0]?.APP_SERVICE_PORT_MIN ?? 20000);
       return Number(value) - minimum >= 99 ? value : helpers.error('number.min');
     }),
-  APP_DEVELOPER_SERVICE_ENABLED: Joi.boolean()
-    .truthy('true')
-    .falsy('false')
-    .default(false),
+  APP_DEVELOPER_SERVICE_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
   APP_DEVELOPER_SERVICE_CONCURRENCY: Joi.number().integer().min(1).max(100).default(20),
-  APP_DEVELOPER_SERVICE_RATE_PER_MINUTE: Joi.number()
-    .integer()
-    .min(1)
-    .max(6000)
-    .default(60),
-  APP_DEVELOPER_SERVICE_CIRCUIT_FAILURES: Joi.number()
-    .integer()
-    .min(2)
-    .max(20)
-    .default(5),
-  APP_DEVELOPER_SERVICE_CIRCUIT_OPEN_SECONDS: Joi.number()
-    .integer()
-    .min(10)
-    .max(3600)
-    .default(60),
-  APP_DEVELOPER_SERVICE_LOG_RETENTION_DAYS: Joi.number()
-    .integer()
-    .min(1)
-    .max(30)
-    .default(7),
+  APP_DEVELOPER_SERVICE_RATE_PER_MINUTE: Joi.number().integer().min(1).max(6000).default(60),
+  APP_DEVELOPER_SERVICE_CIRCUIT_FAILURES: Joi.number().integer().min(2).max(20).default(5),
+  APP_DEVELOPER_SERVICE_CIRCUIT_OPEN_SECONDS: Joi.number().integer().min(10).max(3600).default(60),
+  APP_DEVELOPER_SERVICE_LOG_RETENTION_DAYS: Joi.number().integer().min(1).max(30).default(7),
   APP_COMMERCE_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
 
   LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug').default('info'),

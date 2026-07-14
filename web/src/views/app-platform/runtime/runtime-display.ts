@@ -1,7 +1,8 @@
 import type {
   AppServiceHealthStatus,
   AppServiceInstanceRole,
-  AppServiceProcessStatus
+  AppServiceProcessStatus,
+  AppServiceRuntimeDriver
 } from '@/api/app-service-runtime'
 
 const labels: Record<string, string> = {
@@ -59,4 +60,10 @@ export function healthTagType(status: AppServiceHealthStatus) {
   if (status === 'unhealthy') return 'danger'
   if (status === 'checking') return 'warning'
   return 'info'
+}
+export function runtimeDriverLabel(driver: AppServiceRuntimeDriver) {
+  return driver === 'podman' ? 'Podman' : 'PM2'
+}
+export function runtimeDriverTagType(driver: AppServiceRuntimeDriver) {
+  return driver === 'podman' ? 'primary' : 'info'
 }

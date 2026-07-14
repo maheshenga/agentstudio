@@ -43,11 +43,21 @@ const CONFIGURATION_ENV_KEYS_REQUIRING_SCHEMA = [
   'APP_RUNTIME_IFRAME_LAUNCH_ENABLED',
   'APP_RUNTIME_LAUNCH_SECRET',
   'APP_SERVICE_RUNTIME_ENABLED',
+  'APP_SERVICE_RUNTIME_DRIVER',
   'APP_SERVICE_RUNTIME_DIR',
   'APP_SERVICE_RUNTIME_USER',
   'APP_SERVICE_PM2_HOME',
   'APP_SERVICE_PM2_COMMAND',
   'APP_SERVICE_RUNTIME_INTERPRETER',
+  'APP_SERVICE_PODMAN_COMMAND',
+  'APP_SERVICE_PODMAN_IMAGE',
+  'APP_SERVICE_PODMAN_HOME',
+  'APP_SERVICE_PODMAN_XDG_RUNTIME_DIR',
+  'APP_SERVICE_SOCKET_DIR',
+  'APP_SERVICE_CPU_LIMIT',
+  'APP_SERVICE_PIDS_LIMIT',
+  'APP_SERVICE_TMPFS_MB',
+  'APP_SERVICE_CONTAINER_UID',
   'APP_SERVICE_MEMORY_MB',
   'APP_SERVICE_REQUEST_TIMEOUT_MS',
   'APP_SERVICE_MAX_BODY_MB',
@@ -123,7 +133,9 @@ describe('SaaS environment contract readiness', () => {
     const schema = readProjectFile('server/src/config/env.validation.ts');
     const example = parseEnvExample(readProjectFile('server/.env.example'));
 
-    expect(schema).toMatch(/APP_PACKAGE_MAX_FILE_MB:[\s\S]*min\(1\)[\s\S]*max\(100\)[\s\S]*default\(25\)/);
+    expect(schema).toMatch(
+      /APP_PACKAGE_MAX_FILE_MB:[\s\S]*min\(1\)[\s\S]*max\(100\)[\s\S]*default\(25\)/,
+    );
     expect(schema).toMatch(
       /APP_PACKAGE_MAX_UNCOMPRESSED_MB:[\s\S]*min\(1\)[\s\S]*max\(2048\)[\s\S]*default\(200\)/,
     );
@@ -141,6 +153,11 @@ describe('SaaS environment contract readiness', () => {
     expect(schema).toMatch(/APP_SERVICE_RUNTIME_ENABLED:\s*Joi\.boolean\(\).*default\(false\)/s);
     expect(schema).toMatch(/APP_SERVICE_RUNTIME_USER:[\s\S]*pattern\(\/\^\[a-z_\]/);
     expect(schema).toMatch(/APP_SERVICE_RUNTIME_INTERPRETER:[\s\S]*valid\('node', 'bun'\)/);
+    expect(schema).toMatch(/APP_SERVICE_RUNTIME_DRIVER:[\s\S]*valid\('pm2', 'podman'\)/);
+    expect(schema).toMatch(/APP_SERVICE_PODMAN_IMAGE:[\s\S]*sha256/);
+    expect(schema).toMatch(/APP_SERVICE_CPU_LIMIT:[\s\S]*min\(0\.1\)[\s\S]*max\(8\)/);
+    expect(schema).toMatch(/APP_SERVICE_PIDS_LIMIT:[\s\S]*min\(16\)[\s\S]*max\(512\)/);
+    expect(schema).toMatch(/APP_SERVICE_TMPFS_MB:[\s\S]*min\(8\)[\s\S]*max\(256\)/);
     expect(schema).toMatch(/APP_SERVICE_MEMORY_MB:[\s\S]*min\(128\)[\s\S]*max\(2048\)/);
     expect(schema).toMatch(/APP_SERVICE_REQUEST_TIMEOUT_MS:[\s\S]*min\(1000\)[\s\S]*max\(30000\)/);
     expect(schema).toMatch(/APP_SERVICE_MAX_BODY_MB:[\s\S]*min\(1\)[\s\S]*max\(10\)/);
@@ -151,9 +168,7 @@ describe('SaaS environment contract readiness', () => {
     const schema = readProjectFile('server/src/config/env.validation.ts');
     const example = parseEnvExample(readProjectFile('server/.env.example'));
 
-    expect(schema).toMatch(
-      /APP_DEVELOPER_SERVICE_ENABLED:\s*Joi\.boolean\(\).*default\(false\)/s,
-    );
+    expect(schema).toMatch(/APP_DEVELOPER_SERVICE_ENABLED:\s*Joi\.boolean\(\).*default\(false\)/s);
     expect(schema).toMatch(
       /APP_DEVELOPER_SERVICE_CONCURRENCY:[\s\S]*min\(1\)[\s\S]*max\(100\)[\s\S]*default\(20\)/,
     );

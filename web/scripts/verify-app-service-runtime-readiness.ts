@@ -28,6 +28,7 @@ function assertExcludes(source: string, token: string, label: string) {
 
 const runtimeApi = readFile('web/src/api/app-service-runtime.ts')
 const runtimePage = readFile('web/src/views/app-platform/runtime/index.vue')
+const runtimeDisplay = readFile('web/src/views/app-platform/runtime/runtime-display.ts')
 const appsApi = readFile('web/src/api/app-marketplace.ts')
 const appsPage = readFile('web/src/views/app-platform/apps/index.vue')
 const menuMigration = readFile('server/src/migrations/1760000000041-SeedAppServiceRuntimeMenus.ts')
@@ -72,17 +73,44 @@ for (const token of [
   'app:runtime:list',
   'app:runtime:manage',
   'app:runtime:probe',
-  'app:runtime:logs'
+  'app:runtime:logs',
+  'runtime_driver',
+  'runtimeDriverLabel',
+  'runtimeDriverTagType'
 ]) {
   assertIncludes(runtimePage, token, 'service runtime page')
 }
 
-for (const token of ['ElCard', 'releaseDir', 'release_dir', 'package_path', 'publish_path']) {
+for (const token of [
+  'ElCard',
+  'releaseDir',
+  'release_dir',
+  'package_path',
+  'publish_path',
+  'socket_path',
+  'container_id',
+  'podman_home',
+  'podman_image'
+]) {
   assertExcludes(runtimePage, token, 'service runtime page')
 }
 
-for (const token of ['environment', 'command_line', 'tenant_id', 'tenantIds', 'raw_source']) {
+for (const token of [
+  'environment',
+  'command_line',
+  'tenant_id',
+  'tenantIds',
+  'raw_source',
+  'socket_path',
+  'container_id',
+  'podman_home',
+  'podman_image'
+]) {
   assertExcludes(`${runtimeApi}\n${runtimePage}`, token, 'service runtime client')
+}
+
+for (const token of ['runtimeDriverLabel', 'runtimeDriverTagType', "'Podman'", "'PM2'"]) {
+  assertIncludes(runtimeDisplay, token, 'service runtime display helpers')
 }
 
 for (const token of [

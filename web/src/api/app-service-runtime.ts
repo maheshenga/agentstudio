@@ -3,6 +3,7 @@ import request from '@/utils/http'
 export type AppServiceInstanceRole = 'candidate' | 'active' | 'standby' | 'retired'
 export type AppServiceProcessStatus = 'starting' | 'online' | 'stopped' | 'failed'
 export type AppServiceHealthStatus = 'unknown' | 'checking' | 'healthy' | 'unhealthy'
+export type AppServiceRuntimeDriver = 'pm2' | 'podman'
 
 export interface AppServiceInstanceRecord {
   id: string
@@ -10,6 +11,7 @@ export interface AppServiceInstanceRecord {
   version: string
   process_name: string
   loopback_port: number
+  runtime_driver: AppServiceRuntimeDriver
   role: AppServiceInstanceRole
   process_status: AppServiceProcessStatus
   health_status: AppServiceHealthStatus

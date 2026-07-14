@@ -96,6 +96,13 @@
             <ElTag :type="roleTagType(row.role)" effect="light">{{ labelize(row.role) }}</ElTag>
           </template>
         </ElTableColumn>
+        <ElTableColumn label="驱动" width="95">
+          <template #default="{ row }">
+            <ElTag :type="runtimeDriverTagType(row.runtime_driver)" effect="plain">{{
+              runtimeDriverLabel(row.runtime_driver)
+            }}</ElTag>
+          </template>
+        </ElTableColumn>
         <ElTableColumn label="进程状态" width="115">
           <template #default="{ row }">
             <ElTag :type="processTagType(row.process_status)" effect="light">{{
@@ -214,6 +221,9 @@
           </div>
           <div class="app-service-runtime-page__mobile-tags">
             <ElTag :type="roleTagType(row.role)" effect="light">{{ labelize(row.role) }}</ElTag>
+            <ElTag :type="runtimeDriverTagType(row.runtime_driver)" effect="plain">{{
+              runtimeDriverLabel(row.runtime_driver)
+            }}</ElTag>
             <ElTag :type="processTagType(row.process_status)" effect="light">{{
               labelize(row.process_status)
             }}</ElTag>
@@ -418,6 +428,9 @@
             <ElTableColumn label="角色" width="105">
               <template #default="{ row }">{{ labelize(row.role) }}</template>
             </ElTableColumn>
+            <ElTableColumn label="驱动" width="95">
+              <template #default="{ row }">{{ runtimeDriverLabel(row.runtime_driver) }}</template>
+            </ElTableColumn>
             <ElTableColumn label="进程状态" width="115">
               <template #default="{ row }">{{ labelize(row.process_status) }}</template>
             </ElTableColumn>
@@ -469,7 +482,9 @@
     healthTagType,
     labelize,
     processTagType,
-    roleTagType
+    roleTagType,
+    runtimeDriverLabel,
+    runtimeDriverTagType
   } from './runtime-display'
 
   defineOptions({ name: 'AppServiceRuntimePage' })
