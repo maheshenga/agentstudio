@@ -11,6 +11,7 @@ export type AppServiceInstanceRole = 'candidate' | 'active' | 'standby' | 'retir
 export type AppServiceProcessStatus = 'starting' | 'online' | 'stopped' | 'failed';
 export type AppServiceHealthStatus = 'unknown' | 'checking' | 'healthy' | 'unhealthy';
 export type AppServiceCircuitState = 'closed' | 'open' | 'half_open';
+export type AppServiceRuntimeDriverName = 'pm2' | 'podman';
 
 @Index('uk_app_service_instance_process', ['processName'], { unique: true })
 @Index('idx_app_service_instance_app_role', ['appId', 'role'])
@@ -34,6 +35,9 @@ export class AppServiceInstanceEntity {
 
   @Column({ type: 'int', name: 'loopback_port', unsigned: true })
   loopbackPort: number;
+
+  @Column({ type: 'varchar', name: 'runtime_driver', length: 20, default: 'pm2' })
+  runtimeDriver: AppServiceRuntimeDriverName;
 
   @Column({ type: 'varchar', name: 'role', length: 20, default: 'candidate' })
   role: AppServiceInstanceRole;

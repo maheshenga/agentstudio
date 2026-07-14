@@ -94,6 +94,7 @@ describe('Certified developer service entities', () => {
     const columns = columnNames(AppServiceInstanceEntity);
     expect(columns).toEqual(
       expect.arrayContaining([
+        'runtime_driver',
         'consecutive_failures',
         'circuit_state',
         'circuit_open_until',
@@ -104,6 +105,21 @@ describe('Certified developer service entities', () => {
     );
     expect(columns).not.toEqual(
       expect.arrayContaining(['request_body', 'response_body', 'runtime_context']),
+    );
+  });
+
+  it('defaults historical service instances to the PM2 runtime driver', () => {
+    const column = getMetadataArgsStorage().columns.find(
+      (item) => item.target === AppServiceInstanceEntity && item.propertyName === 'runtimeDriver',
+    );
+
+    expect(column?.options).toEqual(
+      expect.objectContaining({
+        name: 'runtime_driver',
+        type: 'varchar',
+        length: 20,
+        default: 'pm2',
+      }),
     );
   });
 });
