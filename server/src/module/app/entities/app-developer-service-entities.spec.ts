@@ -122,4 +122,14 @@ describe('Certified developer service entities', () => {
       }),
     );
   });
+
+  it('keeps the runtime driver status index aligned with the migration', () => {
+    const index = getMetadataArgsStorage().indices.find(
+      (item) =>
+        item.target === AppServiceInstanceEntity &&
+        item.name === 'idx_app_service_instance_driver_status',
+    );
+
+    expect(index?.columns).toEqual(['runtimeDriver', 'processStatus']);
+  });
 });

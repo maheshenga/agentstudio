@@ -16,6 +16,7 @@ export type AppServiceRuntimeDriverName = 'pm2' | 'podman';
 @Index('uk_app_service_instance_process', ['processName'], { unique: true })
 @Index('idx_app_service_instance_app_role', ['appId', 'role'])
 @Index('idx_app_service_instance_health', ['healthStatus', 'processStatus'])
+@Index('idx_app_service_instance_driver_status', ['runtimeDriver', 'processStatus'])
 @Entity('app_service_instance')
 export class AppServiceInstanceEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'id' })
