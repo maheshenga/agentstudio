@@ -23,7 +23,9 @@ describe('AppServiceRuntimeService', () => {
   let versionRepo: MemoryRepository;
   let instanceRepo: MemoryRepository;
   let auditRepo: MemoryRepository;
-  let processManager: Record<string, jest.Mock>;
+  let processManager: Record<string, any>;
+  let podmanDriver: Record<string, any>;
+  let driverRegistry: Record<string, jest.Mock>;
   let transport: Record<string, jest.Mock>;
   let portAllocator: { allocate: jest.Mock };
   let delay: { wait: jest.Mock };
@@ -70,6 +72,7 @@ describe('AppServiceRuntimeService', () => {
     instanceRepo = new MemoryRepository(instances);
     auditRepo = new MemoryRepository(audits);
     processManager = {
+      name: 'pm2',
       start: jest.fn(async (spec) => ({
         processName: spec.processName,
         status: 'online',
@@ -93,6 +96,37 @@ describe('AppServiceRuntimeService', () => {
         };
       }),
       logs: jest.fn(),
+      endpoint: jest.fn(({ loopbackPort }) => ({ kind: 'tcp', port: loopbackPort })),
+    };
+    podmanDriver = {
+      name: 'podman',
+      start: jest.fn(async (spec) => ({
+        processName: spec.processName,
+        status: 'online',
+        pid: 400,
+        restartCount: 0,
+        memoryBytes: 100,
+        cpuPercent: 0,
+      })),
+      stop: jest.fn(async () => undefined),
+      delete: jest.fn(async () => undefined),
+      describe: jest.fn(async (processName: string) => {
+        const match = instances.find((item) => item.processName === processName);
+        if (!match || match.processStatus !== 'online') return null;
+        return {
+          processName,
+          status: 'online',
+          pid: 400,
+          restartCount: match.restartCount || 0,
+          memoryBytes: 100,
+          cpuPercent: 0,
+        };
+      }),
+      logs: jest.fn(),
+      endpoint: jest.fn(({ processName }) => ({
+        kind: 'unix',
+        socketPath: `/sockets/${processName}/service.sock`,
+      })),
     };
     transport = {
       health: jest.fn(async () => ({ statusCode: 200, headers: {}, body: { status: 'ok' } })),
@@ -116,10 +150,22 @@ describe('AppServiceRuntimeService', () => {
     configValues = {
       'app.env': 'development',
       'appMarketplace.serviceRuntime.enabled': true,
+      'appMarketplace.serviceRuntime.driver': 'pm2',
       'appMarketplace.serviceRuntime.healthSuccessCount': 3,
       'appMarketplace.serviceRuntime.memoryMb': 256,
       'appMarketplace.serviceRuntime.portMin': 20000,
       'appMarketplace.serviceRuntime.portMax': 39999,
+    };
+    driverRegistry = {
+      configuredName: jest.fn(() => configValues['appMarketplace.serviceRuntime.driver'] || 'pm2'),
+      forNewInstance: jest.fn(() => {
+        const name = String(configValues['appMarketplace.serviceRuntime.driver'] || 'pm2');
+        if (configValues['app.env'] === 'production' && name !== 'podman') {
+          throw new Error('Production service runtime requires Podman isolation');
+        }
+        return name === 'podman' ? podmanDriver : processManager;
+      }),
+      forInstance: jest.fn((name: string) => (name === 'podman' ? podmanDriver : processManager)),
     };
     service = new AppServiceRuntimeService(
       appRepo as any,
@@ -128,7 +174,7 @@ describe('AppServiceRuntimeService', () => {
       auditRepo as any,
       dataSource as any,
       { get: jest.fn((key: string, fallback?: unknown) => configValues[key] ?? fallback) } as any,
-      processManager as any,
+      driverRegistry as any,
       transport as any,
       portAllocator as unknown as AppServicePortAllocator,
       delay as unknown as AppServiceDelay,
@@ -152,11 +198,54 @@ describe('AppServiceRuntimeService', () => {
     configValues['app.env'] = 'production';
 
     await expect(service.startCandidate('admin_echo_service', '2.0.0', 99)).rejects.toThrow(
-      'per-app isolation',
+      'Podman isolation',
     );
 
     expect(dataSource.transaction).not.toHaveBeenCalled();
     expect(processManager.start).not.toHaveBeenCalled();
+  });
+
+  it('persists the configured driver before start and uses its endpoint for health checks', async () => {
+    configValues['appMarketplace.serviceRuntime.driver'] = 'podman';
+
+    await service.startCandidate('admin_echo_service', '2.0.0', 99);
+
+    const candidate = instances.find((item) => Number(item.versionId) === 12);
+    expect(candidate.runtimeDriver).toBe('podman');
+    expect(podmanDriver.start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appCode: 'admin_echo_service',
+        version: '2.0.0',
+        processName: candidate.processName,
+      }),
+    );
+    expect(processManager.start).not.toHaveBeenCalled();
+    expect(transport.health).toHaveBeenCalledWith(
+      {
+        kind: 'unix',
+        socketPath: `/sockets/${candidate.processName}/service.sock`,
+      },
+      '/health',
+    );
+  });
+
+  it('keeps a healthy PM2 active instance untouched when a Podman candidate fails', async () => {
+    configValues['appMarketplace.serviceRuntime.driver'] = 'podman';
+    podmanDriver.start.mockRejectedValue(new Error('container failed'));
+
+    await expect(service.startCandidate('admin_echo_service', '2.0.0', 99)).rejects.toThrow(
+      'Candidate process failed to start',
+    );
+
+    expect(instance(101)).toMatchObject({
+      runtimeDriver: 'pm2',
+      role: 'active',
+      processStatus: 'online',
+      healthStatus: 'healthy',
+    });
+    expect(podmanDriver.stop).toHaveBeenCalled();
+    expect(podmanDriver.delete).toHaveBeenCalled();
+    expect(processManager.stop).not.toHaveBeenCalled();
   });
 
   it('starts a restricted candidate only for a live certification and independent candidate reviewer', async () => {
@@ -406,6 +495,7 @@ describe('AppServiceRuntimeService', () => {
   });
 
   it('rolls back only to a healthy standby and keeps the replaced active as the sole standby', async () => {
+    configValues['appMarketplace.serviceRuntime.driver'] = 'podman';
     instance(101).role = 'standby';
     instance(101).healthStatus = 'unhealthy';
     instances.push(
@@ -414,6 +504,7 @@ describe('AppServiceRuntimeService', () => {
         versionId: 12,
         processName: 'agentstudio-app-admin-echo-service-2-0-0',
         loopbackPort: 22001,
+        runtimeDriver: 'podman',
         role: 'active',
         processStatus: 'online',
         healthStatus: 'healthy',
@@ -437,6 +528,11 @@ describe('AppServiceRuntimeService', () => {
       releasedBy: 99,
     });
     expect(version(12).publishStatus).toBe('unpublished_retired');
+    expect(driverRegistry.forInstance).toHaveBeenCalledWith('pm2');
+    expect(processManager.endpoint).toHaveBeenCalledWith({
+      processName: instance(101).processName,
+      loopbackPort: 21001,
+    });
   });
 
   it('stops only the matching candidate without touching active', async () => {
@@ -480,6 +576,31 @@ describe('AppServiceRuntimeService', () => {
     expect(instanceRepo.update.mock.calls.at(-1)?.[1]).not.toHaveProperty('role');
   });
 
+  it('reconciles PM2 and Podman instances through their persisted drivers in one pass', async () => {
+    instances.push(
+      createInstance({
+        id: 102,
+        versionId: 12,
+        processName: 'agentstudio-app-admin-echo-service-2-0-0',
+        loopbackPort: 22001,
+        runtimeDriver: 'podman',
+        role: 'standby',
+        processStatus: 'stopped',
+        healthStatus: 'healthy',
+      }),
+    );
+    podmanDriver.describe.mockResolvedValue(null);
+
+    await expect(service.reconcile()).resolves.toMatchObject({ restarted: 1, failed: 0 });
+
+    expect(driverRegistry.forInstance).toHaveBeenCalledWith('pm2');
+    expect(driverRegistry.forInstance).toHaveBeenCalledWith('podman');
+    expect(processManager.describe).toHaveBeenCalledWith(instance(101).processName);
+    expect(podmanDriver.start).toHaveBeenCalledWith(
+      expect.objectContaining({ appCode: 'admin_echo_service', version: '2.0.0' }),
+    );
+  });
+
   it('marks repeated restart drift failed without crashing or publishing', async () => {
     instance(101).restartCount = 0;
     processManager.describe.mockResolvedValue({
@@ -502,7 +623,10 @@ describe('AppServiceRuntimeService', () => {
     expect(processManager.start).not.toHaveBeenCalled();
 
     await expect(service.reconcile()).resolves.toMatchObject({ restarted: 0, failed: 1 });
-    expect(instance(101)).toMatchObject({ processStatus: 'failed', lastErrorCode: 'restart_drift' });
+    expect(instance(101)).toMatchObject({
+      processStatus: 'failed',
+      lastErrorCode: 'restart_drift',
+    });
   });
 
   it('records a fixed diagnostic when a retired process cannot be cleaned up after publish', async () => {
@@ -548,10 +672,23 @@ describe('AppServiceRuntimeService', () => {
       headers: {},
       body: { version: '1.0.0' },
     });
-    expect(transport.invoke).toHaveBeenCalledWith(21001, { ping: true });
+    expect(transport.invoke).toHaveBeenCalledWith({ kind: 'tcp', port: 21001 }, { ping: true });
 
     instance(101).healthStatus = 'unhealthy';
     await expect(service.probeActive('admin_echo_service', {})).rejects.toThrow('healthy active');
+  });
+
+  it('does not reroute an existing PM2 instance when the configured driver changes', async () => {
+    configValues['appMarketplace.serviceRuntime.driver'] = 'podman';
+
+    await service.probeActive('admin_echo_service', { ping: true });
+
+    expect(driverRegistry.forInstance).toHaveBeenCalledWith('pm2');
+    expect(processManager.endpoint).toHaveBeenCalledWith({
+      processName: instance(101).processName,
+      loopbackPort: 21001,
+    });
+    expect(podmanDriver.endpoint).not.toHaveBeenCalled();
   });
 
   it('invokes an authorized target through the reserved gateway envelope', async () => {
@@ -570,11 +707,14 @@ describe('AppServiceRuntimeService', () => {
       service.invokeAuthorized(app(), version(11), context, { job: 'run' }),
     ).resolves.toMatchObject({ statusCode: 201, body: { accepted: true } });
 
-    expect(transport.invoke).toHaveBeenCalledWith(21001, {
-      __agentstudio_runtime: 1,
-      input: { job: 'run' },
-      context,
-    });
+    expect(transport.invoke).toHaveBeenCalledWith(
+      { kind: 'tcp', port: 21001 },
+      {
+        __agentstudio_runtime: 1,
+        input: { job: 'run' },
+        context,
+      },
+    );
   });
 
   it('returns stable runtime responses without release paths, commands, or environment values', async () => {
@@ -589,6 +729,7 @@ describe('AppServiceRuntimeService', () => {
         app_code: 'admin_echo_service',
         version: '1.0.0',
         role: 'active',
+        runtime_driver: 'pm2',
         process_status: 'online',
         health_status: 'healthy',
       }),
@@ -602,7 +743,7 @@ describe('AppServiceRuntimeService', () => {
     });
     for (const value of [list, detail, logs]) {
       expect(JSON.stringify(value)).not.toMatch(
-        /releaseDir|release_dir|packagePath|package_path|pm2Home|environment|command/i,
+        /releaseDir|release_dir|packagePath|package_path|pm2Home|podmanImage|socketPath|containerId|environment|command/i,
       );
       expect(JSON.stringify(value)).not.toContain('/runtime/admin_echo_service');
     }
@@ -624,6 +765,19 @@ describe('AppServiceRuntimeService', () => {
     expect(JSON.stringify(logs)).not.toMatch(
       /process_name|loopback_port|release_dir|environment|command|package_path/i,
     );
+  });
+
+  it('reads runtime logs through the instance persisted driver', async () => {
+    instance(101).runtimeDriver = 'podman';
+    podmanDriver.logs.mockResolvedValue({ stdout: 'container-ok', stderr: '' });
+
+    await expect(service.getRuntimeLogs('admin_echo_service', 50)).resolves.toMatchObject({
+      stdout: 'container-ok',
+      stderr: '',
+    });
+
+    expect(podmanDriver.logs).toHaveBeenCalledWith(instance(101).processName, 50);
+    expect(processManager.logs).not.toHaveBeenCalled();
   });
 
   it('allocates only an unused loopback port from the configured range', async () => {
@@ -694,6 +848,7 @@ describe('AppServiceRuntimeService', () => {
       releaseDir: '/runtime/admin_echo_service/1.0.0',
       processName: '',
       loopbackPort: 0,
+      runtimeDriver: 'pm2',
       role: 'candidate',
       processStatus: 'stopped',
       healthStatus: 'unknown',

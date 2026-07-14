@@ -21,13 +21,15 @@ import {
   AppServiceLoopbackTransport,
   type AppServiceLoopbackResponse,
 } from './app-service-loopback.transport';
-import {
-  AppServiceProcessManager,
-  createAppServiceProcessName,
-  type AppServiceProcessSpec,
-  type AppServiceProcessSnapshot,
-} from './app-service-process-manager';
+import { createAppServiceProcessName } from './app-service-process-manager';
 import { AppServicePackageService } from './app-service-package.service';
+import { AppServiceRuntimeDriverRegistry } from './app-service-runtime-driver-registry';
+import type {
+  AppServiceProcessSnapshot,
+  AppServiceRuntimeDriver,
+  AppServiceRuntimeDriverName,
+  AppServiceRuntimeSpec,
+} from './app-service-runtime-driver';
 
 export interface AppServicePortAllocationInput {
   min: number;
@@ -77,7 +79,7 @@ interface PreparedCandidate {
   app: AppPackageEntity;
   version: AppPackageVersionEntity;
   instance: AppServiceInstanceEntity;
-  spec: AppServiceProcessSpec;
+  spec: AppServiceRuntimeSpec;
 }
 
 export interface ReconcileSummary {
@@ -113,7 +115,7 @@ export class AppServiceRuntimeService {
     private readonly reviewLogRepo: Repository<AppReviewLogEntity>,
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
-    private readonly processManager: AppServiceProcessManager,
+    private readonly driverRegistry: AppServiceRuntimeDriverRegistry,
     private readonly loopbackTransport: AppServiceLoopbackTransport,
     @Inject(AppServicePortAllocator)
     private readonly portAllocator: AppServicePortAllocator,
@@ -128,18 +130,19 @@ export class AppServiceRuntimeService {
   async startCandidate(appCode: string, versionValue: string, operatorId: number) {
     this.assertEnabled();
     this.assertOperator(operatorId);
+    const configuredDriver = this.driverRegistry.forNewInstance();
     const prepared = await this.dataSource.transaction((manager) =>
-      this.prepareCandidate(manager, appCode, versionValue, operatorId),
+      this.prepareCandidate(manager, appCode, versionValue, operatorId, configuredDriver.name),
     );
 
     let snapshot: AppServiceProcessSnapshot;
     try {
-      snapshot = await this.processManager.start(prepared.spec);
+      snapshot = await this.driverFor(prepared.instance).start(prepared.spec);
       if (snapshot.status !== 'online' && snapshot.status !== 'starting') {
         throw new Error('candidate_not_online');
       }
     } catch {
-      await this.cleanupProcess(prepared.instance.processName);
+      await this.cleanupProcess(prepared.instance);
       await this.markCandidateFailed(
         prepared.instance.id,
         prepared.version.id,
@@ -151,7 +154,7 @@ export class AppServiceRuntimeService {
 
     const healthy = await this.awaitCandidateHealth(prepared);
     if (!healthy) {
-      await this.cleanupProcess(prepared.instance.processName);
+      await this.cleanupProcess(prepared.instance);
       await this.markCandidateFailed(
         prepared.instance.id,
         prepared.version.id,
@@ -249,19 +252,18 @@ export class AppServiceRuntimeService {
         `Published service version ${version.version}`,
         operatorId,
       );
-      return retiredInstances.map((item) => ({ id: item.id, processName: item.processName }));
+      return retiredInstances.map((item) => ({
+        id: item.id,
+        processName: item.processName,
+        runtimeDriver: item.runtimeDriver || 'pm2',
+      }));
     });
 
     await this.cleanupRetired(retired);
     return this.getRuntimeApp(appCode);
   }
 
-  async rollback(
-    appCode: string,
-    targetVersionValue: string,
-    reason: string,
-    operatorId: number,
-  ) {
+  async rollback(appCode: string, targetVersionValue: string, reason: string, operatorId: number) {
     this.assertEnabled();
     this.assertOperator(operatorId);
     const normalizedReason = this.requiredReason(reason);
@@ -321,11 +323,7 @@ export class AppServiceRuntimeService {
       app.entryUrl = '';
 
       const instanceRepo = manager.getRepository(AppServiceInstanceEntity);
-      for (const instance of [
-        ...retiredInstances,
-        previousActive,
-        target,
-      ]) {
+      for (const instance of [...retiredInstances, previousActive, target]) {
         await instanceRepo.save(instance);
       }
       await versionRepo.save(targetVersion);
@@ -339,19 +337,18 @@ export class AppServiceRuntimeService {
         operatorId,
         { previousVersionId: previousActive.versionId },
       );
-      return retiredInstances.map((item) => ({ id: item.id, processName: item.processName }));
+      return retiredInstances.map((item) => ({
+        id: item.id,
+        processName: item.processName,
+        runtimeDriver: item.runtimeDriver || 'pm2',
+      }));
     });
 
     await this.cleanupRetired(retired);
     return this.getRuntimeApp(appCode);
   }
 
-  async stopCandidate(
-    appCode: string,
-    versionValue: string,
-    reason: string,
-    operatorId: number,
-  ) {
+  async stopCandidate(appCode: string, versionValue: string, reason: string, operatorId: number) {
     this.assertEnabled();
     this.assertOperator(operatorId);
     const normalizedReason = this.requiredReason(reason);
@@ -379,8 +376,9 @@ export class AppServiceRuntimeService {
     });
 
     try {
-      await this.processManager.stop(prepared.candidate.processName);
-      await this.processManager.delete(prepared.candidate.processName);
+      const driver = this.driverFor(prepared.candidate);
+      await driver.stop(prepared.candidate.processName);
+      await driver.delete(prepared.candidate.processName);
     } catch {
       await this.markReconcileFailure(prepared.candidate, 'candidate_stop_failed');
       throw new ServiceUnavailableException('Candidate process failed to stop');
@@ -401,9 +399,13 @@ export class AppServiceRuntimeService {
   async reconcile(operatorId?: number): Promise<ReconcileSummary> {
     this.assertEnabled();
     if (operatorId !== undefined) this.assertOperator(operatorId);
-    const instances = await this.instanceRepo.find({ order: { id: 'ASC' } });
-    const versions = await this.versionRepo.find();
+    const [instances, versions, apps] = await Promise.all([
+      this.instanceRepo.find({ order: { id: 'ASC' } }),
+      this.versionRepo.find(),
+      this.appRepo.find(),
+    ]);
     const versionById = new Map(versions.map((version) => [Number(version.id), version]));
+    const appById = new Map(apps.map((app) => [Number(app.id), app]));
     const summary: ReconcileSummary = {
       inspected: instances.length,
       restarted: 0,
@@ -414,8 +416,8 @@ export class AppServiceRuntimeService {
     for (const instance of instances) {
       if (instance.role === 'retired') {
         try {
-          const snapshot = await this.processManager.describe(instance.processName);
-          const cleaned = snapshot ? await this.cleanupProcess(instance.processName) : true;
+          const snapshot = await this.driverFor(instance).describe(instance.processName);
+          const cleaned = snapshot ? await this.cleanupProcess(instance) : true;
           if (!cleaned) throw new Error('retired_cleanup_failed');
           await this.instanceRepo.update(
             { id: instance.id },
@@ -436,13 +438,15 @@ export class AppServiceRuntimeService {
       if (instance.role === 'candidate' && instance.healthStatus === 'unhealthy') continue;
 
       const version = versionById.get(Number(instance.versionId));
-      if (!version) {
+      const app = appById.get(Number(instance.appId));
+      if (!version || !app) {
         await this.markReconcileFailure(instance, 'version_missing');
         summary.failed += 1;
         continue;
       }
       try {
-        const snapshot = await this.processManager.describe(instance.processName);
+        const driver = this.driverFor(instance);
+        const snapshot = await driver.describe(instance.processName);
         if (instance.lastErrorCode === 'restart_drift') {
           await this.instanceRepo.update(
             { id: instance.id },
@@ -456,10 +460,7 @@ export class AppServiceRuntimeService {
           summary.failed += 1;
           continue;
         }
-        if (
-          snapshot &&
-          snapshot.restartCount - Number(instance.restartCount || 0) >= 3
-        ) {
+        if (snapshot && snapshot.restartCount - Number(instance.restartCount || 0) >= 3) {
           await this.instanceRepo.update(
             { id: instance.id },
             {
@@ -485,7 +486,7 @@ export class AppServiceRuntimeService {
           continue;
         }
 
-        const restarted = await this.processManager.start(this.processSpec(instance, version));
+        const restarted = await driver.start(this.processSpec(instance, version, app.code));
         await this.instanceRepo.update(
           { id: instance.id },
           {
@@ -522,7 +523,7 @@ export class AppServiceRuntimeService {
     ) {
       throw new ServiceUnavailableException('Service requires one healthy active instance');
     }
-    const response = await this.loopbackTransport.invoke(active[0].loopbackPort, input);
+    const response = await this.loopbackTransport.invoke(this.endpointFor(active[0]), input);
     await this.reviewLogRepo.save(
       this.reviewLogRepo.create({
         appId: app.id,
@@ -555,7 +556,7 @@ export class AppServiceRuntimeService {
     ) {
       throw new ServiceUnavailableException('Service requires one healthy active instance');
     }
-    return this.loopbackTransport.invoke(active[0].loopbackPort, {
+    return this.loopbackTransport.invoke(this.endpointFor(active[0]), {
       __agentstudio_runtime: 1,
       input,
       context,
@@ -614,7 +615,7 @@ export class AppServiceRuntimeService {
       instances.find((item) => item.role === 'candidate') ||
       instances.find((item) => item.role === 'standby');
     if (!instance) throw new NotFoundException('Service runtime instance not found');
-    const logs = await this.processManager.logs(instance.processName, lines);
+    const logs = await this.driverFor(instance).logs(instance.processName, lines);
     return {
       app_code: app.code,
       process_name: instance.processName,
@@ -640,7 +641,7 @@ export class AppServiceRuntimeService {
     });
     if (!version) throw new NotFoundException('Service runtime version not found');
     const boundedLines = Math.min(200, Math.max(1, Math.trunc(Number(lines) || 100)));
-    const logs = await this.processManager.logs(instance.processName, boundedLines);
+    const logs = await this.driverFor(instance).logs(instance.processName, boundedLines);
     return {
       app_code: app.code,
       version: version.version,
@@ -655,6 +656,7 @@ export class AppServiceRuntimeService {
     appCode: string,
     versionValue: string,
     operatorId: number,
+    configuredDriver: AppServiceRuntimeDriverName,
   ): Promise<PreparedCandidate> {
     const { app, version } = await this.lockAppVersion(manager, appCode, versionValue);
     await this.assertReviewedServiceVersion(app, version);
@@ -663,9 +665,7 @@ export class AppServiceRuntimeService {
       (Number(version.submittedBy) === Number(operatorId) ||
         Number(version.reviewerId) === Number(operatorId))
     ) {
-      throw new BadRequestException(
-        'Candidate review requires a different platform operator',
-      );
+      throw new BadRequestException('Candidate review requires a different platform operator');
     }
     const instances = await this.lockInstances(manager, app.id);
     if (
@@ -703,6 +703,7 @@ export class AppServiceRuntimeService {
         releaseDir: version.packagePath,
         processName: createAppServiceProcessName(app.code, version.version),
         loopbackPort: port,
+        runtimeDriver: configuredDriver,
         role: 'candidate',
         processStatus: 'starting',
         healthStatus: 'checking',
@@ -711,6 +712,7 @@ export class AppServiceRuntimeService {
         lastErrorMessage: '',
       });
     } else {
+      candidate.runtimeDriver = candidate.runtimeDriver || 'pm2';
       candidate.releaseDir = version.packagePath;
       candidate.processStatus = 'starting';
       candidate.healthStatus = 'checking';
@@ -737,7 +739,7 @@ export class AppServiceRuntimeService {
       app,
       version,
       instance: candidate,
-      spec: this.processSpec(candidate, version),
+      spec: this.processSpec(candidate, version, app.code),
     };
   }
 
@@ -748,7 +750,7 @@ export class AppServiceRuntimeService {
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       try {
         const response = await this.loopbackTransport.health(
-          prepared.instance.loopbackPort,
+          this.endpointFor(prepared.instance),
           this.healthPath(prepared.app, prepared.version),
         );
         consecutive = this.isHealthy(response) ? consecutive + 1 : 0;
@@ -841,11 +843,7 @@ export class AppServiceRuntimeService {
     });
   }
 
-  private async lockAppVersion(
-    manager: EntityManager,
-    appCode: string,
-    versionValue: string,
-  ) {
+  private async lockAppVersion(manager: EntityManager, appCode: string, versionValue: string) {
     const app = await manager.getRepository(AppPackageEntity).findOne({
       where: { code: String(appCode || '').trim() },
       lock: { mode: 'pessimistic_write' },
@@ -922,11 +920,17 @@ export class AppServiceRuntimeService {
   private processSpec(
     instance: AppServiceInstanceEntity,
     version: AppPackageVersionEntity,
-  ): AppServiceProcessSpec {
+    appCode: string,
+  ): AppServiceRuntimeSpec {
+    if (version.entryFile !== 'dist/index.js') {
+      throw new BadRequestException('Invalid service entry');
+    }
     return {
+      appCode,
+      version: version.version,
       processName: instance.processName,
       releaseDir: instance.releaseDir,
-      entryFile: version.entryFile,
+      entryFile: 'dist/index.js',
       healthPath: this.manifestHealthPath(version),
       loopbackPort: instance.loopbackPort,
       memoryMb: this.memoryMb(),
@@ -942,9 +946,15 @@ export class AppServiceRuntimeService {
     return this.manifestHealthPath(version) || app.serviceHealthPath || '/health';
   }
 
-  private async cleanupRetired(values: Array<{ id: number; processName: string }>) {
+  private async cleanupRetired(
+    values: Array<{
+      id: number;
+      processName: string;
+      runtimeDriver: AppServiceRuntimeDriverName;
+    }>,
+  ) {
     for (const value of values) {
-      const cleaned = await this.cleanupProcess(value.processName);
+      const cleaned = await this.cleanupProcess(value);
       const instance = await this.instanceRepo.findOne({ where: { id: value.id } });
       if (!instance) continue;
       if (cleaned) {
@@ -963,14 +973,17 @@ export class AppServiceRuntimeService {
     }
   }
 
-  private async cleanupProcess(processName: string) {
+  private async cleanupProcess(
+    instance: Pick<AppServiceInstanceEntity, 'processName' | 'runtimeDriver'>,
+  ) {
+    const driver = this.driverFor(instance);
     try {
-      await this.processManager.stop(processName);
+      await driver.stop(instance.processName);
     } catch {
       // Delete remains safe and idempotent when stop reports a missing process.
     }
     try {
-      await this.processManager.delete(processName);
+      await driver.delete(instance.processName);
       return true;
     } catch {
       return false;
@@ -1018,10 +1031,14 @@ export class AppServiceRuntimeService {
       throw new BadRequestException(errorMessage);
     }
     try {
-      const snapshot = await this.processManager.describe(instance.processName);
+      const driver = this.driverFor(instance);
+      const snapshot = await driver.describe(instance.processName);
       if (!snapshot || snapshot.status !== 'online') throw new Error('process_not_online');
       const health = await this.loopbackTransport.health(
-        instance.loopbackPort,
+        driver.endpoint({
+          processName: instance.processName,
+          loopbackPort: Number(instance.loopbackPort),
+        }),
         this.healthPath(app, version),
       );
       if (!this.isHealthy(health)) throw new Error('service_not_healthy');
@@ -1042,6 +1059,7 @@ export class AppServiceRuntimeService {
       version: version.version,
       process_name: instance.processName,
       loopback_port: Number(instance.loopbackPort),
+      runtime_driver: instance.runtimeDriver || 'pm2',
       role: instance.role,
       process_status: instance.processStatus,
       health_status: instance.healthStatus,
@@ -1096,10 +1114,21 @@ export class AppServiceRuntimeService {
     if (!this.configService.get<boolean>('appMarketplace.serviceRuntime.enabled')) {
       throw new ServiceUnavailableException('Service runtime is disabled');
     }
-    const appEnv = String(this.configService.get<string>('app.env') || 'development').toLowerCase();
-    if (appEnv === 'production') {
-      throw new ServiceUnavailableException('Production service runtime requires per-app isolation');
-    }
+  }
+
+  private driverFor(
+    instance: Pick<AppServiceInstanceEntity, 'runtimeDriver'>,
+  ): AppServiceRuntimeDriver {
+    return this.driverRegistry.forInstance(instance.runtimeDriver || 'pm2');
+  }
+
+  private endpointFor(
+    instance: Pick<AppServiceInstanceEntity, 'processName' | 'loopbackPort' | 'runtimeDriver'>,
+  ) {
+    return this.driverFor(instance).endpoint({
+      processName: instance.processName,
+      loopbackPort: Number(instance.loopbackPort),
+    });
   }
 
   private healthSuccessCount() {
