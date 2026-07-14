@@ -1,15 +1,27 @@
 export const APP_SERVICE_HOST_SOURCE = String.raw`'use strict';
 
 const http = require('node:http');
+const fs = require('node:fs');
 const path = require('node:path');
 
 const host = '127.0.0.1';
-const port = Number(process.env.APP_SERVICE_PORT);
+const socketPath = String(process.env.APP_SERVICE_SOCKET || '');
+const port = Number(process.env.APP_SERVICE_PORT || 0);
 const entry = String(process.env.APP_SERVICE_ENTRY || '');
 const healthPath = String(process.env.APP_SERVICE_HEALTH_PATH || '/health');
 
-if (!Number.isInteger(port) || port < 1 || port > 65535 || !entry) {
+if (
+  Boolean(socketPath) === Boolean(port) ||
+  (socketPath && Boolean(process.env.APP_SERVICE_PORT)) ||
+  !entry
+) {
   throw new Error('invalid_service_host_configuration');
+}
+if (socketPath && !/^\/run\/agentstudio\/[A-Za-z0-9._-]+\.sock$/.test(socketPath)) {
+  throw new Error('invalid_service_socket');
+}
+if (port && (!Number.isInteger(port) || port < 1 || port > 65535)) {
+  throw new Error('invalid_service_port');
 }
 
 const releaseDir = __dirname;
@@ -83,5 +95,33 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(port, host);
+function removeOwnSocket() {
+  if (!socketPath) return;
+  try {
+    const stat = fs.lstatSync(socketPath);
+    if (!stat.isSocket()) throw new Error('invalid_service_socket');
+    fs.unlinkSync(socketPath);
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return;
+    throw error;
+  }
+}
+
+function shutdown() {
+  server.close(() => {
+    removeOwnSocket();
+    process.exit(0);
+  });
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+
+if (socketPath) {
+  removeOwnSocket();
+  server.listen(socketPath);
+  server.once('listening', () => fs.chmodSync(socketPath, 0o600));
+} else {
+  server.listen(port, host);
+}
 `;

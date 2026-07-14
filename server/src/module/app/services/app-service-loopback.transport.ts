@@ -8,8 +8,12 @@ import {
   RequestTimeoutException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as fs from 'node:fs';
 import type { LookupFunction } from 'node:net';
+import * as path from 'node:path';
 import { Agent, request as undiciRequest } from 'undici';
+
+import type { AppServiceRuntimeEndpoint } from './app-service-runtime-driver';
 
 export interface AppServiceLoopbackResponse {
   statusCode: number;
@@ -18,7 +22,7 @@ export interface AppServiceLoopbackResponse {
 }
 
 interface AppServiceLoopbackRequest {
-  port: number;
+  endpoint: AppServiceRuntimeEndpoint;
   path: string;
   method: 'GET' | 'POST';
   body?: unknown;
@@ -37,12 +41,21 @@ export class AppServiceLoopbackTransport implements OnModuleDestroy {
 
   constructor(private readonly configService: ConfigService) {}
 
-  health(port: number, healthPath: string) {
-    return this.execute({ port, path: healthPath, method: 'GET' });
+  health(endpoint: AppServiceRuntimeEndpoint | number, healthPath: string) {
+    return this.execute({
+      endpoint: this.normalizeEndpoint(endpoint),
+      path: healthPath,
+      method: 'GET',
+    });
   }
 
-  invoke(port: number, body: unknown) {
-    return this.execute({ port, path: '/invoke', method: 'POST', body });
+  invoke(endpoint: AppServiceRuntimeEndpoint | number, body: unknown) {
+    return this.execute({
+      endpoint: this.normalizeEndpoint(endpoint),
+      path: '/invoke',
+      method: 'POST',
+      body,
+    });
   }
 
   async onModuleDestroy() {
@@ -50,7 +63,8 @@ export class AppServiceLoopbackTransport implements OnModuleDestroy {
   }
 
   private async execute(input: AppServiceLoopbackRequest): Promise<AppServiceLoopbackResponse> {
-    this.validateTarget(input.port, input.path);
+    this.validatePath(input.path);
+    const target = this.requestTarget(input.endpoint, input.path);
     const maxBodyBytes = this.maxBodyBytes();
     const requestBody = input.body === undefined ? undefined : this.serializeBody(input.body);
     if (requestBody && requestBody.length > maxBodyBytes) {
@@ -60,21 +74,24 @@ export class AppServiceLoopbackTransport implements OnModuleDestroy {
     const timeoutMs = this.timeoutMs();
     const abortController = new AbortController();
     const timeout = setTimeout(() => abortController.abort(), timeoutMs);
+    let unixDispatcher: Agent | null = null;
     try {
-      const response = await undiciRequest(
-        `http://127.0.0.1:${input.port}${input.path}`,
-        {
-          dispatcher: this.dispatcher,
-          method: input.method,
-          headers: requestBody
-            ? { 'content-type': 'application/json', accept: 'application/json' }
-            : { accept: 'application/json' },
-          body: requestBody,
-          headersTimeout: timeoutMs,
-          bodyTimeout: timeoutMs,
-          signal: abortController.signal,
-        },
-      );
+      if (input.endpoint.kind === 'unix') {
+        unixDispatcher = this.createUnixDispatcher(
+          this.validateUnixEndpoint(input.endpoint.socketPath),
+        );
+      }
+      const response = await this.request(target, {
+        dispatcher: unixDispatcher ?? this.dispatcher,
+        method: input.method,
+        headers: requestBody
+          ? { 'content-type': 'application/json', accept: 'application/json' }
+          : { accept: 'application/json' },
+        body: requestBody,
+        headersTimeout: timeoutMs,
+        bodyTimeout: timeoutMs,
+        signal: abortController.signal,
+      });
       if (REDIRECT_STATUSES.has(response.statusCode)) {
         this.destroyBody(response.body);
         throw new BadGatewayException('Service loopback redirects are not allowed');
@@ -120,19 +137,109 @@ export class AppServiceLoopbackTransport implements OnModuleDestroy {
       throw new BadGatewayException('Service loopback request failed');
     } finally {
       clearTimeout(timeout);
+      if (unixDispatcher) {
+        try {
+          await unixDispatcher.close();
+        } catch {
+          // The request result remains authoritative; the dispatcher owns no shared state.
+        }
+      }
     }
   }
 
-  private validateTarget(port: number, targetPath: string) {
-    if (!Number.isInteger(port) || port < 1 || port > 65535) {
-      throw new BadRequestException('Invalid service loopback port');
+  private normalizeEndpoint(
+    endpoint: AppServiceRuntimeEndpoint | number,
+  ): AppServiceRuntimeEndpoint {
+    if (typeof endpoint === 'number') return { kind: 'tcp', port: endpoint };
+    if (endpoint?.kind === 'tcp') return { kind: 'tcp', port: endpoint.port };
+    if (endpoint?.kind === 'unix') return { kind: 'unix', socketPath: endpoint.socketPath };
+    throw new BadRequestException('Invalid service loopback endpoint');
+  }
+
+  private requestTarget(endpoint: AppServiceRuntimeEndpoint, targetPath: string) {
+    if (endpoint.kind === 'tcp') {
+      if (!Number.isInteger(endpoint.port) || endpoint.port < 1 || endpoint.port > 65535) {
+        throw new BadRequestException('Invalid service loopback port');
+      }
+      return `http://127.0.0.1:${endpoint.port}${targetPath}`;
     }
-    if (
-      !/^\/[A-Za-z0-9/_-]*$/.test(String(targetPath || '')) ||
-      targetPath.startsWith('//')
-    ) {
+    return `http://localhost${targetPath}`;
+  }
+
+  private validatePath(targetPath: string) {
+    if (!/^\/[A-Za-z0-9/_-]*$/.test(String(targetPath || '')) || targetPath.startsWith('//')) {
       throw new BadRequestException('Invalid service loopback path');
     }
+  }
+
+  private validateUnixEndpoint(socketPathValue: string) {
+    const configuredRoot = String(
+      this.configService.get<string>('appMarketplace.serviceRuntime.socketDir') || '',
+    );
+    const socketPath = path.resolve(String(socketPathValue || ''));
+    if (!path.isAbsolute(socketPathValue) || !path.isAbsolute(configuredRoot)) {
+      throw new BadRequestException('Invalid service socket path');
+    }
+    const root = path.resolve(configuredRoot);
+    const relative = path.relative(root, socketPath);
+    const segments = relative.split(path.sep).filter(Boolean);
+    if (
+      relative.startsWith('..') ||
+      path.isAbsolute(relative) ||
+      segments.length !== 2 ||
+      !/^agentstudio-app-[a-z0-9-]{3,90}$/.test(segments[0]) ||
+      segments[1] !== 'service.sock'
+    ) {
+      throw new BadRequestException('Invalid service socket path');
+    }
+
+    const processDir = path.dirname(socketPath);
+    const rootStat = this.safeLstat(root, 'Service socket root is unavailable');
+    const processStat = this.safeLstat(processDir, 'Service socket directory is unavailable');
+    if (rootStat.isSymbolicLink() || processStat.isSymbolicLink()) {
+      throw new BadRequestException('Service socket path contains a symbolic link');
+    }
+    if (!rootStat.isDirectory() || !processStat.isDirectory()) {
+      throw new BadGatewayException('Service socket directory is unavailable');
+    }
+    if (
+      process.platform !== 'win32' &&
+      ((rootStat.mode & 0o022) !== 0 || (processStat.mode & 0o022) !== 0)
+    ) {
+      throw new BadGatewayException('Service socket directory is not private');
+    }
+    const realRoot = fs.realpathSync(root);
+    const realProcessDir = fs.realpathSync(processDir);
+    const realRelative = path.relative(realRoot, realProcessDir);
+    if (realRelative.startsWith('..') || path.isAbsolute(realRelative)) {
+      throw new BadRequestException('Service socket path contains a symbolic link');
+    }
+
+    const socketStat = this.safeLstat(socketPath, 'Service socket is unavailable');
+    if (socketStat.isSymbolicLink() || !socketStat.isSocket()) {
+      throw new BadGatewayException('Service socket is unavailable');
+    }
+    return socketPath;
+  }
+
+  private safeLstat(target: string, message: string) {
+    try {
+      return fs.lstatSync(target);
+    } catch {
+      throw new BadGatewayException(message);
+    }
+  }
+
+  private createUnixDispatcher(socketPath: string) {
+    return new Agent({
+      connect: { socketPath },
+      connections: 1,
+      pipelining: 0,
+    });
+  }
+
+  private request(url: string, options: Parameters<typeof undiciRequest>[1]) {
+    return undiciRequest(url, options);
   }
 
   private serializeBody(value: unknown) {
@@ -173,7 +280,10 @@ export class AppServiceLoopbackTransport implements OnModuleDestroy {
     return String(value || '');
   }
 
-  private destroyBody(body: { on: (event: string, listener: () => void) => unknown; destroy: () => void }) {
+  private destroyBody(body: {
+    on: (event: string, listener: () => void) => unknown;
+    destroy: () => void;
+  }) {
     body.on('error', () => undefined);
     body.destroy();
   }
