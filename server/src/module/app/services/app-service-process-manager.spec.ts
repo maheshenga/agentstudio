@@ -60,6 +60,14 @@ describe('AppServiceProcessManager', () => {
     expect(createAppServiceProcessName('admin_echo_service', '1.0.0')).toBe(processName);
   });
 
+  it('exposes the PM2 driver identity and pinned loopback endpoint', () => {
+    expect((manager as any).name).toBe('pm2');
+    expect((manager as any).endpoint({ processName, loopbackPort: 21000 })).toEqual({
+      kind: 'tcp',
+      port: 21000,
+    });
+  });
+
   it('starts through fixed runuser and PM2 arguments with only allowlisted environment values', async () => {
     runner.run.mockImplementation(async (_file: string, args: string[]) => {
       if (args.includes('start')) return { stdout: '', stderr: '' };
@@ -156,6 +164,15 @@ describe('AppServiceProcessManager', () => {
 
     await expect(manager.start(spec())).rejects.toThrow('per-app isolation');
     expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('allows production inspection of historical PM2 instances without starting them', async () => {
+    configValues['app.env'] = 'production';
+    runner.run.mockResolvedValue({ stdout: '[]', stderr: '' });
+    manager = createManager();
+
+    await expect(manager.describe(processName)).resolves.toBeNull();
+    expect(runner.run).toHaveBeenCalledTimes(1);
   });
 
   it.each([

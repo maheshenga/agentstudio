@@ -5,8 +5,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { AppServiceLogRedactor } from './app-service-log-redactor';
+import {
+  AppServiceRuntimeDriver,
+  type AppServiceCommandResult,
+  type AppServiceProcessSnapshot,
+  type AppServiceRuntimeEndpoint,
+  type AppServiceRuntimeSpec,
+} from './app-service-runtime-driver';
 
-export interface AppServiceProcessSpec {
+export type { AppServiceCommandResult, AppServiceProcessSnapshot } from './app-service-runtime-driver';
+
+export interface AppServiceProcessSpec
+  extends Omit<AppServiceRuntimeSpec, 'appCode' | 'version' | 'entryFile'> {
+  appCode?: string;
+  version?: string;
   processName: string;
   releaseDir: string;
   entryFile: string;
@@ -15,26 +27,12 @@ export interface AppServiceProcessSpec {
   memoryMb: number;
 }
 
-export interface AppServiceProcessSnapshot {
-  processName: string;
-  status: 'starting' | 'online' | 'stopped' | 'failed';
-  pid: number | null;
-  restartCount: number;
-  memoryBytes: number;
-  cpuPercent: number;
-}
-
 export interface AppServiceCommandOptions {
   cwd: string;
   env: Record<string, string>;
   shell: false;
   timeoutMs?: number;
   maxBufferBytes?: number;
-}
-
-export interface AppServiceCommandResult {
-  stdout: string;
-  stderr: string;
 }
 
 export abstract class AppServiceCommandRunner {
@@ -124,7 +122,9 @@ export function createAppServiceProcessName(appCode: string, version: string) {
 }
 
 @Injectable()
-export class AppServiceProcessManager {
+export class AppServiceProcessManager implements AppServiceRuntimeDriver {
+  readonly name = 'pm2' as const;
+
   constructor(
     private readonly configService: ConfigService,
     @Inject(AppServiceCommandRunner)
@@ -211,9 +211,17 @@ export class AppServiceProcessManager {
     return this.logRedactor.redactStreams(result);
   }
 
+  endpoint(input: { processName: string; loopbackPort: number }): AppServiceRuntimeEndpoint {
+    this.assertProcessName(input.processName);
+    if (!Number.isInteger(input.loopbackPort) || input.loopbackPort < 1 || input.loopbackPort > 65535) {
+      throw new BadRequestException('Invalid service loopback port');
+    }
+    return { kind: 'tcp', port: input.loopbackPort };
+  }
+
   private validateProcessSpec(spec: AppServiceProcessSpec) {
     const config = this.runtimeConfig();
-    this.assertBaseConfig(config);
+    this.assertBaseConfig(config, true);
     this.assertProcessName(spec.processName);
     if (
       !Number.isInteger(spec.loopbackPort) ||
@@ -240,7 +248,7 @@ export class AppServiceProcessManager {
 
   private validateManagementInput(processName: string) {
     const config = this.runtimeConfig();
-    this.assertBaseConfig(config);
+    this.assertBaseConfig(config, false);
     this.assertProcessName(processName);
     return config;
   }
@@ -274,11 +282,11 @@ export class AppServiceProcessManager {
     };
   }
 
-  private assertBaseConfig(config: RuntimeConfig) {
+  private assertBaseConfig(config: RuntimeConfig, starting: boolean) {
     if (!config.enabled) {
       throw new ServiceUnavailableException('Service runtime is disabled');
     }
-    if (config.appEnv === 'production') {
+    if (starting && config.appEnv === 'production') {
       throw new ServiceUnavailableException('Production service runtime requires per-app isolation');
     }
     if (this.hostEnvironment.platform() !== 'linux') {
