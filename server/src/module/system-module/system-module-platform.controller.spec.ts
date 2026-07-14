@@ -20,6 +20,9 @@ describe('SystemModulePlatformController', () => {
     listTenantGrants: jest.fn(),
     grantTenantModule: jest.fn(),
     revokeTenantModule: jest.fn(),
+    getPlatformConfig: jest.fn(),
+    savePlatformConfig: jest.fn(),
+    runHealthCheck: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -151,5 +154,26 @@ describe('SystemModulePlatformController', () => {
     expect(listed.data).toEqual([{ code: 'ai_console', tenant_enabled: true }]);
     expect(granted.data).toEqual({ module_code: 'ai_console', enabled: true });
     expect(revoked.data).toEqual({ module_code: 'ai_console', enabled: false });
+  });
+
+  it('reads and updates platform config and triggers health checks outside tenant scope', async () => {
+    registry.getPlatformConfig.mockResolvedValue({ module_code: 'ai_console', config: {} });
+    registry.savePlatformConfig.mockResolvedValue({ module_code: 'ai_console', config: { enabled: true } });
+    registry.runHealthCheck.mockResolvedValue({ code: 'ai_console', health_status: 'healthy' });
+
+    const read = await controller.getPlatformConfig('ai_console', { userId: 31 } as any);
+    const saved = await controller.savePlatformConfig(
+      'ai_console',
+      { config: { enabled: true } },
+      { userId: 32 } as any,
+    );
+    const health = await controller.runHealthCheck('ai_console', { userId: 33 } as any);
+
+    expect(registry.getPlatformConfig).toHaveBeenCalledWith('ai_console');
+    expect(registry.savePlatformConfig).toHaveBeenCalledWith('ai_console', { enabled: true }, 32);
+    expect(registry.runHealthCheck).toHaveBeenCalledWith('ai_console', 33);
+    expect(read.data).toEqual({ module_code: 'ai_console', config: {} });
+    expect(saved.data).toEqual({ module_code: 'ai_console', config: { enabled: true } });
+    expect(health.data).toEqual({ code: 'ai_console', health_status: 'healthy' });
   });
 });

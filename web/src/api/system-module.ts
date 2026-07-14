@@ -25,7 +25,13 @@ export interface SystemModuleRecord {
   dependencies?: SystemModuleDependencyRecord[]
   permissions?: SystemModulePermissionRecord[]
   apis?: SystemModuleApiRecord[]
+  menus?: SystemModuleMenuRecord[]
   events?: SystemModuleEventRecord[]
+}
+
+export interface SystemModuleMenuRecord {
+  menu_id: number | string
+  binding_type: string
 }
 
 export interface SystemModuleDependencyRecord {
@@ -118,6 +124,26 @@ export interface SystemTenantModuleGrantRecord {
   update_time?: string | Date | null
 }
 
+export interface SystemModuleConfigRecord {
+  module_code: string
+  config: Record<string, any>
+  config_schema: Record<string, any>
+}
+
+export interface SystemTenantModuleConfigRecord {
+  module_code: string
+  tenant_id: number
+  platform_config: Record<string, any>
+  tenant_config: Record<string, any>
+  effective_config: Record<string, any>
+}
+
+export interface SystemModuleHealthResult {
+  code: string
+  health_status: string
+  findings: string[]
+}
+
 export function fetchSystemModules(params?: SystemModuleListParams) {
   return request.get<SystemModuleRecord[]>({ url: '/api/system/modules', params })
 }
@@ -135,6 +161,23 @@ export function updateSystemModuleStatus(code: string, status: string) {
 
 export function fetchSystemModuleEvents(code: string) {
   return request.get<SystemModuleEventRecord[]>({ url: `/api/system/modules/${code}/events` })
+}
+
+export function fetchSystemModuleConfig(code: string) {
+  return request.get<SystemModuleConfigRecord>({ url: `/api/system/modules/${code}/config` })
+}
+
+export function saveSystemModuleConfig(code: string, config: Record<string, any>) {
+  return request.put<SystemModuleConfigRecord>({
+    url: `/api/system/modules/${code}/config`,
+    data: { config }
+  })
+}
+
+export function runSystemModuleHealthCheck(code: string) {
+  return request.post<SystemModuleHealthResult>({
+    url: `/api/system/modules/${code}/health-check`
+  })
 }
 
 export function registerBuiltInSystemModules() {
@@ -189,5 +232,18 @@ export function fetchTenantSystemModules() {
 export function fetchTenantSystemModuleAccessDiagnosis(code: string) {
   return request.get<SystemModuleAccessDiagnosis>({
     url: `/api/tenant/modules/${code}/access-diagnosis`
+  })
+}
+
+export function fetchTenantSystemModuleConfig(code: string) {
+  return request.get<SystemTenantModuleConfigRecord>({
+    url: `/api/tenant/modules/${code}/config`
+  })
+}
+
+export function saveTenantSystemModuleConfig(code: string, config: Record<string, any>) {
+  return request.put<SystemTenantModuleConfigRecord>({
+    url: `/api/tenant/modules/${code}/config`,
+    data: { config }
   })
 }

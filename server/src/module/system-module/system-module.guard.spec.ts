@@ -10,14 +10,14 @@ describe('SystemModuleGuard', () => {
     path: string,
     user: Record<string, any> = {},
     handler: Function = jest.fn(),
-    request: { query?: Record<string, any>; body?: Record<string, any> } = {},
+    request: { query?: Record<string, any>; body?: Record<string, any>; method?: string } = {},
   ): ExecutionContext =>
     ({
       switchToHttp: () => ({
         getRequest: () => ({
           path,
           route: { path },
-          method: 'GET',
+          method: request.method || 'GET',
           user,
           query: request.query ?? {},
           body: request.body ?? {},
@@ -166,6 +166,45 @@ describe('SystemModuleGuard', () => {
       moduleCode: 'tenant_saas',
       tenantId: 23,
       userId: 9,
+    });
+  });
+
+  it('uses compiled API metadata before static fallback and enforces its permission', async () => {
+    const access = { assertModuleAccess: jest.fn().mockResolvedValue(true) };
+    const registry = {
+      matchApiBinding: jest.fn().mockReturnValue({
+        prefix: '/api/module-alpha/items/:id',
+        moduleCode: 'module_alpha',
+        tenantScoped: true,
+        permission: 'module:alpha:view',
+      }),
+    };
+    const guard = new SystemModuleGuard(
+      new Reflector(),
+      access as unknown as SystemModuleAccessService,
+      registry as any,
+    );
+
+    await expect(
+      guard.canActivate(
+        createContext('/api/module-alpha/items/42', {
+          userId: 9,
+          tenantId: 23,
+          permissions: ['module:alpha:view'],
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(registry.matchApiBinding).toHaveBeenCalledWith('GET', [
+      '/api/module-alpha/items/42',
+      '/module-alpha/items/42',
+    ]);
+    expect(access.assertModuleAccess).toHaveBeenCalledWith({
+      moduleCode: 'module_alpha',
+      tenantId: 23,
+      userId: 9,
+      permission: 'module:alpha:view',
+      userPermissions: ['module:alpha:view'],
     });
   });
 

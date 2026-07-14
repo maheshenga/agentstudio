@@ -1,17 +1,22 @@
 import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, IsNull, Repository } from 'typeorm';
+import { match, type MatchFunction } from 'path-to-regexp';
 
 import { SaasModuleService } from '../../saas/services/saas-module.service';
 import { SYSTEM_MODULE_STATUSES } from '../constants';
 import type { SystemModuleEventType, SystemModuleStatus } from '../constants';
 import { SystemModuleApiEntity } from '../entities/system-module-api.entity';
+import { SystemModuleConfigEntity } from '../entities/system-module-config.entity';
 import { SystemModuleDependencyEntity } from '../entities/system-module-dependency.entity';
 import { SystemModuleEventEntity } from '../entities/system-module-event.entity';
+import { SystemModuleMenuEntity } from '../entities/system-module-menu.entity';
 import { SystemModulePermissionEntity } from '../entities/system-module-permission.entity';
 import { SystemModuleEntity } from '../entities/system-module.entity';
 import { SystemModuleSaasBridgeEntity } from '../entities/system-module-saas-bridge.entity';
+import { SystemTenantModuleConfigEntity } from '../entities/system-tenant-module-config.entity';
 import { SystemTenantModuleEntity } from '../entities/system-tenant-module.entity';
+import { SysMenuEntity } from '../../system/menu/entities/menu.entity';
 import { BUILT_IN_SYSTEM_MODULES, SystemModuleManifest } from '../manifests/built-in-modules';
 import { PluginModuleManifestDto } from '../dto/plugin-module-manifest.dto';
 import {
@@ -25,6 +30,7 @@ import {
   isBaselineTenantSystemModule,
   resolveSystemModuleCodesFromSaasModules,
 } from '../system-module-entitlement.util';
+import { mergeSystemModuleConfig, validateSystemModuleConfig } from '../system-module-config.util';
 
 export interface SystemModuleListQuery {
   keyword?: string;
@@ -49,8 +55,21 @@ interface ImportManifestOptions {
   validateExisting?: (existing: SystemModuleEntity, manifest: SystemModuleManifest) => void;
 }
 
+interface CompiledSystemModuleApiBinding {
+  prefix: string;
+  moduleCode: string;
+  tenantScoped: boolean;
+  permission?: string;
+  method: string;
+  matcher: MatchFunction<object>;
+}
+
+const SYSTEM_MODULE_API_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD']);
+
 @Injectable()
 export class SystemModuleRegistryService implements OnModuleInit {
+  private compiledApiBindings: CompiledSystemModuleApiBinding[] = [];
+
   constructor(
     private readonly dataSource: DataSource,
     @InjectRepository(SystemModuleEntity)
@@ -61,12 +80,20 @@ export class SystemModuleRegistryService implements OnModuleInit {
     private readonly permissionRepo: Repository<SystemModulePermissionEntity>,
     @InjectRepository(SystemModuleApiEntity)
     private readonly apiRepo: Repository<SystemModuleApiEntity>,
+    @InjectRepository(SystemModuleMenuEntity)
+    private readonly moduleMenuRepo: Repository<SystemModuleMenuEntity>,
     @InjectRepository(SystemTenantModuleEntity)
     private readonly tenantModuleRepo: Repository<SystemTenantModuleEntity>,
     @InjectRepository(SystemModuleEventEntity)
     private readonly eventRepo: Repository<SystemModuleEventEntity>,
     @InjectRepository(SystemModuleSaasBridgeEntity)
     private readonly bridgeRepo: Repository<SystemModuleSaasBridgeEntity>,
+    @InjectRepository(SystemModuleConfigEntity)
+    private readonly moduleConfigRepo: Repository<SystemModuleConfigEntity>,
+    @InjectRepository(SystemTenantModuleConfigEntity)
+    private readonly tenantConfigRepo: Repository<SystemTenantModuleConfigEntity>,
+    @InjectRepository(SysMenuEntity)
+    private readonly sysMenuRepo: Repository<SysMenuEntity>,
     private readonly saasModuleService: SaasModuleService,
   ) {}
 
@@ -124,13 +151,16 @@ export class SystemModuleRegistryService implements OnModuleInit {
         validateExisting: (module) => this.assertPluginCodeAvailable(module),
       });
     });
+    await this.refreshApiBindings();
     return this.getModule(dto.code);
   }
 
   async importManifests(manifests: SystemModuleManifest[]) {
-    return this.dataSource.transaction((manager) =>
+    const imported = await this.dataSource.transaction((manager) =>
       this.importManifestsWithManager(manager, manifests),
     );
+    await this.refreshApiBindings();
+    return imported;
   }
 
   private async importManifestsWithManager(
@@ -142,9 +172,12 @@ export class SystemModuleRegistryService implements OnModuleInit {
     const dependencyRepo = manager.getRepository(SystemModuleDependencyEntity);
     const permissionRepo = manager.getRepository(SystemModulePermissionEntity);
     const apiRepo = manager.getRepository(SystemModuleApiEntity);
+    const moduleMenuRepo = manager.getRepository(SystemModuleMenuEntity);
+    const sysMenuRepo = manager.getRepository(SysMenuEntity);
     const eventRepo = manager.getRepository(SystemModuleEventEntity);
     const imported = [];
     await this.validateManifestDependencies(moduleRepo, dependencyRepo, manifests);
+    await this.validateManifestApiBindings(apiRepo, manifests);
 
     for (const manifest of manifests) {
       const inserted = await this.insertManifestModule(moduleRepo, manifest);
@@ -167,6 +200,7 @@ export class SystemModuleRegistryService implements OnModuleInit {
       await this.replaceDependencies(dependencyRepo, manifest);
       await this.replacePermissions(permissionRepo, manifest);
       await this.replaceApis(apiRepo, manifest);
+      await this.replaceMenus(moduleMenuRepo, sysMenuRepo, manifest);
 
       if (inserted) {
         await this.recordEvent(
@@ -463,12 +497,172 @@ export class SystemModuleRegistryService implements OnModuleInit {
     return this.toSaasBridgeResponse(await this.bridgeRepo.save(bridge));
   }
 
+  async getPlatformConfig(code: string) {
+    const module = await this.findModule(code);
+    const row = await this.moduleConfigRepo.findOne({ where: { moduleCode: code } });
+    return {
+      module_code: code,
+      config: row?.config || {},
+      config_schema: module.configSchema || {},
+    };
+  }
+
+  async savePlatformConfig(code: string, config: Record<string, unknown>, operatorId?: number) {
+    const module = await this.findModule(code);
+    validateSystemModuleConfig(config, module.configSchema);
+    await this.dataSource.transaction(async (manager) => {
+      const configRepo = manager.getRepository(SystemModuleConfigEntity);
+      const eventRepo = manager.getRepository(SystemModuleEventEntity);
+      const existing = await configRepo.findOne({ where: { moduleCode: code } });
+      const row = existing || configRepo.create({ moduleCode: code });
+      row.config = config;
+      row.operatorId = operatorId;
+      await configRepo.save(row);
+      await this.recordEvent(eventRepo, code, 'config_update', 'success', `Updated platform config for ${code}`, {
+        operatorId,
+        metadata: { scope: 'platform', keys: Object.keys(config).sort() },
+      });
+    });
+    return this.getPlatformConfig(code);
+  }
+
+  async getTenantConfig(tenantIdValue: number, code: string) {
+    const tenantId = this.assertTenantId(tenantIdValue);
+    await this.findModule(code);
+    const [platformRow, tenantRow] = await Promise.all([
+      this.moduleConfigRepo.findOne({ where: { moduleCode: code } }),
+      this.tenantConfigRepo.findOne({ where: { tenantId, moduleCode: code } }),
+    ]);
+    const platformConfig = platformRow?.config || {};
+    const tenantConfig = tenantRow?.config || {};
+    return {
+      module_code: code,
+      tenant_id: tenantId,
+      platform_config: platformConfig,
+      tenant_config: tenantConfig,
+      effective_config: mergeSystemModuleConfig(platformConfig, tenantConfig),
+    };
+  }
+
+  async saveTenantConfig(
+    tenantIdValue: number,
+    code: string,
+    config: Record<string, unknown>,
+    operatorId?: number,
+  ) {
+    const tenantId = this.assertTenantId(tenantIdValue);
+    const module = await this.findModule(code);
+    const platformRow = await this.moduleConfigRepo.findOne({ where: { moduleCode: code } });
+    const effectiveConfig = mergeSystemModuleConfig(platformRow?.config || {}, config);
+    validateSystemModuleConfig(effectiveConfig, module.configSchema);
+    await this.dataSource.transaction(async (manager) => {
+      const configRepo = manager.getRepository(SystemTenantModuleConfigEntity);
+      const eventRepo = manager.getRepository(SystemModuleEventEntity);
+      const existing = await configRepo.findOne({ where: { tenantId, moduleCode: code } });
+      const row = existing || configRepo.create({ tenantId, moduleCode: code });
+      row.config = config;
+      row.operatorId = operatorId;
+      await configRepo.save(row);
+      await this.recordEvent(eventRepo, code, 'config_update', 'success', `Updated tenant config for ${code}`, {
+        operatorId,
+        metadata: { scope: 'tenant', tenantId, keys: Object.keys(config).sort() },
+      });
+    });
+    return this.getTenantConfig(tenantId, code);
+  }
+
+  async runHealthCheck(code: string, operatorId?: number) {
+    const module = await this.findModule(code);
+    const findings = new Set<string>();
+    if (module.status !== 'enabled') findings.add('module_disabled');
+    await this.collectDependencyHealthFindings(code, new Set(), findings);
+
+    const configRow = await this.moduleConfigRepo.findOne({ where: { moduleCode: code } });
+    try {
+      validateSystemModuleConfig(configRow?.config || {}, module.configSchema);
+    } catch {
+      findings.add('config_invalid');
+    }
+
+    const [permissions, apis] = await Promise.all([
+      this.permissionRepo.find({ where: { moduleCode: code } }),
+      this.apiRepo.find({ where: { moduleCode: code } }),
+    ]);
+    const permissionSlugs = new Set(permissions.map((permission) => permission.permissionSlug));
+    try {
+      for (const api of apis) this.compileApiBinding(api, permissionSlugs);
+    } catch {
+      findings.add('api_binding_invalid');
+    }
+
+    const findingCodes = [...findings].slice(0, 20);
+    const healthStatus = findingCodes.length ? 'failed' : 'healthy';
+    module.healthStatus = healthStatus;
+    await this.moduleRepo.save(module);
+    await this.recordEvent(
+      this.eventRepo,
+      code,
+      'health_check',
+      healthStatus === 'healthy' ? 'success' : 'failed',
+      `Module ${code} health check ${healthStatus === 'healthy' ? 'passed' : 'failed'}`,
+      {
+        operatorId,
+        metadata: { health_status: healthStatus, findings: findingCodes },
+      },
+    );
+    return { code, health_status: healthStatus, findings: findingCodes };
+  }
+
+  async refreshApiBindings() {
+    const modules = await this.moduleRepo.find({
+      where: { status: 'enabled', deleteTime: IsNull() },
+    });
+    const enabledCodes = modules.map((module) => module.code).filter(Boolean);
+    if (!enabledCodes.length) {
+      this.compiledApiBindings = [];
+      return;
+    }
+    const [apis, permissions] = await Promise.all([
+      this.apiRepo.find({ where: { moduleCode: In(enabledCodes) } }),
+      this.permissionRepo.find({ where: { moduleCode: In(enabledCodes) } }),
+    ]);
+    const permissionByModule = new Map<string, Set<string>>();
+    for (const permission of permissions) {
+      const slugs = permissionByModule.get(permission.moduleCode) || new Set<string>();
+      slugs.add(permission.permissionSlug);
+      permissionByModule.set(permission.moduleCode, slugs);
+    }
+
+    const compiled: CompiledSystemModuleApiBinding[] = [];
+    for (const api of apis) {
+      try {
+        compiled.push(this.compileApiBinding(api, permissionByModule.get(api.moduleCode) || new Set()));
+      } catch {
+        // Invalid persisted metadata is excluded; health checks expose a bounded finding code.
+      }
+    }
+    this.compiledApiBindings = compiled.sort((left, right) => right.prefix.length - left.prefix.length);
+  }
+
+  matchApiBinding(method: string, candidatePaths: string[]) {
+    const normalizedMethod = String(method || 'GET').toUpperCase();
+    const binding = this.compiledApiBindings.find(
+      (item) =>
+        item.method === normalizedMethod &&
+        candidatePaths.some((candidatePath) => Boolean(item.matcher(candidatePath))),
+    );
+    if (!binding) return undefined;
+    const { matcher: _matcher, method: _method, ...result } = binding;
+    return result;
+  }
+
   async getModule(code: string) {
     const module = await this.findModule(code);
-    const [dependencies, permissions, apis, events] = await Promise.all([
+    const [dependencies, permissions, apis, menus, events] = await Promise.all([
       this.dependencyRepo.find({ where: { moduleCode: code }, order: { id: 'ASC' } }),
       this.permissionRepo.find({ where: { moduleCode: code }, order: { id: 'ASC' } }),
       this.apiRepo.find({ where: { moduleCode: code }, order: { id: 'ASC' } }),
+      this.moduleMenuRepo.find({ where: { moduleCode: code }, order: { id: 'ASC' } }),
       this.listEvents(code),
     ]);
 
@@ -489,6 +683,7 @@ export class SystemModuleRegistryService implements OnModuleInit {
         permission_slug: api.permissionSlug || '',
         tenant_scoped: Number(api.tenantScoped) === 1,
       })),
+      menus: menus.map((menu) => ({ menu_id: menu.menuId, binding_type: menu.bindingType })),
       events,
     };
   }
@@ -498,7 +693,7 @@ export class SystemModuleRegistryService implements OnModuleInit {
       throw new BadRequestException(`Invalid system module status: ${status}`);
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const moduleRepo = manager.getRepository(SystemModuleEntity);
       const eventRepo = manager.getRepository(SystemModuleEventEntity);
       const module = await moduleRepo.findOne({
@@ -527,6 +722,8 @@ export class SystemModuleRegistryService implements OnModuleInit {
       );
       return this.toResponse(saved);
     });
+    await this.refreshApiBindings();
+    return result;
   }
 
   async listEvents(code: string) {
@@ -603,6 +800,128 @@ export class SystemModuleRegistryService implements OnModuleInit {
         }),
       ),
     );
+  }
+
+  private async replaceMenus(
+    repo: Repository<SystemModuleMenuEntity>,
+    sysMenuRepo: Repository<SysMenuEntity>,
+    manifest: SystemModuleManifest,
+  ) {
+    await repo.delete({ moduleCode: manifest.code });
+    const permissionTypes = new Map(
+      manifest.permissions.map((permission) => [permission.slug, permission.bindingType || 'owned']),
+    );
+    const slugs = [...permissionTypes.keys()];
+    const paths = [...new Set([manifest.entryRoute, ...(manifest.routes || [])].filter(Boolean))];
+    const where: any[] = [];
+    if (slugs.length) where.push({ slug: In(slugs), deleteTime: IsNull() });
+    if (paths.length) where.push({ path: In(paths), deleteTime: IsNull() });
+    if (!where.length) return;
+
+    const menus = await sysMenuRepo.find({ where });
+    if (!menus.length) return;
+    await repo.save(
+      menus.map((menu) =>
+        repo.create({
+          moduleCode: manifest.code,
+          menuId: menu.id,
+          bindingType: permissionTypes.get(menu.slug) || 'owned',
+        }),
+      ),
+    );
+  }
+
+  private async validateManifestApiBindings(
+    apiRepo: Repository<SystemModuleApiEntity>,
+    manifests: SystemModuleManifest[],
+  ) {
+    const incomingCodes = new Set(manifests.map((manifest) => manifest.code));
+    const existingApis = await apiRepo.find();
+    const routeOwners = new Map<string, string>();
+    for (const api of existingApis) {
+      if (incomingCodes.has(api.moduleCode)) continue;
+      routeOwners.set(`${String(api.method).toUpperCase()} ${api.path}`, api.moduleCode);
+    }
+    for (const manifest of manifests) {
+      const permissionSlugs = new Set(manifest.permissions.map((permission) => permission.slug));
+      const seenRoutes = new Set<string>();
+      for (const api of manifest.apis) {
+        const normalized = {
+          moduleCode: manifest.code,
+          method: String(api.method || '').toUpperCase(),
+          path: api.path,
+          permissionSlug: api.permissionSlug || '',
+          tenantScoped: api.tenantScoped ? 1 : 0,
+        } as SystemModuleApiEntity;
+        this.compileApiBinding(normalized, permissionSlugs);
+        const routeKey = `${normalized.method} ${normalized.path}`;
+        if (seenRoutes.has(routeKey) || routeOwners.has(routeKey)) {
+          throw new BadRequestException('System module API route is duplicated');
+        }
+        seenRoutes.add(routeKey);
+        routeOwners.set(routeKey, manifest.code);
+      }
+    }
+  }
+
+  private compileApiBinding(
+    api: Pick<SystemModuleApiEntity, 'moduleCode' | 'method' | 'path' | 'permissionSlug' | 'tenantScoped'>,
+    permissionSlugs: Set<string>,
+  ): CompiledSystemModuleApiBinding {
+    const method = String(api.method || '').toUpperCase();
+    const pathValue = String(api.path || '').trim();
+    if (!SYSTEM_MODULE_API_METHODS.has(method)) {
+      throw new BadRequestException('System module API method is invalid');
+    }
+    if (!pathValue.startsWith('/') || pathValue.length > 255 || pathValue.includes('\0')) {
+      throw new BadRequestException('System module API path is invalid');
+    }
+    const permission = String(api.permissionSlug || '').trim();
+    if (permission && !permissionSlugs.has(permission)) {
+      throw new BadRequestException('System module API permission is not declared');
+    }
+    let matcher: MatchFunction<object>;
+    try {
+      matcher = match(pathValue, { decode: false, end: true });
+    } catch {
+      throw new BadRequestException('System module API path is invalid');
+    }
+    return {
+      prefix: pathValue,
+      moduleCode: api.moduleCode,
+      tenantScoped: Number(api.tenantScoped) === 1,
+      permission: permission || undefined,
+      method,
+      matcher,
+    };
+  }
+
+  private async collectDependencyHealthFindings(
+    moduleCode: string,
+    visiting: Set<string>,
+    findings: Set<string>,
+  ) {
+    if (visiting.has(moduleCode)) {
+      findings.add('dependency_cycle');
+      return;
+    }
+    visiting.add(moduleCode);
+    const dependencies = await this.dependencyRepo.find({ where: { moduleCode, required: 1 } });
+    for (const dependency of dependencies) {
+      const dependencyModule = await this.moduleRepo.findOne({
+        where: { code: dependency.dependsOnCode, deleteTime: IsNull() },
+      });
+      if (
+        !dependencyModule ||
+        dependencyModule.status !== 'enabled' ||
+        !satisfiesSystemModuleVersionRange(dependencyModule.version, dependency.versionRange)
+      ) {
+        findings.add('dependency_unavailable');
+        continue;
+      }
+      await this.collectDependencyHealthFindings(dependency.dependsOnCode, visiting, findings);
+    }
+    visiting.delete(moduleCode);
   }
 
   private async findModule(code: string) {

@@ -1,13 +1,17 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 import { SystemModuleApiEntity } from '../entities/system-module-api.entity';
+import { SystemModuleConfigEntity } from '../entities/system-module-config.entity';
 import { SystemModuleDependencyEntity } from '../entities/system-module-dependency.entity';
 import { SystemModuleEventEntity } from '../entities/system-module-event.entity';
+import { SystemModuleMenuEntity } from '../entities/system-module-menu.entity';
 import { SystemModulePermissionEntity } from '../entities/system-module-permission.entity';
 import { SystemModuleEntity } from '../entities/system-module.entity';
 import { SystemModuleSaasBridgeEntity } from '../entities/system-module-saas-bridge.entity';
+import { SystemTenantModuleConfigEntity } from '../entities/system-tenant-module-config.entity';
 import { SystemTenantModuleEntity } from '../entities/system-tenant-module.entity';
 import { BUILT_IN_SYSTEM_MODULES } from '../manifests/built-in-modules';
+import { SysMenuEntity } from '../../system/menu/entities/menu.entity';
 import { SystemModuleRegistryService } from './system-module-registry.service';
 
 type EntityRecord = Record<string, any>;
@@ -18,10 +22,12 @@ class MemoryRepository<T extends EntityRecord> {
   public savedInputs: T[] = [];
   public updatedInputs: EntityRecord[] = [];
   private nextId: number;
+  private readonly identityKeys: string[];
 
-  constructor(seed: T[] = []) {
+  constructor(seed: T[] = [], identityKeys: string[] = []) {
     this.records = seed.map((record, index) => ({ id: record.id ?? index + 1, ...record })) as T[];
     this.nextId = this.records.length + 1;
+    this.identityKeys = identityKeys;
   }
 
   create(input: Partial<T> | Partial<T>[]) {
@@ -42,6 +48,10 @@ class MemoryRepository<T extends EntityRecord> {
     const existingIndex =
       input.id !== undefined
         ? this.records.findIndex((record) => record.id === input.id)
+        : this.identityKeys.length
+          ? this.records.findIndex(
+              (record) => this.identityKeys.every((key) => record[key] === input[key]),
+            )
         : this.records.findIndex(
             (record) => record.code !== undefined && record.code === input.code,
           );
@@ -168,9 +178,13 @@ describe('SystemModuleRegistryService', () => {
     const dependencyRepo = new MemoryRepository();
     const permissionRepo = new MemoryRepository();
     const apiRepo = new MemoryRepository();
+    const moduleMenuRepo = new MemoryRepository();
     const tenantModuleRepo = new MemoryRepository();
     const eventRepo = new MemoryRepository();
     const bridgeRepo = new MemoryRepository();
+    const moduleConfigRepo = new MemoryRepository([], ['moduleCode']);
+    const tenantConfigRepo = new MemoryRepository([], ['tenantId', 'moduleCode']);
+    const sysMenuRepo = new MemoryRepository();
     const saasModuleService = {
       listTenantModules: jest.fn().mockResolvedValue([]),
       listPlatformModules: jest.fn().mockResolvedValue([]),
@@ -181,9 +195,13 @@ describe('SystemModuleRegistryService', () => {
         [SystemModuleDependencyEntity, dependencyRepo],
         [SystemModulePermissionEntity, permissionRepo],
         [SystemModuleApiEntity, apiRepo],
+        [SystemModuleMenuEntity, moduleMenuRepo],
         [SystemTenantModuleEntity, tenantModuleRepo],
         [SystemModuleEventEntity, eventRepo],
         [SystemModuleSaasBridgeEntity, bridgeRepo],
+        [SystemModuleConfigEntity, moduleConfigRepo],
+        [SystemTenantModuleConfigEntity, tenantConfigRepo],
+        [SysMenuEntity, sysMenuRepo],
       ]),
     );
     const service = new SystemModuleRegistryService(
@@ -192,9 +210,13 @@ describe('SystemModuleRegistryService', () => {
       dependencyRepo as any,
       permissionRepo as any,
       apiRepo as any,
+      moduleMenuRepo as any,
       tenantModuleRepo as any,
       eventRepo as any,
       bridgeRepo as any,
+      moduleConfigRepo as any,
+      tenantConfigRepo as any,
+      sysMenuRepo as any,
       saasModuleService as any,
     );
 
@@ -205,9 +227,13 @@ describe('SystemModuleRegistryService', () => {
       dependencyRepo,
       permissionRepo,
       apiRepo,
+      moduleMenuRepo,
       tenantModuleRepo,
       eventRepo,
       bridgeRepo,
+      moduleConfigRepo,
+      tenantConfigRepo,
+      sysMenuRepo,
       saasModuleService,
     };
   };
@@ -275,6 +301,196 @@ describe('SystemModuleRegistryService', () => {
       ]),
     ).rejects.toThrow('System module dependency version is not satisfied');
     expect(moduleRepo.records).toEqual([]);
+  });
+
+  it('validates platform config and merges tenant overrides without logging values', async () => {
+    const { service, moduleRepo, moduleConfigRepo, tenantConfigRepo, eventRepo } = createService();
+    await moduleRepo.save({
+      ...manifest('module_alpha'),
+      configSchema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['enabled', 'limits'],
+        properties: {
+          enabled: { type: 'boolean' },
+          limits: {
+            type: 'object',
+            required: ['requests', 'burst'],
+            properties: {
+              requests: { type: 'number', minimum: 1, maximum: 100 },
+              burst: { type: 'number', minimum: 1, maximum: 20 },
+            },
+          },
+          secret: { type: 'string', maxLength: 100 },
+        },
+      },
+    });
+
+    await expect(
+      service.savePlatformConfig('module_alpha', { enabled: 'yes' } as any, 7),
+    ).rejects.toThrow('Module config validation failed');
+    expect(moduleConfigRepo.records).toEqual([]);
+
+    await service.savePlatformConfig(
+      'module_alpha',
+      { enabled: true, limits: { requests: 10, burst: 2 }, secret: 'super-secret' },
+      7,
+    );
+    const result = await service.saveTenantConfig(
+      23,
+      'module_alpha',
+      { limits: { requests: 20 } },
+      9,
+    );
+
+    expect(result).toEqual({
+      module_code: 'module_alpha',
+      tenant_id: 23,
+      platform_config: { enabled: true, limits: { requests: 10, burst: 2 }, secret: 'super-secret' },
+      tenant_config: { limits: { requests: 20 } },
+      effective_config: { enabled: true, limits: { requests: 20, burst: 2 }, secret: 'super-secret' },
+    });
+    expect(moduleConfigRepo.records).toHaveLength(1);
+    expect(tenantConfigRepo.records).toHaveLength(1);
+    const configEvents = eventRepo.records.filter((row) => row.eventType === 'config_update');
+    expect(configEvents).toHaveLength(2);
+    expect(configEvents[1]).toEqual(
+      expect.objectContaining({
+        operatorId: 9,
+        metadata: { scope: 'tenant', tenantId: 23, keys: ['limits'] },
+      }),
+    );
+    expect(JSON.stringify(configEvents)).not.toContain('super-secret');
+  });
+
+  it('rejects prototype mutation keys even when the module schema is open', async () => {
+    const { service, moduleRepo } = createService();
+    await moduleRepo.save({ ...manifest('module_alpha'), configSchema: {} });
+    const maliciousConfig = JSON.parse('{"__proto__":{"polluted":true}}');
+
+    await expect(service.savePlatformConfig('module_alpha', maliciousConfig, 7)).rejects.toThrow(
+      'Module config validation failed',
+    );
+    expect(({} as any).polluted).toBeUndefined();
+  });
+
+  it('runs a bounded health check and records only finding codes', async () => {
+    const { service, moduleRepo, dependencyRepo, eventRepo } = createService();
+    await moduleRepo.save({ ...manifest('module_alpha'), healthStatus: 'unknown' });
+    await moduleRepo.save({ ...manifest('module_beta'), status: 'disabled', healthStatus: 'unknown' });
+    await dependencyRepo.save({
+      moduleCode: 'module_alpha',
+      dependsOnCode: 'module_beta',
+      versionRange: '^1.0.0',
+      required: 1,
+    });
+
+    const result = await service.runHealthCheck('module_alpha', 12);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        code: 'module_alpha',
+        health_status: 'failed',
+        findings: ['dependency_unavailable'],
+      }),
+    );
+    expect(moduleRepo.records.find((row) => row.code === 'module_alpha')).toEqual(
+      expect.objectContaining({ healthStatus: 'failed' }),
+    );
+    expect(eventRepo.records).toContainEqual(
+      expect.objectContaining({
+        moduleCode: 'module_alpha',
+        eventType: 'health_check',
+        status: 'failed',
+        operatorId: 12,
+        metadata: { health_status: 'failed', findings: ['dependency_unavailable'] },
+      }),
+    );
+  });
+
+  it('compiles enabled API metadata and rejects undeclared permissions', async () => {
+    const { service } = createService();
+    await expect(
+      service.importManifests([
+        {
+          ...manifest('module_alpha'),
+          permissions: [{ slug: 'module:alpha:view' }],
+          apis: [
+            {
+              method: 'GET',
+              path: '/api/module-alpha/items/:id',
+              permissionSlug: 'module:alpha:view',
+              tenantScoped: true,
+            },
+          ],
+        },
+      ]),
+    ).resolves.toBeDefined();
+
+    expect(service.matchApiBinding('GET', ['/api/module-alpha/items/42'])).toEqual(
+      expect.objectContaining({
+        moduleCode: 'module_alpha',
+        tenantScoped: true,
+        permission: 'module:alpha:view',
+      }),
+    );
+
+    await expect(
+      service.importManifests([
+        {
+          ...manifest('module_beta'),
+          apis: [
+            {
+              method: 'GET',
+              path: '/api/module-beta/items',
+              permissionSlug: 'module:beta:missing',
+            },
+          ],
+        },
+      ]),
+    ).rejects.toThrow('System module API permission is not declared');
+  });
+
+  it('rejects API route conflicts across different modules', async () => {
+    const { service } = createService();
+    await service.importManifests([
+      {
+        ...manifest('module_alpha'),
+        apis: [{ method: 'GET', path: '/api/shared/items' }],
+      },
+    ]);
+
+    await expect(
+      service.importManifests([
+        {
+          ...manifest('module_beta'),
+          apis: [{ method: 'GET', path: '/api/shared/items' }],
+        },
+      ]),
+    ).rejects.toThrow('System module API route is duplicated');
+  });
+
+  it('binds manifest routes and permissions to existing menus without creating menu records', async () => {
+    const { service, sysMenuRepo, moduleMenuRepo } = createService();
+    await sysMenuRepo.save({ id: 501, code: 'ModuleAlpha', path: '/module-alpha', type: 2 });
+    await sysMenuRepo.save({ id: 502, slug: 'module:alpha:view', type: 3 });
+
+    await service.importManifests([
+      {
+        ...manifest('module_alpha'),
+        routes: ['/module-alpha'],
+        entryRoute: '/module-alpha',
+        permissions: [{ slug: 'module:alpha:view', bindingType: 'required' }],
+      },
+    ]);
+
+    expect(sysMenuRepo.records).toHaveLength(2);
+    expect(moduleMenuRepo.records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ moduleCode: 'module_alpha', menuId: 501, bindingType: 'owned' }),
+        expect.objectContaining({ moduleCode: 'module_alpha', menuId: 502, bindingType: 'required' }),
+      ]),
+    );
   });
 
   it('preserves existing lifecycle status when manifests are re-synced', async () => {

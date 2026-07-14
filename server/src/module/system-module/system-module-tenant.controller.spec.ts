@@ -14,9 +14,12 @@ describe('SystemModuleTenantController', () => {
 
   const registry = {
     listTenantModules: jest.fn(),
+    getTenantConfig: jest.fn(),
+    saveTenantConfig: jest.fn(),
   };
   const access = {
     diagnoseModuleAccess: jest.fn(),
+    assertModuleAccess: jest.fn(),
   };
   const mockedGetTenantId = getTenantId as jest.MockedFunction<typeof getTenantId>;
 
@@ -76,5 +79,34 @@ describe('SystemModuleTenantController', () => {
     expect(result.code).toBe(401);
     expect(result.msg).toBe('Tenant context is required');
     expect(access.diagnoseModuleAccess).not.toHaveBeenCalled();
+  });
+
+  it('reads and updates effective config for the current entitled tenant', async () => {
+    mockedGetTenantId.mockReturnValue(23);
+    access.assertModuleAccess.mockResolvedValue(true);
+    registry.getTenantConfig.mockResolvedValue({ module_code: 'ai_console', tenant_id: 23 });
+    registry.saveTenantConfig.mockResolvedValue({
+      module_code: 'ai_console',
+      tenant_id: 23,
+      tenant_config: { tone: 'concise' },
+    });
+
+    const read = await controller.getTenantConfig('ai_console');
+    const saved = await controller.saveTenantConfig(
+      'ai_console',
+      { config: { tone: 'concise' } },
+      { userId: 51 } as any,
+    );
+
+    expect(access.assertModuleAccess).toHaveBeenCalledTimes(2);
+    expect(access.assertModuleAccess).toHaveBeenCalledWith({ tenantId: 23, moduleCode: 'ai_console' });
+    expect(registry.getTenantConfig).toHaveBeenCalledWith(23, 'ai_console');
+    expect(registry.saveTenantConfig).toHaveBeenCalledWith(23, 'ai_console', { tone: 'concise' }, 51);
+    expect(read.data).toEqual({ module_code: 'ai_console', tenant_id: 23 });
+    expect(saved.data).toEqual({
+      module_code: 'ai_console',
+      tenant_id: 23,
+      tenant_config: { tone: 'concise' },
+    });
   });
 });

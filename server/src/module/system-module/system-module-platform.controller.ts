@@ -7,6 +7,7 @@ import { ResultData } from '../../common/utils/result';
 import { User } from '../system/user/user.decorator';
 import type { UserDto } from '../system/user/user.decorator';
 import { PluginModuleManifestDto } from './dto/plugin-module-manifest.dto';
+import { SaveSystemModuleConfigDto } from './dto/system-module-config.dto';
 import { TenantModuleGrantReasonDto } from './dto/tenant-module-grant.dto';
 import {
   SaveSystemModuleSaasBridgeDto,
@@ -121,6 +122,39 @@ export class SystemModulePlatformController {
   getModule(@Param('code') code: string, @User() user: UserDto) {
     return this.runOutsideTenant(user, () =>
       this.registry.getModule(code).then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Get(':code/config')
+  @ApiOperation({ summary: 'Get platform module configuration' })
+  @RequirePermission('system:module:config')
+  getPlatformConfig(@Param('code') code: string, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () =>
+      this.registry.getPlatformConfig(code).then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Put(':code/config')
+  @ApiOperation({ summary: 'Update platform module configuration' })
+  @RequirePermission('system:module:config')
+  savePlatformConfig(
+    @Param('code') code: string,
+    @Body() body: SaveSystemModuleConfigDto,
+    @User() user: UserDto,
+  ) {
+    return this.runOutsideTenant(user, () =>
+      this.registry
+        .savePlatformConfig(code, body.config, user?.userId)
+        .then((data) => ResultData.ok(data)),
+    );
+  }
+
+  @Post(':code/health-check')
+  @ApiOperation({ summary: 'Run module health check' })
+  @RequirePermission('system:module:status')
+  runHealthCheck(@Param('code') code: string, @User() user: UserDto) {
+    return this.runOutsideTenant(user, () =>
+      this.registry.runHealthCheck(code, user?.userId).then((data) => ResultData.ok(data)),
     );
   }
 

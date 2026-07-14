@@ -1,8 +1,9 @@
-import { BadRequestException, CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { BadRequestException, CanActivate, ExecutionContext, Injectable, Optional } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 
 import { IS_PUBLIC_KEY } from '../../common/constant';
 import { SystemModuleAccessService, type AssertModuleAccessOptions } from './services/system-module-access.service';
+import { SystemModuleRegistryService } from './services/system-module-registry.service';
 
 export type SystemModuleRouteBinding = {
   prefix: string;
@@ -12,6 +13,7 @@ export type SystemModuleRouteBinding = {
   requiredAnySaasModuleCodes?: string[];
   sourceSaasModuleCodeMap?: Record<string, string>;
   sourceResolver?: (request: Record<string, any>, path: string) => unknown;
+  permission?: string;
 };
 
 const TAIXU_SHARED_SAAS_MODULE_CODES = ['ai_chat', 'rag'];
@@ -183,6 +185,7 @@ export class SystemModuleGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly accessService: SystemModuleAccessService,
+    @Optional() private readonly registry?: SystemModuleRegistryService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -196,7 +199,12 @@ export class SystemModuleGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest();
     const requestPath = request.path || request.route?.path || '';
-    const binding = this.matchBinding(requestPath);
+    const normalizedPath = requestPath.startsWith('/') ? requestPath : `/${requestPath}`;
+    const candidatePaths = this.buildCandidatePaths(normalizedPath);
+    const dynamicBinding = this.registry?.matchApiBinding(request.method || 'GET', candidatePaths) as
+      | SystemModuleRouteBinding
+      | undefined;
+    const binding: SystemModuleRouteBinding | undefined = dynamicBinding || this.matchBinding(requestPath);
     if (!binding) {
       return true;
     }
@@ -212,6 +220,10 @@ export class SystemModuleGuard implements CanActivate {
       tenantId,
       userId: this.resolveUserId(user),
     };
+    if (binding.permission) {
+      accessOptions.permission = binding.permission;
+      accessOptions.userPermissions = Array.isArray(user.permissions) ? user.permissions : [];
+    }
     const sourceSaasModuleCode = this.resolveSourceSaasModuleCode(binding, request, requestPath);
     if (sourceSaasModuleCode) {
       accessOptions.requiredSaasModuleCode = sourceSaasModuleCode;
