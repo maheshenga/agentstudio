@@ -26,9 +26,11 @@ const expectedFiles = [
   'web/src/api/app-factory.ts',
   'web/src/views/app-platform/factory/index.vue',
   'server/src/module/app/app-factory.controller.ts',
+  'server/src/module/app/app-factory-template-contract.ts',
   'server/src/module/app/services/app-factory.service.ts',
   'server/src/module/app/services/app-factory-template.service.ts',
   'server/src/migrations/1760000000033-SeedAppFactoryTemplates.ts',
+  'server/src/migrations/1760000000055-VersionAppFactoryTemplates.ts',
   'server/src/migrations/1760000000031-SeedAppFactoryMenus.ts'
 ]
 
@@ -41,6 +43,7 @@ for (const token of [
   '/api/app-platform/factory/modules',
   '/api/app-platform/factory/modules/${code}',
   '/api/app-platform/factory/modules/${code}/publish',
+  '/api/app-platform/factory/modules/${code}/manifest-preview',
   '/api/app-platform/factory/templates',
   '/api/app-platform/factory/templates/${code}',
   'fetchAppFactoryModules',
@@ -50,6 +53,10 @@ for (const token of [
   'publishAppFactoryModule',
   'fetchAppFactoryTemplates',
   'fetchAppFactoryTemplate',
+  'previewAppFactoryManifest',
+  'template_version',
+  'runtime_target',
+  'manifest_defaults',
   'html_content',
   'css_content'
 ]) {
@@ -74,7 +81,14 @@ for (const token of [
   'templateDrawerVisible',
   'applyTemplate',
   'Use Template',
-  'fetchAppFactoryTemplates'
+  'fetchAppFactoryTemplates',
+  'previewAppFactoryManifest',
+  'openManifestPreview',
+  'template_version',
+  'schema_version',
+  'runtime_target',
+  'manifest_defaults',
+  'Service templates generate manifests only'
 ]) {
   assertIncludes(pageSource, token, 'app factory page')
 }
@@ -91,7 +105,9 @@ for (const token of [
   assertIncludes(menuMigration, token, 'app factory menu migration')
 }
 
-const templateSeedMigration = readFile('server/src/migrations/1760000000033-SeedAppFactoryTemplates.ts')
+const templateSeedMigration = readFile(
+  'server/src/migrations/1760000000033-SeedAppFactoryTemplates.ts'
+)
 for (const token of [
   'landing_page',
   'job_board',
@@ -102,9 +118,42 @@ for (const token of [
   assertIncludes(templateSeedMigration, token, 'app factory template seed migration')
 }
 
+const versionedTemplateMigration = readFile(
+  'server/src/migrations/1760000000055-VersionAppFactoryTemplates.ts'
+)
+for (const token of [
+  'schema_version',
+  'template_version',
+  'runtime_target',
+  'manifest_defaults',
+  'uk_app_factory_template_code_version',
+  'job_board',
+  'classifieds',
+  "'2.0.0'"
+]) {
+  assertIncludes(versionedTemplateMigration, token, 'versioned app factory migration')
+}
+
+const controllerSource = readFile('server/src/module/app/app-factory.controller.ts')
+for (const token of ['manifest-preview', 'previewManifest', 'template_version']) {
+  assertIncludes(controllerSource, token, 'app factory controller')
+}
+
+const factoryServiceSource = readFile('server/src/module/app/services/app-factory.service.ts')
+for (const token of [
+  'buildFactoryAppManifest',
+  'manifest.json',
+  'hashDirectory',
+  'expectedContentHash',
+  'Service factory output must be submitted through App Platform review'
+]) {
+  assertIncludes(factoryServiceSource, token, 'app factory service')
+}
+
 const packageJson = JSON.parse(readFile('web/package.json'))
 assert(
-  packageJson.scripts?.['verify:app-factory-readiness'] === 'tsx scripts/verify-app-factory-readiness.ts',
+  packageJson.scripts?.['verify:app-factory-readiness'] ===
+    'tsx scripts/verify-app-factory-readiness.ts',
   'web/package.json must define verify:app-factory-readiness'
 )
 
@@ -112,6 +161,8 @@ const checklist = readFile('docs/saas-launch-readiness-checklist.md')
 assertIncludes(checklist, 'pnpm.cmd run verify:app-factory-readiness', 'launch readiness checklist')
 assertIncludes(checklist, '/#/app-platform/factory', 'launch readiness checklist')
 assertIncludes(checklist, 'static HTML/CSS modules', 'launch readiness checklist')
+assertIncludes(checklist, 'service Manifest V2', 'launch readiness checklist')
+assertIncludes(checklist, 'must enter App Platform review', 'launch readiness checklist')
 
 if (failures.length) {
   console.error(failures.join('\n'))

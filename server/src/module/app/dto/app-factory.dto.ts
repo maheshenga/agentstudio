@@ -1,10 +1,15 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
+import { IsIn, IsInt, IsObject, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
 
+import type {
+  AppFactoryManifestDefaults,
+  AppFactoryRuntimeTarget,
+} from '../app-factory-template-contract';
 import type { AppFactoryModuleKind, AppFactoryModuleVisibility } from '../entities/app-factory-module.entity';
 
 export const APP_FACTORY_KINDS: AppFactoryModuleKind[] = ['static_page'];
 export const APP_FACTORY_VISIBILITIES: AppFactoryModuleVisibility[] = ['platform', 'tenant', 'marketplace', 'private'];
+export const APP_FACTORY_RUNTIME_TARGETS: AppFactoryRuntimeTarget[] = ['static', 'service'];
 
 export class AppFactoryListQueryDto {
   @ApiProperty({ required: false })
@@ -35,6 +40,21 @@ export class AppFactoryTemplateListQueryDto {
   status?: string;
 }
 
+export class AppFactoryTemplateDetailQueryDto {
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+\.\d+\.\d+$/)
+  template_version?: string;
+}
+
+export class AppFactoryManifestPreviewQueryDto {
+  @ApiProperty({ required: true })
+  @IsString()
+  @Matches(/^\d+\.\d+\.\d+$/)
+  version: string;
+}
+
 export class SaveAppFactoryModuleDto {
   @ApiProperty({ required: false })
   @IsOptional()
@@ -52,6 +72,35 @@ export class SaveAppFactoryModuleDto {
   @IsOptional()
   @IsIn(APP_FACTORY_KINDS)
   kind?: AppFactoryModuleKind;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  @Matches(/^[a-z][a-z0-9_]{2,79}$/)
+  template_code?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+\.\d+\.\d+$/)
+  template_version?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  template_schema_version?: number;
+
+  @ApiProperty({ required: false, enum: APP_FACTORY_RUNTIME_TARGETS })
+  @IsOptional()
+  @IsIn(APP_FACTORY_RUNTIME_TARGETS)
+  runtime_target?: AppFactoryRuntimeTarget;
+
+  @ApiProperty({ required: false, type: Object })
+  @IsOptional()
+  @IsObject()
+  manifest_defaults?: AppFactoryManifestDefaults;
 
   @ApiProperty({ required: false })
   @IsOptional()

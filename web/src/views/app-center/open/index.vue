@@ -2,14 +2,14 @@
   <div class="art-full-height app-runner-page">
     <div v-if="loading" class="app-runner-page__state">
       <ElIcon class="is-loading"><Loading /></ElIcon>
-      <span>Opening app...</span>
+      <span>正在打开应用...</span>
     </div>
 
     <div v-else-if="loadError" class="app-runner-page__state">
-      <ElResult icon="warning" title="App cannot be opened" :sub-title="loadError">
+      <ElResult icon="warning" title="应用无法打开" :sub-title="loadError">
         <template #extra>
-          <ElButton :icon="Back" @click="goBack">Back</ElButton>
-          <ElButton type="primary" :icon="Refresh" @click="loadOpenMetadata">Retry</ElButton>
+          <ElButton :icon="Back" @click="goBack">返回</ElButton>
+          <ElButton type="primary" :icon="Refresh" @click="loadOpenMetadata">重试</ElButton>
         </template>
       </ElResult>
     </div>
@@ -25,8 +25,8 @@
         </div>
         <div class="app-runner-page__actions">
           <ElTag effect="light">{{ metadata.type }}</ElTag>
-          <ElButton :icon="Back" @click="goBack">Back</ElButton>
-          <ElButton type="primary" :icon="Refresh" @click="loadOpenMetadata">Reload</ElButton>
+          <ElButton :icon="Back" @click="goBack">返回</ElButton>
+          <ElButton type="primary" :icon="Refresh" @click="loadOpenMetadata">重新加载</ElButton>
         </div>
       </div>
 
@@ -42,13 +42,9 @@
     </template>
 
     <div v-else class="app-runner-page__state">
-      <ElResult
-        icon="info"
-        title="No app selected"
-        sub-title="Open an app from Marketplace or Installed Apps."
-      >
+      <ElResult icon="info" title="未选择应用" sub-title="请从应用市场或已安装应用中打开。">
         <template #extra>
-          <ElButton type="primary" @click="goMarketplace">Go to Marketplace</ElButton>
+          <ElButton type="primary" @click="goMarketplace">前往应用市场</ElButton>
         </template>
       </ElResult>
     </div>
@@ -158,7 +154,7 @@
     } catch (error: any) {
       if (sequence !== loadSequence) return
       console.error('[AppCenterOpenPage] open app failed:', error)
-      loadError.value = error?.message || 'The app is not installed, disabled, or not published.'
+      loadError.value = error?.message || '应用可能尚未安装、已停用或未发布。'
       ElMessage.error(loadError.value)
     } finally {
       if (sequence === loadSequence) loading.value = false

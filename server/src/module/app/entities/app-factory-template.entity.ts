@@ -1,8 +1,13 @@
 import { Column, CreateDateColumn, DeleteDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
+import type {
+  AppFactoryManifestDefaults,
+  AppFactoryRuntimeTarget,
+} from '../app-factory-template-contract';
+
 export type AppFactoryTemplateVisibility = 'platform' | 'tenant' | 'marketplace' | 'private';
 
-@Index('uk_app_factory_template_code', ['code'], { unique: true })
+@Index('uk_app_factory_template_code_version', ['code', 'templateVersion'], { unique: true })
 @Index('idx_app_factory_template_category', ['category'])
 @Index('idx_app_factory_template_status', ['status'])
 @Entity('app_factory_template')
@@ -12,6 +17,18 @@ export class AppFactoryTemplateEntity {
 
   @Column({ type: 'varchar', name: 'code', length: 80 })
   code: string;
+
+  @Column({ type: 'int', name: 'schema_version', unsigned: true, default: 1 })
+  schemaVersion: number;
+
+  @Column({ type: 'varchar', name: 'template_version', length: 40, default: '1.0.0' })
+  templateVersion: string;
+
+  @Column({ type: 'varchar', name: 'runtime_target', length: 20, default: 'static' })
+  runtimeTarget: AppFactoryRuntimeTarget;
+
+  @Column({ type: 'json', name: 'manifest_defaults', nullable: true })
+  manifestDefaults?: AppFactoryManifestDefaults | null;
 
   @Column({ type: 'varchar', name: 'name', length: 120 })
   name: string;

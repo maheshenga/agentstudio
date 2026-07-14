@@ -24,6 +24,7 @@ describe('AppPlatformService', () => {
   const appRepo = {
     create: jest.fn(),
     find: jest.fn(),
+    findAndCount: jest.fn(),
     findOne: jest.fn(),
     save: jest.fn(),
   };
@@ -40,6 +41,7 @@ describe('AppPlatformService', () => {
   const storageService = {
     extractStaticPackage: jest.fn(),
     publishVersion: jest.fn(),
+    hashDirectory: jest.fn(),
     getPublicPrefix: jest.fn(),
   };
   const manifestService = {
@@ -89,6 +91,7 @@ describe('AppPlatformService', () => {
     jest.clearAllMocks();
     appRepo.create.mockImplementation((value) => ({ ...value }));
     appRepo.find.mockResolvedValue([]);
+    appRepo.findAndCount.mockResolvedValue([[], 0]);
     appRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 1, ...value }));
     versionRepo.create.mockImplementation((value) => ({ ...value }));
     versionRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 11, ...value }));
@@ -132,6 +135,64 @@ describe('AppPlatformService', () => {
     }).compile();
 
     service = module.get(AppPlatformService);
+  });
+
+  it('returns a bounded platform app page', async () => {
+    appRepo.findAndCount.mockResolvedValue([
+      [
+        {
+          id: 5,
+          code: 'creator_portal',
+          name: 'Creator Portal',
+          type: 'static',
+          status: 'published',
+          category: 'Creator',
+        },
+      ],
+      21,
+    ]);
+
+    await expect(
+      service.listApps({ page: 2, limit: 10, keyword: 'creator', type: 'static' }),
+    ).resolves.toMatchObject({
+      page: 2,
+      limit: 10,
+      total: 21,
+      list: [expect.objectContaining({ code: 'creator_portal' })],
+    });
+    expect(appRepo.findAndCount).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 10, take: 10 }),
+    );
+  });
+
+  it('returns marketplace detail metadata from the catalog', async () => {
+    appRepo.findAndCount.mockResolvedValue([
+      [
+        {
+          id: 5,
+          code: 'creator_portal',
+          name: 'Creator Portal',
+          type: 'static',
+          status: 'published',
+          screenshots: ['https://cdn.example.com/creator.png'],
+          documentationUrl: 'https://docs.example.com/creator',
+          supportUrl: 'https://support.example.com/creator',
+          changelog: '2.0.0: Added team workflows.',
+        },
+      ],
+      1,
+    ]);
+
+    await expect(service.listApps()).resolves.toMatchObject({
+      list: [
+        expect.objectContaining({
+          screenshots: ['https://cdn.example.com/creator.png'],
+          documentation_url: 'https://docs.example.com/creator',
+          support_url: 'https://support.example.com/creator',
+          changelog: '2.0.0: Added team workflows.',
+        }),
+      ],
+    });
   });
 
   it('lists only apps owned by the authenticated developer', async () => {
@@ -549,7 +610,7 @@ describe('AppPlatformService', () => {
     });
 
     await expect(service.publishVersion('admin_echo_service', '1.0.0', 9)).rejects.toThrow(
-      'Only static app versions can be governed',
+      'Only static or iframe app versions can be governed',
     );
     expect(storageService.publishVersion).not.toHaveBeenCalled();
   });
@@ -1008,6 +1069,7 @@ describe('AppPlatformService', () => {
     });
     storageService.extractStaticPackage.mockResolvedValue({
       packagePath: '/safe/packages/job_board/1.0.0',
+      contentHash: 'a'.repeat(64),
     });
 
     await expect(
@@ -1035,6 +1097,7 @@ describe('AppPlatformService', () => {
         appId: 4,
         version: '1.0.0',
         packagePath: '/safe/packages/job_board/1.0.0',
+        contentHash: 'a'.repeat(64),
         entryFile: 'dist/index.html',
         serviceTargets: ['reporting_service'],
         reviewStatus: 'pending',
@@ -1102,6 +1165,7 @@ describe('AppPlatformService', () => {
     });
     storageService.extractStaticPackage.mockResolvedValue({
       packagePath: '/safe/packages/job_board/2.0.0',
+      contentHash: 'b'.repeat(64),
     });
 
     await service.uploadStaticVersion(
@@ -1303,6 +1367,7 @@ describe('AppPlatformService', () => {
       reviewStatus: 'approved',
       publishStatus: 'unpublished',
       packagePath: '/safe/packages/job_board/1.0.0',
+      contentHash: 'c'.repeat(64),
       entryFile: 'dist/index.html',
       manifest: {
         code: 'job_board',
@@ -1335,6 +1400,7 @@ describe('AppPlatformService', () => {
       version: '1.0.0',
       sourceDir: '/safe/packages/job_board/1.0.0',
       entryFile: 'dist/index.html',
+      expectedContentHash: 'c'.repeat(64),
     });
     expect(versionRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1451,6 +1517,91 @@ describe('AppPlatformService', () => {
         message: 'bad release',
         operatorId: 66,
       }),
+    );
+  });
+
+  it('publishes an approved iframe version without invoking static package storage', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 5,
+      code: 'supplier_portal',
+      name: 'Supplier Portal',
+      type: 'iframe',
+      status: 'approved',
+      entryMode: 'iframe',
+      entryUrl: 'https://old.example.com/',
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 12,
+      appId: 5,
+      version: '1.0.0',
+      reviewStatus: 'approved',
+      publishStatus: 'unpublished',
+      manifest: {
+        type: 'iframe',
+        entry: 'https://supplier.example.com/app',
+        allowedOrigins: ['https://supplier.example.com'],
+        capabilities: ['context.read'],
+      },
+    });
+    versionRepo.save.mockImplementation(async (value) => value);
+
+    await expect(service.publishVersion('supplier_portal', '1.0.0', 66)).resolves.toMatchObject({
+      version: '1.0.0',
+      publish_status: 'published',
+      entry_url: 'https://supplier.example.com/app',
+      is_active: true,
+    });
+
+    expect(storageService.publishVersion).not.toHaveBeenCalled();
+    expect(versionRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ publishStatus: 'published' }),
+    );
+    expect(appRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'published',
+        entryMode: 'iframe',
+        entryUrl: 'https://supplier.example.com/app',
+      }),
+    );
+  });
+
+  it('unpublishes an active iframe version and clears its public entry when no fallback exists', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 5,
+      code: 'supplier_portal',
+      name: 'Supplier Portal',
+      type: 'iframe',
+      status: 'published',
+      entryMode: 'iframe',
+      entryUrl: 'https://supplier.example.com/app',
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 12,
+      appId: 5,
+      version: '1.0.0',
+      reviewStatus: 'approved',
+      publishStatus: 'published',
+      manifest: {
+        type: 'iframe',
+        entry: 'https://supplier.example.com/app',
+        allowedOrigins: ['https://supplier.example.com'],
+        capabilities: ['context.read'],
+      },
+    });
+    versionRepo.find.mockResolvedValue([]);
+    versionRepo.save.mockImplementation(async (value) => value);
+
+    await expect(
+      service.unpublishVersion('supplier_portal', '1.0.0', 'retired', 66),
+    ).resolves.toMatchObject({
+      publish_status: 'unpublished_retired',
+      entry_url: 'https://supplier.example.com/app',
+      is_active: false,
+    });
+
+    expect(runtimeSessionService.revokeVersion).toHaveBeenCalledWith(12, 'unpublished');
+    expect(appRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'approved', entryUrl: '' }),
     );
   });
 

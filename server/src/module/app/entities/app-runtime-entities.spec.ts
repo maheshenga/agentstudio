@@ -85,6 +85,10 @@ describe('App runtime authority entities', () => {
         'trust_level',
         'service_health_path',
         'runtime_config',
+        'screenshots',
+        'documentation_url',
+        'support_url',
+        'changelog',
       ]),
     );
     expect(columnNames(AppPackageVersionEntity)).toEqual(

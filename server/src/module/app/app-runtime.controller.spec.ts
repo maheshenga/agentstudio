@@ -85,14 +85,22 @@ describe('AppRuntimeController', () => {
     sessionService.authorize.mockResolvedValue(session);
     fileService.upload.mockResolvedValue(metadata);
     const request = runtimeRequest('req-file');
+    request.appRuntimeSession = session;
 
     await expect(controller.filesUpload(request, file)).resolves.toMatchObject({ data: metadata });
-    expect(sessionService.authorize).toHaveBeenCalledWith(
-      'runtime-token',
-      'files.write',
-      expect.objectContaining({ requestId: 'req-file' }),
-    );
+    expect(sessionService.authorize).not.toHaveBeenCalled();
+    expect(fileService.upload).toHaveBeenCalledWith(session, file);
     expect(JSON.stringify(metadata)).not.toMatch(/storage|path|token/i);
+  });
+
+  it('refuses file upload when the pre-body guard did not attach a session', async () => {
+    await expect(
+      controller.filesUpload(runtimeRequest('req-file'), {
+        originalname: 'notes.txt',
+        buffer: Buffer.from('hello'),
+      } as any),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(fileService.upload).not.toHaveBeenCalled();
   });
 
   it('authorizes file read and emits bounded attachment headers', async () => {

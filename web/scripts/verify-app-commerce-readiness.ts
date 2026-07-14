@@ -72,12 +72,12 @@ for (const token of [
   'createTenantAppOrder',
   'startAppAlipayPayment',
   'commerce_action',
-  'Continue payment',
-  'Contact administrator',
+  '继续支付',
+  '联系管理员',
   'ElDialog',
   'ElEmpty',
   'loadError',
-  'Retry'
+  '重试'
 ]) {
   assertIncludes(marketplacePage, token, 'tenant marketplace conversion page')
 }
@@ -87,32 +87,32 @@ for (const token of [
   'commerceLabel',
   'license_expires_at',
   'commerce_action',
-  'Renew',
-  'Contact administrator',
+  '续费',
+  '联系管理员',
   'ElEmpty',
   'loadError',
-  'Retry'
+  '重试'
 ]) {
   assertIncludes(installedPage, token, 'tenant installed commerce page')
 }
 
 const ordersPage = readFile('web/src/views/app-center/orders/index.vue')
 for (const token of [
-  'App Orders',
+  '应用订单',
   'fetchTenantAppOrders',
   'startAppAlipayPayment',
-  'Continue payment',
+  '继续支付',
   'ElTable',
   'ElEmpty',
   'loadError',
-  'Retry'
+  '重试'
 ]) {
   assertIncludes(ordersPage, token, 'tenant app orders page')
 }
 
 const developerPage = readFile('web/src/views/app-center/developer-revenue/index.vue')
 for (const token of [
-  'Developer Revenue',
+  '开发者收入',
   'fetchDeveloperAppRevenue',
   'fetchDeveloperAppSettlements',
   'unsettled_developer_amount_cents',
@@ -120,7 +120,7 @@ for (const token of [
   'ElTable',
   'ElEmpty',
   'loadError',
-  'Retry'
+  '重试'
 ]) {
   assertIncludes(developerPage, token, 'developer revenue page')
 }

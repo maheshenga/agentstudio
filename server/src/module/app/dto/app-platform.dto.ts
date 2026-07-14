@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayUnique,
@@ -9,6 +10,7 @@ import {
   IsString,
   Matches,
   MaxLength,
+  Max,
   Min,
   MinLength,
 } from 'class-validator';
@@ -52,6 +54,21 @@ export const APP_VERSION_PUBLISH_STATUSES: AppVersionPublishStatus[] = [
 ];
 
 export class AppPlatformListQueryDto {
+  @ApiProperty({ required: false, default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiProperty({ required: false, default: 20, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
@@ -66,6 +83,12 @@ export class AppPlatformListQueryDto {
   @IsOptional()
   @IsIn(APP_PACKAGE_STATUSES)
   status?: AppPackageStatus;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  category?: string;
 }
 
 export class AppReviewQueueQueryDto {
@@ -129,6 +152,33 @@ export class CreateAppPackageDto {
   @IsString()
   @MaxLength(5000)
   description?: string;
+
+  @ApiProperty({ required: false, type: [String], maxItems: 8 })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @ArrayMaxSize(8)
+  @IsString({ each: true })
+  @MaxLength(500, { each: true })
+  screenshots?: string[];
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  documentation_url?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  support_url?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  changelog?: string;
 
   @ApiProperty({ required: false, enum: APP_PACKAGE_VISIBILITIES })
   @IsOptional()
@@ -227,6 +277,33 @@ export class UpdateAppPackageDto {
   @IsString()
   @MaxLength(5000)
   description?: string;
+
+  @ApiProperty({ required: false, type: [String], maxItems: 8 })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @ArrayMaxSize(8)
+  @IsString({ each: true })
+  @MaxLength(500, { each: true })
+  screenshots?: string[];
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  documentation_url?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  support_url?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  changelog?: string;
 
   @ApiProperty({ required: false, enum: APP_PACKAGE_VISIBILITIES })
   @IsOptional()

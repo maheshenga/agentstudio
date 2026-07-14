@@ -993,11 +993,11 @@
   async function loadReferenceData() {
     referenceLoading.value = true
     try {
-      const [appRecords, developerRecords] = await Promise.all([
-        fetchPlatformApps(),
+      const [appPage, developerRecords] = await Promise.all([
+        fetchPlatformApps({ limit: 100 }),
         fetchDeveloperCertifications()
       ])
-      apps.value = appRecords || []
+      apps.value = appPage.list || []
       developers.value = developerRecords || []
       if (!selectedAppCode.value && apps.value.length) selectedAppCode.value = apps.value[0].code
     } catch (error) {

@@ -2,6 +2,7 @@ import { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 
 import { IS_PUBLIC_KEY } from '../../common/constant';
+import { SystemModuleAccessCacheService } from './services/system-module-access-cache.service';
 import { SystemModuleAccessService } from './services/system-module-access.service';
 import { SystemModuleGuard } from './system-module.guard';
 
@@ -103,6 +104,7 @@ describe('SystemModuleGuard', () => {
       tenantModuleRepo as any,
       bridgeRepo as any,
       saasModuleService as any,
+      new SystemModuleAccessCacheService(),
     );
     const guard = new SystemModuleGuard(new Reflector(), accessService);
 

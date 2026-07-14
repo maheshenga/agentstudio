@@ -2,12 +2,12 @@
   <div class="developer-runtime-page">
     <header class="developer-runtime-page__header">
       <div>
-        <h1>Service Observability</h1>
-        <p>Health, invocation outcomes, latency, and bounded redacted logs for your services.</p>
+        <h1>服务运行监控</h1>
+        <p>查看服务健康状态、调用结果、延迟与经过脱敏的有限日志。</p>
       </div>
       <div class="developer-runtime-page__actions">
         <ElSegmented v-model="days" :options="dayOptions" @change="loadOverview" />
-        <ElButton :icon="Refresh" circle :loading="loading" title="Refresh" @click="loadOverview" />
+        <ElButton :icon="Refresh" circle :loading="loading" title="刷新" @click="loadOverview" />
       </div>
     </header>
 
@@ -20,39 +20,39 @@
       class="developer-runtime-page__alert"
     >
       <template #default>
-        <ElButton link type="primary" :loading="loading" @click="loadOverview">Retry</ElButton>
+        <ElButton link type="primary" :loading="loading" @click="loadOverview">重试</ElButton>
       </template>
     </ElAlert>
 
     <ElSkeleton v-if="loading && !overview" :rows="8" animated />
 
     <template v-else-if="overview">
-      <section class="developer-runtime-page__kpis" aria-label="Service metrics">
+      <section class="developer-runtime-page__kpis" aria-label="服务指标">
         <div>
-          <span>Services</span>
+          <span>服务数量</span>
           <strong>{{ overview.total_services }}</strong>
         </div>
         <div>
-          <span>Invocations</span>
+          <span>调用次数</span>
           <strong>{{ overview.total_invocations }}</strong>
         </div>
         <div>
-          <span>Success rate</span>
+          <span>成功率</span>
           <strong>{{ formatPercent(overview.success_rate) }}</strong>
         </div>
         <div>
-          <span>Rejected</span>
+          <span>已拒绝</span>
           <strong>{{ overview.total_rejected }}</strong>
         </div>
       </section>
 
       <section class="developer-runtime-page__table-section">
         <div class="developer-runtime-page__section-heading">
-          <h2>Owned services</h2>
-          <span>{{ overview.days }} day window</span>
+          <h2>我的服务</h2>
+          <span>最近 {{ overview.days }} 天</span>
         </div>
         <ElTable :data="overview.services" border>
-          <ElTableColumn label="Service" min-width="210">
+          <ElTableColumn label="服务" min-width="210">
             <template #default="{ row }">
               <strong>{{ row.app_name || row.app_code }}</strong>
               <div class="developer-runtime-page__muted">
@@ -60,50 +60,50 @@
               </div>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="Runtime" width="170">
+          <ElTableColumn label="运行状态" width="170">
             <template #default="{ row }">
               <ElTag :type="healthTag(row.health_status)" effect="light">{{
-                row.health_status
+                healthText(row.health_status)
               }}</ElTag>
               <div class="developer-runtime-page__muted"
-                >{{ row.role }} / {{ row.process_status }}</div
+                >{{ roleText(row.role) }} / {{ processText(row.process_status) }}</div
               >
             </template>
           </ElTableColumn>
-          <ElTableColumn label="Circuit" width="110">
+          <ElTableColumn label="熔断状态" width="110">
             <template #default="{ row }">
               <ElTag :type="circuitTag(row.circuit_state)" effect="plain">{{
-                row.circuit_state
+                circuitText(row.circuit_state)
               }}</ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="Calls" width="105" prop="total_count" />
-          <ElTableColumn label="Success" width="105">
+          <ElTableColumn label="调用次数" width="105" prop="total_count" />
+          <ElTableColumn label="成功率" width="105">
             <template #default="{ row }">{{ formatPercent(row.success_rate) }}</template>
           </ElTableColumn>
           <ElTableColumn label="P95" width="105">
             <template #default="{ row }">{{ formatDuration(row.p95_duration_ms) }}</template>
           </ElTableColumn>
-          <ElTableColumn label="Last invoke" min-width="165">
+          <ElTableColumn label="最后调用" min-width="165">
             <template #default="{ row }">{{ formatDateTime(row.last_invoke_time) }}</template>
           </ElTableColumn>
-          <ElTableColumn label="Actions" width="90" fixed="right">
+          <ElTableColumn label="操作" width="90" fixed="right">
             <template #default="{ row }">
-              <ElButton link type="primary" :icon="Document" @click="openLogs(row)">Logs</ElButton>
+              <ElButton link type="primary" :icon="Document" @click="openLogs(row)">日志</ElButton>
             </template>
           </ElTableColumn>
           <template #empty>
-            <ElEmpty description="No service runtime data" />
+            <ElEmpty description="暂无服务运行数据" />
           </template>
         </ElTable>
       </section>
     </template>
 
-    <ElDrawer v-model="logDrawerVisible" title="Redacted service logs" :size="drawerSize">
+    <ElDrawer v-model="logDrawerVisible" title="脱敏日志" :size="drawerSize">
       <ElSkeleton v-if="logLoading" :rows="6" animated />
       <ElAlert v-else-if="logError" type="error" :title="logError" show-icon :closable="false">
         <template #default>
-          <ElButton link type="primary" :loading="logLoading" @click="retryLogs">Retry</ElButton>
+          <ElButton link type="primary" :loading="logLoading" @click="retryLogs">重试</ElButton>
         </template>
       </ElAlert>
       <template v-else-if="logs">
@@ -113,10 +113,10 @@
         </div>
         <ElTabs v-model="logTab">
           <ElTabPane label="stdout" name="stdout">
-            <pre>{{ logs.stdout || 'No stdout output' }}</pre>
+            <pre>{{ logs.stdout || '暂无标准输出' }}</pre>
           </ElTabPane>
           <ElTabPane label="stderr" name="stderr">
-            <pre>{{ logs.stderr || 'No stderr output' }}</pre>
+            <pre>{{ logs.stderr || '暂无错误输出' }}</pre>
           </ElTabPane>
         </ElTabs>
       </template>
@@ -190,13 +190,56 @@
     return 'success'
   }
 
+  function healthText(status: DeveloperServiceRuntimeRecord['health_status']) {
+    return (
+      {
+        unknown: '未知',
+        checking: '检查中',
+        healthy: '健康',
+        unhealthy: '异常'
+      }[status] || status
+    )
+  }
+
+  function roleText(role: DeveloperServiceRuntimeRecord['role']) {
+    return (
+      {
+        active: '当前版本',
+        candidate: '候选版本',
+        standby: '备用版本',
+        unavailable: '不可用'
+      }[role] || role
+    )
+  }
+
+  function processText(status: DeveloperServiceRuntimeRecord['process_status']) {
+    return (
+      {
+        starting: '启动中',
+        online: '在线',
+        stopped: '已停止',
+        failed: '失败'
+      }[status] || status
+    )
+  }
+
+  function circuitText(status: DeveloperServiceRuntimeRecord['circuit_state']) {
+    return (
+      {
+        closed: '关闭',
+        open: '开启',
+        half_open: '半开'
+      }[status] || status
+    )
+  }
+
   async function loadOverview() {
     loading.value = true
     loadError.value = ''
     try {
       overview.value = await fetchDeveloperServiceOverview(days.value)
     } catch {
-      loadError.value = 'Service observability failed to load'
+      loadError.value = '服务运行监控加载失败'
     } finally {
       loading.value = false
     }
@@ -217,7 +260,7 @@
     try {
       logs.value = await fetchDeveloperServiceLogs(selectedService.value.app_code, 100)
     } catch {
-      logError.value = 'Redacted logs failed to load'
+      logError.value = '脱敏日志加载失败'
     } finally {
       logLoading.value = false
     }

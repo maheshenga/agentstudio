@@ -68,12 +68,14 @@ describe('AppPackageStorageService', () => {
     fs.mkdirSync(path.join(sourceDir, 'dist', 'assets'), { recursive: true });
     fs.writeFileSync(path.join(sourceDir, 'dist', 'index.html'), '<html>ok</html>');
     fs.writeFileSync(path.join(sourceDir, 'dist', 'assets', 'app.js'), 'console.log("ok")');
+    const expectedContentHash = await service.hashDirectory(sourceDir);
 
     const result = await service.publishVersion({
       appCode: 'job_board',
       version: '1.0.0',
       sourceDir,
       entryFile: 'dist/index.html',
+      expectedContentHash,
     });
 
     expect(result).toEqual({
@@ -100,6 +102,7 @@ describe('AppPackageStorageService', () => {
 
     expect(result).toEqual({
       packagePath: path.join(packageRoot, 'job_board', '1.0.0'),
+      contentHash: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
     expect(fs.readFileSync(path.join(packageRoot, 'job_board', '1.0.0', 'dist', 'index.html'), 'utf8')).toBe(
       '<html>job board</html>',
@@ -130,6 +133,25 @@ describe('AppPackageStorageService', () => {
         zipBuffer: buffer,
       }),
     ).rejects.toThrow('App package contains too many files');
+  });
+
+  it('rejects publication when extracted reviewed content has changed', async () => {
+    const sourceDir = path.join(packageRoot, 'job_board', '1.0.0');
+    fs.mkdirSync(path.join(sourceDir, 'dist'), { recursive: true });
+    fs.writeFileSync(path.join(sourceDir, 'dist', 'index.html'), '<html>reviewed</html>');
+    const expectedContentHash = await service.hashDirectory(sourceDir);
+    fs.writeFileSync(path.join(sourceDir, 'dist', 'index.html'), '<html>tampered</html>');
+
+    await expect(
+      service.publishVersion({
+        appCode: 'job_board',
+        version: '1.0.0',
+        sourceDir,
+        entryFile: 'dist/index.html',
+        expectedContentHash,
+      }),
+    ).rejects.toThrow('App package content integrity check failed');
+    expect(fs.existsSync(path.join(publicRoot, 'job_board', '1.0.0'))).toBe(false);
   });
 
   it('rejects static packages whose total uncompressed size exceeds the limit', async () => {
@@ -206,6 +228,7 @@ describe('AppPackageStorageService', () => {
         version: '1.0.0',
         sourceDir: outsideDir,
         entryFile: 'dist/index.html',
+        expectedContentHash: 'a'.repeat(64),
       }),
     ).rejects.toThrow('Invalid app package path');
   });

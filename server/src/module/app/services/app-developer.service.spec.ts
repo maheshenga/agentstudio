@@ -104,7 +104,38 @@ describe('AppDeveloperService', () => {
     const [createParams] = platformService.createApp.mock.calls[0];
     expect(createParams).not.toHaveProperty('entry_url');
     expect(createParams).not.toHaveProperty('system_module_code');
-    expect(certificationService.assertRuntimeApproved).not.toHaveBeenCalled();
+    expect(certificationService.assertRuntimeApproved).toHaveBeenCalledWith(17, 'static');
+  });
+
+  it('creates an iframe app only after matching developer certification', async () => {
+    certificationService.assertRuntimeApproved.mockResolvedValue({ id: 5, userId: 17 });
+    platformService.createApp.mockResolvedValue({ code: 'supplier_portal', developer_id: 17 });
+
+    await service.createApp(
+      {
+        code: 'supplier_portal',
+        name: 'Supplier Portal',
+        runtime_type: 'iframe',
+        entry_url: 'https://supplier.example.com/app',
+        allowed_origins: ['https://supplier.example.com'],
+        requested_capabilities: ['context.read'],
+      } as any,
+      17,
+      'Alice',
+    );
+
+    expect(certificationService.assertRuntimeApproved).toHaveBeenCalledWith(17, 'iframe');
+    expect(platformService.createApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'supplier_portal',
+        type: 'iframe',
+        entry_url: 'https://supplier.example.com/app',
+        allowed_origins: ['https://supplier.example.com'],
+        requested_capabilities: ['context.read'],
+      }),
+      17,
+      { reviewRequired: true },
+    );
   });
 
   it('creates a developer_restricted service draft only for a certified service developer', async () => {
@@ -191,6 +222,10 @@ describe('AppDeveloperService', () => {
       {
         name: 'Changed',
         summary: 'Updated summary',
+        screenshots: ['https://cdn.example.com/creator.png'],
+        documentation_url: 'https://docs.example.com/creator',
+        support_url: 'https://support.example.com/creator',
+        changelog: '2.0.0: Updated workflows.',
         visibility: 'platform',
         entry_url: '/system/user',
       } as any,
@@ -200,6 +235,10 @@ describe('AppDeveloperService', () => {
     expect(platformService.updateApp).toHaveBeenCalledWith('creator_portal', {
       name: 'Changed',
       summary: 'Updated summary',
+      screenshots: ['https://cdn.example.com/creator.png'],
+      documentation_url: 'https://docs.example.com/creator',
+      support_url: 'https://support.example.com/creator',
+      changelog: '2.0.0: Updated workflows.',
     });
   });
 
@@ -225,6 +264,7 @@ describe('AppDeveloperService', () => {
 
     await service.uploadVersion('creator_portal', file, 17);
 
+    expect(certificationService.assertRuntimeApproved).toHaveBeenCalledWith(17, 'static');
     expect(platformService.uploadStaticVersion).toHaveBeenCalledWith('creator_portal', file, 17);
   });
 
@@ -274,12 +314,29 @@ describe('AppDeveloperService', () => {
   });
 
   it('resubmits a rejected version for an owned app', async () => {
-    appRepo.findOne.mockResolvedValue({ code: 'creator_portal', developerId: 17, status: 'rejected' });
+    appRepo.findOne.mockResolvedValue({
+      code: 'creator_portal',
+      developerId: 17,
+      status: 'rejected',
+      type: 'static',
+    });
     platformService.submitVersion.mockResolvedValue({ version: '1.0.0', review_status: 'pending' });
 
     await service.submitVersion('creator_portal', '1.0.0', 17);
 
+    expect(certificationService.assertRuntimeApproved).toHaveBeenCalledWith(17, 'static');
     expect(platformService.submitVersion).toHaveBeenCalledWith('creator_portal', '1.0.0', 17);
+  });
+
+  it('blocks static creation when the developer certification is unavailable', async () => {
+    certificationService.assertRuntimeApproved.mockRejectedValue(
+      new BadRequestException('Developer runtime is not certified'),
+    );
+
+    await expect(
+      service.createApp({ code: 'creator_portal', name: 'Creator Portal' }, 17, 'Alice'),
+    ).rejects.toThrow('Developer runtime is not certified');
+    expect(platformService.createApp).not.toHaveBeenCalled();
   });
 
   it('aggregates invocation totals only for service apps owned by the authenticated developer', async () => {

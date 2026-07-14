@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import JSZip from 'jszip';
@@ -10,6 +10,7 @@ export interface PublishAppVersionInput {
   version: string;
   sourceDir: string;
   entryFile: string;
+  expectedContentHash: string;
 }
 
 export interface PublishAppVersionResult {
@@ -25,6 +26,7 @@ export interface ExtractStaticPackageInput {
 
 export interface ExtractStaticPackageResult {
   packagePath: string;
+  contentHash: string;
 }
 
 type ZipEntryWithSizes = JSZip.JSZipObject & {
@@ -182,7 +184,28 @@ export class AppPackageStorageService {
       await fs.promises.rm(stagingPath, { recursive: true, force: true });
     }
 
-    return { packagePath };
+    return { packagePath, contentHash: await this.hashDirectory(packagePath) };
+  }
+
+  async hashDirectory(rootDir: string) {
+    const resolvedRoot = path.resolve(rootDir);
+    if (!this.isPathInside(resolvedRoot, this.getPackageRoot())) {
+      throw new BadRequestException('Invalid app package path');
+    }
+    const files = await this.collectRegularFiles(resolvedRoot);
+    const hash = createHash('sha256');
+    hash.update('agentstudio-static-content-v1\0');
+    for (const relativePath of files) {
+      const pathBytes = Buffer.from(relativePath, 'utf8');
+      const content = await fs.promises.readFile(
+        path.resolve(resolvedRoot, ...relativePath.split('/')),
+      );
+      hash.update(this.lengthFrame(pathBytes.length));
+      hash.update(pathBytes);
+      hash.update(this.lengthFrame(content.length));
+      hash.update(content);
+    }
+    return hash.digest('hex');
   }
 
   async publishVersion(input: PublishAppVersionInput): Promise<PublishAppVersionResult> {
@@ -194,6 +217,14 @@ export class AppPackageStorageService {
     }
     if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
       throw new BadRequestException('App package source not found');
+    }
+    const expectedContentHash = String(input.expectedContentHash || '').trim().toLowerCase();
+    if (!/^[a-f0-9]{64}$/.test(expectedContentHash)) {
+      throw new BadRequestException('App package content integrity metadata is missing');
+    }
+    const actualContentHash = await this.hashDirectory(sourceDir);
+    if (actualContentHash !== expectedContentHash) {
+      throw new BadRequestException('App package content integrity check failed');
     }
 
     const entryFile = this.normalizeRelativeFile(input.entryFile);
@@ -257,6 +288,40 @@ export class AppPackageStorageService {
 
   private getZipEntryName(zipFile: JSZip.JSZipObject) {
     return String((zipFile as any).unsafeOriginalName || zipFile.name || '');
+  }
+
+  private async collectRegularFiles(rootDir: string) {
+    const files: string[] = [];
+    const visit = async (currentDir: string) => {
+      const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
+      entries.sort((left, right) => left.name.localeCompare(right.name, 'en'));
+      for (const entry of entries) {
+        const absolutePath = path.resolve(currentDir, entry.name);
+        if (!this.isPathInside(absolutePath, rootDir)) {
+          throw new BadRequestException('Invalid app package path');
+        }
+        if (entry.isSymbolicLink()) {
+          throw new BadRequestException('App package contains unsupported filesystem entries');
+        }
+        if (entry.isDirectory()) {
+          await visit(absolutePath);
+          continue;
+        }
+        if (!entry.isFile()) {
+          throw new BadRequestException('App package contains unsupported filesystem entries');
+        }
+        files.push(path.relative(rootDir, absolutePath).split(path.sep).join('/'));
+      }
+    };
+    await visit(rootDir);
+    files.sort((left, right) => left.localeCompare(right, 'en'));
+    return files;
+  }
+
+  private lengthFrame(length: number) {
+    const frame = Buffer.allocUnsafe(8);
+    frame.writeBigUInt64BE(BigInt(length));
+    return frame;
   }
 
   private getZipEntrySizes(zipFile: JSZip.JSZipObject, packageLabel: string) {

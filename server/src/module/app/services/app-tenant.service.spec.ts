@@ -23,6 +23,7 @@ describe('AppTenantService', () => {
 
   const appRepo = {
     find: jest.fn(),
+    findAndCount: jest.fn(),
     findOne: jest.fn(),
   };
   const versionRepo = {
@@ -77,6 +78,7 @@ describe('AppTenantService', () => {
       callback({
         getRepository: (entity) => {
           if (entity === TenantAppInstallEntity) return installRepo;
+          if (entity === AppPackageVersionEntity) return versionRepo;
           if (entity === AppCapabilityGrantEntity) return grantRepo;
           throw new Error('Unexpected transaction repository');
         },
@@ -87,6 +89,10 @@ describe('AppTenantService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     installRepo.create.mockImplementation((value) => ({ ...value }));
+    appRepo.findAndCount.mockImplementation(async (options) => {
+      const rows = await appRepo.find(options);
+      return [rows, rows.length];
+    });
     versionRepo.find.mockResolvedValue([]);
     instanceRepo.find.mockResolvedValue([]);
     instanceRepo.findOne.mockResolvedValue(null);
@@ -198,6 +204,50 @@ describe('AppTenantService', () => {
       expect.objectContaining({ code: 'job_board', installed: true }),
       expect.objectContaining({ code: 'supplier_portal', installed: false }),
     ]);
+  });
+
+  it('returns a bounded marketplace page and deduplicates identical entitlement checks', async () => {
+    const apps = [
+      {
+        id: 1,
+        code: 'job_board',
+        name: 'Job Board',
+        type: 'static',
+        status: 'published',
+        visibility: 'marketplace',
+        saasModuleCode: 'recruiting',
+        systemModuleCode: 'job_tools',
+      },
+      {
+        id: 2,
+        code: 'candidate_pool',
+        name: 'Candidate Pool',
+        type: 'static',
+        status: 'published',
+        visibility: 'marketplace',
+        saasModuleCode: 'recruiting',
+        systemModuleCode: 'job_tools',
+      },
+    ];
+    appRepo.findAndCount.mockResolvedValue([apps, 12]);
+    installRepo.find.mockResolvedValue([]);
+
+    await expect(
+      service.listMarketplace(23, { page: 2, limit: 2, keyword: 'job' }),
+    ).resolves.toMatchObject({
+      page: 2,
+      limit: 2,
+      total: 12,
+      list: [
+        expect.objectContaining({ code: 'job_board' }),
+        expect.objectContaining({ code: 'candidate_pool' }),
+      ],
+    });
+    expect(appRepo.findAndCount).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 2, take: 2 }),
+    );
+    expect(saasModuleService.assertTenantModuleEnabled).toHaveBeenCalledTimes(1);
+    expect(systemModuleAccessService.diagnoseModuleAccess).toHaveBeenCalledTimes(1);
   });
 
   it('exposes authoritative capability state in marketplace records', async () => {
@@ -534,6 +584,249 @@ describe('AppTenantService', () => {
     ]);
   });
 
+  it('uses the active service release for upgrade capability disclosure after a rollback', async () => {
+    appRepo.find.mockResolvedValue([
+      {
+        id: 3,
+        code: 'workflow_service',
+        name: 'Workflow Service',
+        type: 'service',
+        runtimeType: 'service',
+        status: 'published',
+        visibility: 'platform',
+      },
+    ]);
+    installRepo.find.mockResolvedValue([
+      { id: 30, tenantId: 23, appId: 3, versionId: 20, enabled: 1 },
+    ]);
+    instanceRepo.find.mockResolvedValue([
+      {
+        id: 31,
+        appId: 3,
+        versionId: 19,
+        role: 'active',
+        processStatus: 'online',
+        healthStatus: 'healthy',
+      },
+    ]);
+    versionRepo.find.mockResolvedValue([
+      {
+        id: 20,
+        appId: 3,
+        version: '2.0.0',
+        reviewStatus: 'approved',
+        publishStatus: 'published',
+        manifest: { capabilities: ['files.write'] },
+      },
+      {
+        id: 19,
+        appId: 3,
+        version: '1.0.0',
+        reviewStatus: 'approved',
+        publishStatus: 'published',
+        manifest: { capabilities: ['context.read'] },
+      },
+    ]);
+    capabilityPolicy.getCapabilityState.mockImplementation(async (_tenantId, versionId) => ({
+      requested: versionId === 19 ? ['context.read'] : ['files.write'],
+      platform_approved: versionId === 19 ? ['context.read'] : ['files.write'],
+      tenant_approved: [],
+      effective: [],
+    }));
+
+    await expect(service.listMarketplace(23)).resolves.toEqual([
+      expect.objectContaining({
+        latest_version_id: 19,
+        latest_version: '1.0.0',
+        update_available: true,
+        latest_requested_capabilities: ['context.read'],
+        latest_platform_approved_capabilities: ['context.read'],
+      }),
+    ]);
+  });
+
+  it('does not advertise a service upgrade when no unique healthy release is active', async () => {
+    appRepo.find.mockResolvedValue([
+      {
+        id: 3,
+        code: 'workflow_service',
+        name: 'Workflow Service',
+        type: 'service',
+        runtimeType: 'service',
+        status: 'published',
+        visibility: 'platform',
+      },
+    ]);
+    installRepo.find.mockResolvedValue([
+      { id: 30, tenantId: 23, appId: 3, versionId: 19, enabled: 1 },
+    ]);
+    versionRepo.find.mockResolvedValue([
+      {
+        id: 20,
+        appId: 3,
+        version: '2.0.0',
+        reviewStatus: 'approved',
+        publishStatus: 'published',
+        manifest: { capabilities: ['context.read'] },
+      },
+      {
+        id: 19,
+        appId: 3,
+        version: '1.0.0',
+        reviewStatus: 'approved',
+        publishStatus: 'published',
+        manifest: { capabilities: [] },
+      },
+    ]);
+
+    await expect(service.listMarketplace(23)).resolves.toEqual([
+      expect.objectContaining({
+        service_status: 'unavailable',
+        latest_version_id: null,
+        latest_version: '',
+        update_available: false,
+        latest_requested_capabilities: [],
+        latest_platform_approved_capabilities: [],
+      }),
+    ]);
+  });
+
+  it('reports an explicit update when a newer published version is available', async () => {
+    appRepo.find.mockResolvedValue([
+      {
+        id: 1,
+        code: 'job_board',
+        name: 'Job Board',
+        type: 'static',
+        status: 'published',
+        visibility: 'marketplace',
+      },
+    ]);
+    installRepo.find.mockResolvedValue([
+      { id: 4, tenantId: 23, appId: 1, versionId: 9, enabled: 1 },
+    ]);
+    versionRepo.find.mockResolvedValue([
+      {
+        id: 10,
+        appId: 1,
+        version: '2.0.0',
+        reviewStatus: 'approved',
+        publishStatus: 'published',
+        manifest: { permissions: ['context.read', 'http.request'] },
+      },
+      {
+        id: 9,
+        appId: 1,
+        version: '1.0.0',
+        reviewStatus: 'approved',
+        publishStatus: 'published',
+        manifest: { permissions: ['context.read'] },
+      },
+    ]);
+
+    await expect(service.listMarketplace(23)).resolves.toEqual([
+      expect.objectContaining({
+        code: 'job_board',
+        installed_version_id: 9,
+        installed_version: '1.0.0',
+        latest_version_id: 10,
+        latest_version: '2.0.0',
+        update_available: true,
+        latest_requested_capabilities: ['context.read', 'http.request'],
+      }),
+    ]);
+  });
+
+  it('does not misreport the latest version as installed when the pinned version is unavailable', async () => {
+    appRepo.find.mockResolvedValue([
+      {
+        id: 1,
+        code: 'job_board',
+        name: 'Job Board',
+        type: 'static',
+        status: 'published',
+        visibility: 'marketplace',
+      },
+    ]);
+    installRepo.find.mockResolvedValue([
+      { id: 4, tenantId: 23, appId: 1, versionId: 9, enabled: 1 },
+    ]);
+    versionRepo.find.mockResolvedValue([
+      {
+        id: 10,
+        appId: 1,
+        version: '2.0.0',
+        reviewStatus: 'approved',
+        publishStatus: 'published',
+        manifest: { permissions: ['context.read', 'http.request'] },
+      },
+    ]);
+
+    await expect(service.listMarketplace(23)).resolves.toEqual([
+      expect.objectContaining({
+        installed_version_id: 9,
+        installed_version: '',
+        latest_version_id: 10,
+        latest_version: '2.0.0',
+        update_available: true,
+        new_capabilities: ['context.read', 'http.request'],
+      }),
+    ]);
+  });
+
+  it('pins an explicit upgrade transactionally without silently granting new capabilities', async () => {
+    const install = { id: 4, tenantId: 23, appId: 1, versionId: 9, enabled: 1 };
+    appRepo.findOne.mockResolvedValue({
+      id: 1,
+      code: 'job_board',
+      type: 'static',
+      status: 'published',
+      visibility: 'marketplace',
+    });
+    installRepo.findOne.mockResolvedValue(install);
+    versionRepo.findOne.mockImplementation(async (options) => {
+      const id = Number(options?.where?.id || 0);
+      if (id === 9) {
+        return {
+          id: 9,
+          appId: 1,
+          version: '1.0.0',
+          reviewStatus: 'approved',
+          publishStatus: 'published',
+          manifest: { permissions: ['context.read'] },
+        };
+      }
+      return {
+        id: 10,
+        appId: 1,
+        version: '2.0.0',
+        reviewStatus: 'approved',
+        publishStatus: 'published',
+        manifest: { permissions: ['context.read', 'http.request'] },
+      };
+    });
+
+    await expect(service.upgradeApp(23, 'job_board', 7, ['context.read'])).resolves.toMatchObject({
+      version_id: 10,
+      version: '2.0.0',
+      update_available: false,
+    });
+
+    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+    expect(installRepo.save).toHaveBeenCalledWith(expect.objectContaining({ versionId: 10 }));
+    expect(capabilityPolicy.setTenantCapabilities).toHaveBeenCalledWith(
+      {
+        tenantId: 23,
+        appId: 1,
+        versionId: 10,
+        capabilities: ['context.read'],
+        operatorId: 7,
+      },
+      grantRepo,
+    );
+    expect(appRuntimeSessionService.revokeInstall).toHaveBeenCalledWith(23, 4, 'upgraded');
+  });
+
   it('rejects direct opening of an installed service app with a stable audit reason', async () => {
     appRepo.findOne.mockResolvedValue({
       id: 3,
@@ -679,6 +972,35 @@ describe('AppTenantService', () => {
       'App is not installed',
     );
     expect(capabilityPolicy.setTenantCapabilities).not.toHaveBeenCalled();
+  });
+
+  it('requires an explicit upgrade before reading capabilities for an unpinned install', async () => {
+    appRepo.findOne.mockResolvedValue({
+      id: 1,
+      code: 'job_board',
+      type: 'static',
+      status: 'published',
+    });
+    installRepo.findOne.mockResolvedValue({
+      id: 4,
+      tenantId: 23,
+      appId: 1,
+      versionId: null,
+      enabled: 1,
+    });
+    versionRepo.findOne.mockResolvedValue({
+      id: 10,
+      appId: 1,
+      version: '2.0.0',
+      reviewStatus: 'approved',
+      publishStatus: 'published',
+      manifest: { permissions: ['context.read'] },
+    });
+
+    await expect(service.getCapabilities(23, 'job_board')).rejects.toThrow(
+      'Installed app version is no longer available; upgrade required',
+    );
+    expect(capabilityPolicy.getCapabilityState).not.toHaveBeenCalled();
   });
 
   it('rejects installing a published app when the current plan lacks the required SaaS module', async () => {
@@ -1112,7 +1434,7 @@ describe('AppTenantService', () => {
     );
   });
 
-  it('falls back to the current published version when an installed version was retired', async () => {
+  it('requires an explicit upgrade instead of silently changing a retired version binding', async () => {
     appRepo.findOne.mockResolvedValue({
       id: 1,
       code: 'job_board',
@@ -1129,71 +1451,20 @@ describe('AppTenantService', () => {
       versionId: 10,
       enabled: 1,
     });
-    versionRepo.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce({
-      id: 9,
-      appId: 1,
-      version: '1.0.0',
-      publishStatus: 'published',
-      reviewStatus: 'approved',
-    });
+    versionRepo.findOne.mockResolvedValue(null);
 
-    await expect(service.getOpenMetadata(23, 'job_board', 7)).resolves.toMatchObject({
-      code: 'job_board',
-      type: 'static',
-      entry_url: '/apps-static/job_board/1.0.0/dist/index.html',
-      version: '1.0.0',
-    });
+    await expect(service.getOpenMetadata(23, 'job_board', 7)).rejects.toThrow(
+      'Installed app version is no longer available; upgrade required',
+    );
 
     expect(openLogRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        versionId: 9,
+        reasonCode: 'upgrade_required',
+        outcome: 'failed',
       }),
     );
-  });
-
-  it('updates a stale installation binding before issuing a fallback-version session', async () => {
-    appRuntimeSessionService.isEnabled.mockReturnValue(true);
-    appRepo.findOne.mockResolvedValue({
-      id: 1,
-      code: 'job_board',
-      name: 'Job Board',
-      type: 'static',
-      status: 'published',
-      entryUrl: '/apps-static/job_board/2.0.0/dist/index.html',
-    });
-    const install = { id: 4, tenantId: 23, appId: 1, versionId: 10, enabled: 1 };
-    installRepo.findOne.mockResolvedValue(install);
-    versionRepo.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce({
-      id: 11,
-      appId: 1,
-      version: '2.0.0',
-      publishStatus: 'published',
-      reviewStatus: 'approved',
-      manifest: { permissions: ['runtime:context:read'] },
-    });
-    capabilityPolicy.getCapabilityState.mockResolvedValue({
-      requested: ['context.read'],
-      platform_approved: ['context.read'],
-      tenant_approved: ['context.read'],
-      effective: ['context.read'],
-    });
-    appRuntimeContextService.buildBootstrap.mockResolvedValue({
-      protocol_version: 1,
-      scopes: ['runtime:context:read'],
-      context: { tenant: { id: '23' } },
-    });
-
-    await service.getOpenMetadata(23, 'job_board', 7);
-
-    expect(installRepo.save).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 4, versionId: 11 }),
-    );
-    expect(appRuntimeSessionService.issue).toHaveBeenCalledWith(
-      expect.objectContaining({ installId: 4, versionId: 11 }),
-    );
-    expect(installRepo.save.mock.invocationCallOrder[0]).toBeLessThan(
-      appRuntimeSessionService.issue.mock.invocationCallOrder[0],
-    );
+    expect(installRepo.save).not.toHaveBeenCalled();
+    expect(appRuntimeSessionService.issue).not.toHaveBeenCalled();
   });
 
   it('rejects opening an installed app when the mapped system module is unavailable', async () => {

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 
@@ -7,7 +7,12 @@ import { getTenantId } from '../../common/utils/tenant.util';
 import { ResultData } from '../../common/utils/result';
 import { User } from '../system/user/user.decorator';
 import type { UserDto } from '../system/user/user.decorator';
-import { InstallTenantAppDto, UpdateTenantAppCapabilitiesDto } from './dto/app-tenant.dto';
+import {
+  AppMarketplaceListQueryDto,
+  InstallTenantAppDto,
+  UpgradeTenantAppDto,
+  UpdateTenantAppCapabilitiesDto,
+} from './dto/app-tenant.dto';
 import { ExchangeIframeLaunchDto } from './dto/app-platform.dto';
 import { AppTenantService } from './services/app-tenant.service';
 
@@ -20,10 +25,10 @@ export class AppTenantController {
   @Get('marketplace')
   @ApiOperation({ summary: 'List tenant app marketplace' })
   @RequirePermission('app:tenant:marketplace')
-  async marketplace() {
+  async marketplace(@Query() query: AppMarketplaceListQueryDto) {
     const tenantId = getTenantId();
     if (!tenantId) return ResultData.fail(401, 'Tenant context is required');
-    return ResultData.ok(await this.appTenantService.listMarketplace(tenantId));
+    return ResultData.ok(await this.appTenantService.listMarketplace(tenantId, query));
   }
 
   @Get('installed')
@@ -47,6 +52,26 @@ export class AppTenantController {
     if (!tenantId) return ResultData.fail(401, 'Tenant context is required');
     return ResultData.ok(
       await this.appTenantService.installApp(
+        tenantId,
+        code,
+        user?.userId,
+        body?.capabilities || [],
+      ),
+    );
+  }
+
+  @Post('apps/:code/upgrade')
+  @ApiOperation({ summary: 'Upgrade a tenant app to the latest available version' })
+  @RequirePermission('app:tenant:install')
+  async upgrade(
+    @Param('code') code: string,
+    @Body() body: UpgradeTenantAppDto,
+    @User() user: UserDto,
+  ) {
+    const tenantId = getTenantId();
+    if (!tenantId) return ResultData.fail(401, 'Tenant context is required');
+    return ResultData.ok(
+      await this.appTenantService.upgradeApp(
         tenantId,
         code,
         user?.userId,

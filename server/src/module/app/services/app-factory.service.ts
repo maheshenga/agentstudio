@@ -5,12 +5,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { IsNull, Like, Repository } from 'typeorm';
 
+import { buildFactoryAppManifest } from '../app-factory-template-contract';
 import { PublishAppFactoryModuleDto, SaveAppFactoryModuleDto } from '../dto/app-factory.dto';
 import { AppFactoryModuleEntity } from '../entities/app-factory-module.entity';
 import { AppFactoryPublishLogEntity } from '../entities/app-factory-publish-log.entity';
 import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
 import { AppPackageEntity } from '../entities/app-package.entity';
 import { AppReviewLogEntity } from '../entities/app-review-log.entity';
+import { AppFactoryTemplateService } from './app-factory-template.service';
 import { AppPackageStorageService } from './app-package-storage.service';
 
 export interface AppFactoryListQuery {
@@ -32,6 +34,7 @@ export class AppFactoryService {
     @InjectRepository(AppReviewLogEntity)
     private readonly appReviewLogRepo: Repository<AppReviewLogEntity>,
     private readonly storage: AppPackageStorageService,
+    private readonly templateService: AppFactoryTemplateService,
   ) {}
 
   async listModules(query: AppFactoryListQuery = {}) {
@@ -53,11 +56,19 @@ export class AppFactoryService {
     if (existing) {
       throw new BadRequestException(`Factory module ${code} already exists`);
     }
+    const template = dto.template_code
+      ? await this.templateService.getTemplate(dto.template_code, dto.template_version)
+      : null;
     const appCode = this.createFactoryAppCode(code);
     const entity = this.factoryRepo.create({
       code,
       name: dto.name,
       kind: dto.kind || 'static_page',
+      templateCode: template?.code || '',
+      templateVersion: template?.template_version || '',
+      templateSchemaVersion: Number(template?.schema_version ?? 1),
+      runtimeTarget: template?.runtime_target || dto.runtime_target || 'static',
+      manifestDefaults: template?.manifest_defaults || dto.manifest_defaults || {},
       category: dto.category || '',
       icon: dto.icon || '',
       summary: dto.summary || '',
@@ -98,11 +109,22 @@ export class AppFactoryService {
     return this.toResponse(await this.findFactoryModule(code));
   }
 
+  async previewManifest(code: string, version: string) {
+    const factory = await this.findFactoryModule(code);
+    return this.buildManifest(factory, this.safeVersion(version));
+  }
+
   async publishModule(code: string, dto: PublishAppFactoryModuleDto, operatorId?: number) {
     const factory = await this.findFactoryModule(code);
     const version = this.safeVersion(dto.version);
     const appCode = factory.appCode || this.createFactoryAppCode(factory.code);
+    if ((factory.runtimeTarget || 'static') === 'service') {
+      throw new BadRequestException(
+        'Service factory output must be submitted through App Platform review',
+      );
+    }
     this.assertSafeStaticPage(factory.htmlContent || '', factory.cssContent || '');
+    const manifest = this.buildManifest(factory, version);
 
     let app = await this.appRepo.findOne({ where: { code: appCode, deleteTime: IsNull() } });
     if (!app) {
@@ -155,12 +177,19 @@ export class AppFactoryService {
     fs.rmSync(sourceDir, { recursive: true, force: true });
     fs.mkdirSync(path.join(sourceDir, 'dist'), { recursive: true });
     fs.writeFileSync(path.join(sourceDir, 'dist', 'index.html'), html, 'utf8');
+    fs.writeFileSync(
+      path.join(sourceDir, 'manifest.json'),
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      'utf8',
+    );
+    const contentHash = await this.storage.hashDirectory(sourceDir);
 
     const published = await this.storage.publishVersion({
       appCode,
       version,
       sourceDir,
       entryFile: 'dist/index.html',
+      expectedContentHash: contentHash,
     });
 
     savedApp.entryUrl = published.entryUrl;
@@ -172,17 +201,17 @@ export class AppFactoryService {
         appId: savedApp.id,
         version,
         manifest: {
-          code: appCode,
-          name: factory.name,
-          version,
-          type: 'static',
-          entry: 'dist/index.html',
+          ...manifest,
           factory_code: factory.code,
+          factory_template_code: factory.templateCode || '',
+          factory_template_version: factory.templateVersion || '',
+          factory_template_schema_version: Number(factory.templateSchemaVersion ?? 1),
         },
         packagePath: sourceDir,
         publishPath: published.publishPath,
         entryFile: 'dist/index.html',
         fileHash: createHash('sha256').update(html).digest('hex'),
+        contentHash,
         fileSize: Buffer.byteLength(html),
         reviewStatus: 'approved',
         publishStatus: 'published',
@@ -273,6 +302,20 @@ export class AppFactoryService {
     }
   }
 
+  private buildManifest(factory: Partial<AppFactoryModuleEntity>, version: string) {
+    return buildFactoryAppManifest({
+      runtimeTarget: factory.runtimeTarget || 'static',
+      code: factory.appCode || this.createFactoryAppCode(String(factory.code || '')),
+      name: factory.name || factory.code || 'Factory App',
+      version,
+      category: factory.category || '',
+      summary: factory.summary || '',
+      description: factory.description || '',
+      icon: factory.icon || '',
+      defaults: factory.manifestDefaults || {},
+    });
+  }
+
   private renderStaticPage(factory: Partial<AppFactoryModuleEntity>) {
     const title = this.escapeText(factory.name || factory.code || 'Factory App');
     const css = factory.cssContent || '';
@@ -318,6 +361,11 @@ export class AppFactoryService {
       code: row.code,
       name: row.name,
       kind: row.kind || 'static_page',
+      template_code: row.templateCode || '',
+      template_version: row.templateVersion || '',
+      template_schema_version: Number(row.templateSchemaVersion ?? 1),
+      runtime_target: row.runtimeTarget || 'static',
+      manifest_defaults: row.manifestDefaults || {},
       category: row.category || '',
       icon: row.icon || '',
       summary: row.summary || '',

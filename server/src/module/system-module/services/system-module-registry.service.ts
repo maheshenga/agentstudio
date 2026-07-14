@@ -31,6 +31,12 @@ import {
   resolveSystemModuleCodesFromSaasModules,
 } from '../system-module-entitlement.util';
 import { mergeSystemModuleConfig, validateSystemModuleConfig } from '../system-module-config.util';
+import {
+  assertSystemModuleTransition,
+  requiresDisabledDependencyProtection,
+  systemModuleStatusEventType,
+} from '../system-module-lifecycle';
+import { SystemModuleAccessCacheService } from './system-module-access-cache.service';
 
 export interface SystemModuleListQuery {
   keyword?: string;
@@ -95,6 +101,7 @@ export class SystemModuleRegistryService implements OnModuleInit {
     @InjectRepository(SysMenuEntity)
     private readonly sysMenuRepo: Repository<SysMenuEntity>,
     private readonly saasModuleService: SaasModuleService,
+    private readonly accessCache: SystemModuleAccessCacheService,
   ) {}
 
   async onModuleInit() {
@@ -152,6 +159,7 @@ export class SystemModuleRegistryService implements OnModuleInit {
       });
     });
     await this.refreshApiBindings();
+    this.accessCache.invalidateAll();
     return this.getModule(dto.code);
   }
 
@@ -160,6 +168,7 @@ export class SystemModuleRegistryService implements OnModuleInit {
       this.importManifestsWithManager(manager, manifests),
     );
     await this.refreshApiBindings();
+    this.accessCache.invalidateAll();
     return imported;
   }
 
@@ -350,7 +359,7 @@ export class SystemModuleRegistryService implements OnModuleInit {
   ) {
     const tenantId = this.assertTenantId(tenantIdValue);
     const code = this.requiredModuleCode(codeValue);
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const moduleRepo = manager.getRepository(SystemModuleEntity);
       const tenantModuleRepo = manager.getRepository(SystemTenantModuleEntity);
       const eventRepo = manager.getRepository(SystemModuleEventEntity);
@@ -391,6 +400,8 @@ export class SystemModuleRegistryService implements OnModuleInit {
       );
       return this.toTenantGrantResponse(saved);
     });
+    this.accessCache.invalidateAll();
+    return result;
   }
 
   async revokeTenantModule(
@@ -401,7 +412,7 @@ export class SystemModuleRegistryService implements OnModuleInit {
   ) {
     const tenantId = this.assertTenantId(tenantIdValue);
     const code = this.requiredModuleCode(codeValue);
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const moduleRepo = manager.getRepository(SystemModuleEntity);
       const tenantModuleRepo = manager.getRepository(SystemTenantModuleEntity);
       const eventRepo = manager.getRepository(SystemModuleEventEntity);
@@ -436,6 +447,8 @@ export class SystemModuleRegistryService implements OnModuleInit {
       );
       return this.toTenantGrantResponse(saved);
     });
+    this.accessCache.invalidateAll();
+    return result;
   }
 
   async listSaasBridges(query: SystemModuleSaasBridgeListQuery = {}) {
@@ -483,7 +496,9 @@ export class SystemModuleRegistryService implements OnModuleInit {
     bridge.remark = dto.remark || '';
     bridge.deleteTime = null;
 
-    return this.toSaasBridgeResponse(await this.bridgeRepo.save(bridge));
+    const result = this.toSaasBridgeResponse(await this.bridgeRepo.save(bridge));
+    this.accessCache.invalidateAll();
+    return result;
   }
 
   async updateSaasBridgeStatus(id: number, enabled: number, operatorId?: number) {
@@ -494,7 +509,9 @@ export class SystemModuleRegistryService implements OnModuleInit {
     }
 
     bridge.enabled = Number(enabled);
-    return this.toSaasBridgeResponse(await this.bridgeRepo.save(bridge));
+    const result = this.toSaasBridgeResponse(await this.bridgeRepo.save(bridge));
+    this.accessCache.invalidateAll();
+    return result;
   }
 
   async getPlatformConfig(code: string) {
@@ -523,6 +540,7 @@ export class SystemModuleRegistryService implements OnModuleInit {
         metadata: { scope: 'platform', keys: Object.keys(config).sort() },
       });
     });
+    this.accessCache.invalidateAll();
     return this.getPlatformConfig(code);
   }
 
@@ -568,6 +586,7 @@ export class SystemModuleRegistryService implements OnModuleInit {
         metadata: { scope: 'tenant', tenantId, keys: Object.keys(config).sort() },
       });
     });
+    this.accessCache.invalidateAll();
     return this.getTenantConfig(tenantId, code);
   }
 
@@ -652,8 +671,12 @@ export class SystemModuleRegistryService implements OnModuleInit {
         candidatePaths.some((candidatePath) => Boolean(item.matcher(candidatePath))),
     );
     if (!binding) return undefined;
-    const { matcher: _matcher, method: _method, ...result } = binding;
-    return result;
+    return {
+      prefix: binding.prefix,
+      moduleCode: binding.moduleCode,
+      tenantScoped: binding.tenantScoped,
+      permission: binding.permission,
+    };
   }
 
   async getModule(code: string) {
@@ -706,13 +729,17 @@ export class SystemModuleRegistryService implements OnModuleInit {
       if (module.status === status) {
         return this.toResponse(module);
       }
+      assertSystemModuleTransition(module.status, status);
+      if (requiresDisabledDependencyProtection(status)) {
+        await this.assertNoEnabledDependants(manager, code);
+      }
 
       module.status = status;
       const saved = await moduleRepo.save(module);
       await this.recordEvent(
         eventRepo,
         code,
-        this.statusToEventType(status),
+        systemModuleStatusEventType(status),
         'success',
         `Module ${code} status changed to ${status}`,
         {
@@ -723,6 +750,7 @@ export class SystemModuleRegistryService implements OnModuleInit {
       return this.toResponse(saved);
     });
     await this.refreshApiBindings();
+    this.accessCache.invalidateAll();
     return result;
   }
 
@@ -1009,10 +1037,25 @@ export class SystemModuleRegistryService implements OnModuleInit {
     }
   }
 
-  private statusToEventType(status: SystemModuleStatus): SystemModuleEventType {
-    if (status === 'enabled') return 'enable';
-    if (status === 'disabled') return 'disable';
-    return 'upgrade';
+  private async assertNoEnabledDependants(manager: EntityManager, code: string) {
+    const dependencies = await manager.getRepository(SystemModuleDependencyEntity).find({
+      where: { dependsOnCode: code, required: 1 },
+    });
+    const dependantCodes = [...new Set(dependencies.map((item) => item.moduleCode))].sort();
+    if (!dependantCodes.length) return;
+    const enabledDependants = await manager.getRepository(SystemModuleEntity).find({
+      where: {
+        code: In(dependantCodes),
+        status: 'enabled',
+        deleteTime: IsNull(),
+      },
+    });
+    const blockedCodes = enabledDependants.map((item) => item.code).sort();
+    if (blockedCodes.length) {
+      throw new BadRequestException(
+        `Enabled modules still depend on ${code}: ${blockedCodes.join(', ')}`,
+      );
+    }
   }
 
   private assertMetadataOnlyHooks(hooks?: Record<string, unknown>) {

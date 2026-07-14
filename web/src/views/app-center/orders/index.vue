@@ -4,17 +4,17 @@
       <template #header>
         <div class="app-orders-page__header">
           <div>
-            <h1 class="app-orders-page__title">App Orders</h1>
+            <h1 class="app-orders-page__title">应用订单</h1>
             <p class="app-orders-page__subtitle">
-              Review application purchases and continue incomplete Alipay payments.
+              查看应用购买记录，并继续尚未完成的支付宝付款。
             </p>
           </div>
-          <ElTooltip content="Refresh" placement="bottom">
+          <ElTooltip content="刷新" placement="bottom">
             <ElButton
               circle
               :icon="Refresh"
               :loading="loading"
-              aria-label="Refresh application orders"
+              aria-label="刷新应用订单"
               @click="loadOrders"
             />
           </ElTooltip>
@@ -25,47 +25,47 @@
         <ElInput
           v-model="filters.order_no"
           clearable
-          placeholder="Order number"
+          placeholder="订单号"
           class="app-orders-page__keyword"
           @keyup.enter="refreshOrders"
         />
         <ElInput
           v-model="filters.app_code"
           clearable
-          placeholder="App code"
+          placeholder="应用编码"
           class="app-orders-page__keyword"
           @keyup.enter="refreshOrders"
         />
         <ElSelect
           v-model="filters.status"
           clearable
-          placeholder="Status"
+          placeholder="状态"
           class="app-orders-page__status"
           @change="refreshOrders"
         >
-          <ElOption label="Pending" value="pending" />
-          <ElOption label="Paid" value="paid" />
-          <ElOption label="Refunded" value="refunded" />
-          <ElOption label="Closed" value="closed" />
+          <ElOption label="待支付" value="pending" />
+          <ElOption label="已支付" value="paid" />
+          <ElOption label="已退款" value="refunded" />
+          <ElOption label="已关闭" value="closed" />
         </ElSelect>
-        <ElButton type="primary" :loading="loading" @click="refreshOrders">Search</ElButton>
-        <ElButton :disabled="loading" @click="resetFilters">Reset</ElButton>
+        <ElButton type="primary" :loading="loading" @click="refreshOrders">查询</ElButton>
+        <ElButton :disabled="loading" @click="resetFilters">重置</ElButton>
       </div>
 
       <div v-if="loadError" class="app-orders-page__error">
         <ElAlert type="error" :title="loadError" show-icon :closable="false" />
-        <ElButton link type="primary" :loading="loading" @click="loadOrders">Retry</ElButton>
+        <ElButton link type="primary" :loading="loading" @click="loadOrders">重试</ElButton>
       </div>
 
       <ElTable v-loading="loading" :data="records" border>
-        <ElTableColumn prop="order_no" label="Order" min-width="210" show-overflow-tooltip />
-        <ElTableColumn label="Application" min-width="210">
+        <ElTableColumn prop="order_no" label="订单号" min-width="210" show-overflow-tooltip />
+        <ElTableColumn label="应用" min-width="210">
           <template #default="{ row }">
             <div class="app-orders-page__primary">{{ row.app_name || row.app_code }}</div>
             <div class="app-orders-page__muted">{{ row.app_code }}</div>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Plan" min-width="180">
+        <ElTableColumn label="套餐" min-width="180">
           <template #default="{ row }">
             <div class="app-orders-page__primary">{{ row.price_plan_code }}</div>
             <div class="app-orders-page__muted">
@@ -73,23 +73,23 @@
             </div>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Amount" width="130" align="right">
+        <ElTableColumn label="金额" width="130" align="right">
           <template #default="{ row }">{{ formatMoney(row.amount_cents, row.currency) }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Status" width="130">
+        <ElTableColumn label="状态" width="130">
           <template #default="{ row }">
             <ElTag :type="statusTagType(row.status)" effect="light">
               {{ statusText(row.status) }}
             </ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Payment requested" width="180">
+        <ElTableColumn label="发起支付时间" width="180">
           <template #default="{ row }">{{ formatDateTime(row.payment_requested_at) }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Created" width="180">
+        <ElTableColumn label="创建时间" width="180">
           <template #default="{ row }">{{ formatDateTime(row.create_time) }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Actions" width="160" fixed="right">
+        <ElTableColumn label="操作" width="160" fixed="right">
           <template #default="{ row }">
             <ElButton
               v-if="row.status === 'pending'"
@@ -98,13 +98,13 @@
               :loading="payingOrderNo === row.order_no"
               @click="continuePayment(row)"
             >
-              Continue payment
+              继续支付
             </ElButton>
-            <span v-else class="app-orders-page__muted">No action required</span>
+            <span v-else class="app-orders-page__muted">无需操作</span>
           </template>
         </ElTableColumn>
         <template #empty>
-          <ElEmpty description="No application orders" />
+          <ElEmpty description="暂无应用订单" />
         </template>
       </ElTable>
 
@@ -168,18 +168,18 @@
   }
 
   function pricingText(model: string, period: string) {
-    if (model === 'one_time') return 'One-time purchase'
-    if (period === 'monthly') return 'Monthly subscription'
-    if (period === 'yearly') return 'Yearly subscription'
+    if (model === 'one_time') return '一次性购买'
+    if (period === 'monthly') return '按月订阅'
+    if (period === 'yearly') return '按年订阅'
     return model || '-'
   }
 
   function statusText(status: AppOrderStatus) {
     const labels: Record<AppOrderStatus, string> = {
-      pending: 'Pending',
-      paid: 'Paid',
-      refunded: 'Refunded',
-      closed: 'Closed'
+      pending: '待支付',
+      paid: '已支付',
+      refunded: '已退款',
+      closed: '已关闭'
     }
     return labels[status]
   }
@@ -211,7 +211,7 @@
       console.error('[AppCenterOrdersPage] load orders failed:', error)
       records.value = []
       pager.total = 0
-      loadError.value = 'Application orders failed to load'
+      loadError.value = '应用订单加载失败'
     } finally {
       loading.value = false
     }
@@ -240,14 +240,14 @@
       const result = await startAppAlipayPayment(order.order_no)
       if (result.configured && result.pay_url) {
         window.open(result.pay_url, '_blank', 'noopener,noreferrer')
-        ElMessage.success('Alipay payment page opened')
+        ElMessage.success('已打开支付宝付款页面')
         await loadOrders()
         return
       }
-      ElMessage.warning(result.message || 'Alipay is not configured')
+      ElMessage.warning(result.message || '支付宝尚未配置')
     } catch (error) {
       console.error('[AppCenterOrdersPage] start payment failed:', error)
-      ElMessage.error('Payment could not be started')
+      ElMessage.error('支付发起失败')
     } finally {
       payingOrderNo.value = ''
     }

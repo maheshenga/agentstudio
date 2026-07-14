@@ -28,13 +28,15 @@ export class AppFactoryTemplateService {
     return rows.map((row) => this.toResponse(row));
   }
 
-  async getTemplate(code: string) {
+  async getTemplate(code: string, templateVersion?: string) {
     const entity = await this.templateRepo.findOne({
       where: {
         code,
+        ...(templateVersion ? { templateVersion } : {}),
         status: 1,
         deleteTime: IsNull(),
       },
+      order: templateVersion ? undefined : ({ id: 'DESC' } as any),
     });
     if (!entity) {
       throw new NotFoundException(`Factory template ${code} not found`);
@@ -46,6 +48,10 @@ export class AppFactoryTemplateService {
     return {
       id: row.id,
       code: row.code,
+      schema_version: Number(row.schemaVersion ?? 1),
+      template_version: row.templateVersion || '1.0.0',
+      runtime_target: row.runtimeTarget || 'static',
+      manifest_defaults: row.manifestDefaults || {},
       name: row.name,
       category: row.category || '',
       icon: row.icon || '',

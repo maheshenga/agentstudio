@@ -2,7 +2,9 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import * as path from 'path';
 
 import {
-  normalizeApprovedCapabilities,
+  LEGACY_APP_RUNTIME_CAPABILITY_ALIASES,
+  normalizeAppCapabilities,
+  normalizeRuntimeCapabilities,
   type AppRuntimeCapability,
 } from '../app-runtime.constants';
 
@@ -19,6 +21,7 @@ export interface StaticAppManifest {
   tenant_scoped: boolean;
   permissions: string[];
   serviceTargets: string[];
+  allowedOrigins: string[];
 }
 
 export interface ValidateStaticManifestInput {
@@ -93,14 +96,32 @@ export class AppManifestService {
       }
     }
 
-    const permissions = Array.isArray(manifest.permissions)
+    const declaredPermissions = Array.isArray(manifest.permissions)
       ? manifest.permissions.filter((item): item is string => typeof item === 'string')
       : [];
+    const permissions = [
+      ...new Set(
+        declaredPermissions
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .map(
+            (value) =>
+              LEGACY_APP_RUNTIME_CAPABILITY_ALIASES[
+                value as keyof typeof LEGACY_APP_RUNTIME_CAPABILITY_ALIASES
+              ] || value,
+          ),
+      ),
+    ];
+    const runtimeCapabilities = normalizeRuntimeCapabilities(
+      'static',
+      normalizeAppCapabilities({ permissions }),
+    );
+    const allowedOrigins = this.normalizeAllowedOrigins(manifest.allowedOrigins, 'Static');
     const serviceTargets = this.normalizeServiceTargets(manifest.serviceTargets, code);
-    if (serviceTargets.length > 0 && !permissions.includes('service.invoke')) {
+    if (serviceTargets.length > 0 && !runtimeCapabilities.includes('service.invoke')) {
       throw new BadRequestException('Service targets require service.invoke');
     }
-    if (permissions.includes('service.invoke') && serviceTargets.length === 0) {
+    if (runtimeCapabilities.includes('service.invoke') && serviceTargets.length === 0) {
       throw new BadRequestException('service.invoke requires a service target');
     }
 
@@ -117,6 +138,7 @@ export class AppManifestService {
       tenant_scoped: Boolean(manifest.tenant_scoped),
       permissions,
       serviceTargets,
+      allowedOrigins,
     };
   }
 
@@ -148,7 +170,7 @@ export class AppManifestService {
     }
 
     const healthPath = this.normalizeHealthPath(manifest.healthPath);
-    const capabilities = normalizeApprovedCapabilities(manifest.capabilities);
+    const capabilities = normalizeRuntimeCapabilities('service', manifest.capabilities);
     const serviceTargets = this.normalizeServiceTargets(manifest.serviceTargets, code);
     if (serviceTargets.length > 0 && !capabilities.includes('service.invoke')) {
       throw new BadRequestException('Service targets require service.invoke');
@@ -205,6 +227,33 @@ export class AppManifestService {
 
   private optionalString(value: unknown): string {
     return typeof value === 'string' ? value.trim() : '';
+  }
+
+  private normalizeAllowedOrigins(value: unknown, label: string) {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value) || value.length > 20) {
+      throw new BadRequestException(`${label} allowed origins must be an array with at most 20 entries`);
+    }
+    const origins = value.map((item) => {
+      let parsed: URL;
+      try {
+        parsed = new URL(String(item || '').trim());
+      } catch {
+        throw new BadRequestException(`${label} allowed origins must be exact HTTPS origins`);
+      }
+      if (
+        parsed.protocol !== 'https:' ||
+        parsed.username ||
+        parsed.password ||
+        parsed.pathname !== '/' ||
+        parsed.search ||
+        parsed.hash
+      ) {
+        throw new BadRequestException(`${label} allowed origins must be exact HTTPS origins`);
+      }
+      return parsed.origin;
+    });
+    return [...new Set(origins)];
   }
 
   private normalizePackagePath(value: string): string {

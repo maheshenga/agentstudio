@@ -5,7 +5,10 @@
         <div class="app-factory-page__header">
           <div>
             <h1 class="app-factory-page__title">Module Factory</h1>
-            <p class="app-factory-page__subtitle">Build static HTML/CSS modules and publish them into the marketplace runtime.</p>
+            <p class="app-factory-page__subtitle"
+              >Build versioned static modules or review-bound service manifests for the app
+              platform.</p
+            >
           </div>
           <div class="app-factory-page__actions">
             <ElButton :icon="Refresh" :loading="loading" @click="loadModules">Refresh</ElButton>
@@ -23,16 +26,30 @@
           placeholder="Code, name"
           @keyup.enter="loadModules"
         />
-        <ElSelect v-model="filters.status" clearable class="app-factory-page__select" placeholder="Status">
-          <ElOption v-for="item in statusOptions" :key="item" :label="statusText(item)" :value="item" />
+        <ElSelect
+          v-model="filters.status"
+          clearable
+          class="app-factory-page__select"
+          placeholder="Status"
+        >
+          <ElOption
+            v-for="item in statusOptions"
+            :key="item"
+            :label="statusText(item)"
+            :value="item"
+          />
         </ElSelect>
-        <ElButton type="primary" :icon="Search" :loading="loading" @click="loadModules">Search</ElButton>
+        <ElButton type="primary" :icon="Search" :loading="loading" @click="loadModules"
+          >Search</ElButton
+        >
         <ElButton @click="resetFilters">Reset</ElButton>
       </div>
 
       <div v-if="loadError" class="app-factory-page__load-error">
         <ElAlert type="error" :title="loadError" show-icon :closable="false" />
-        <ElButton size="small" type="primary" link :loading="loading" @click="loadModules">Retry</ElButton>
+        <ElButton size="small" type="primary" link :loading="loading" @click="loadModules"
+          >Retry</ElButton
+        >
       </div>
 
       <ElTable v-loading="loading" :data="records" border>
@@ -44,7 +61,16 @@
         </ElTableColumn>
         <ElTableColumn label="Status" width="130">
           <template #default="{ row }">
-            <ElTag :type="statusTagType(row.status)" effect="light">{{ statusText(row.status) }}</ElTag>
+            <ElTag :type="statusTagType(row.status)" effect="light">{{
+              statusText(row.status)
+            }}</ElTag>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="Runtime" width="110">
+          <template #default="{ row }">
+            <ElTag :type="row.runtime_target === 'service' ? 'warning' : 'info'" effect="plain">
+              {{ row.runtime_target || 'static' }}
+            </ElTag>
           </template>
         </ElTableColumn>
         <ElTableColumn label="Marketplace App" min-width="190" show-overflow-tooltip>
@@ -56,17 +82,49 @@
         <ElTableColumn label="Binding" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
             <div>{{ row.saas_module_code || 'No SaaS module' }}</div>
-            <div class="app-factory-page__muted">{{ row.system_module_code || 'No system module' }}</div>
+            <div class="app-factory-page__muted">{{
+              row.system_module_code || 'No system module'
+            }}</div>
           </template>
         </ElTableColumn>
         <ElTableColumn label="Updated" width="170">
           <template #default="{ row }">{{ formatDateTime(row.update_time) }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Actions" fixed="right" width="260">
+        <ElTableColumn label="Actions" fixed="right" width="350">
           <template #default="{ row }">
-            <ElButton link type="primary" :icon="Edit" :loading="editLoadingCode === row.code" @click="openEditDialog(row)">Edit</ElButton>
-            <ElButton link type="primary" :icon="View" :loading="previewCode === row.code" @click="openPreview(row)">Preview</ElButton>
-            <ElButton link type="success" :icon="Promotion" :loading="publishingCode === row.code" @click="publishModule(row)">
+            <ElButton
+              link
+              type="primary"
+              :icon="Edit"
+              :loading="editLoadingCode === row.code"
+              @click="openEditDialog(row)"
+              >Edit</ElButton
+            >
+            <ElButton
+              v-if="row.runtime_target !== 'service'"
+              link
+              type="primary"
+              :icon="View"
+              :loading="previewCode === row.code"
+              @click="openPreview(row)"
+              >Page</ElButton
+            >
+            <ElButton
+              link
+              type="primary"
+              :icon="Document"
+              :loading="manifestPreviewCode === row.code"
+              @click="openManifestPreview(row)"
+              >Manifest</ElButton
+            >
+            <ElButton
+              v-if="row.runtime_target !== 'service'"
+              link
+              type="success"
+              :icon="Promotion"
+              :loading="publishingCode === row.code"
+              @click="publishModule(row)"
+            >
               Publish
             </ElButton>
           </template>
@@ -77,7 +135,7 @@
       </ElTable>
     </ElCard>
 
-    <ElDrawer v-model="templateDrawerVisible" title="Factory Templates" size="720px">
+    <ElDrawer v-model="templateDrawerVisible" title="Factory Templates" size="820px">
       <div class="app-factory-page__template-toolbar">
         <ElInput
           v-model="templateKeyword"
@@ -85,9 +143,11 @@
           placeholder="Search templates"
           @keyup.enter="loadTemplates"
         />
-        <ElButton type="primary" :icon="Search" :loading="templateLoading" @click="loadTemplates">Search</ElButton>
+        <ElButton type="primary" :icon="Search" :loading="templateLoading" @click="loadTemplates"
+          >Search</ElButton
+        >
       </div>
-      <ElTable v-loading="templateLoading" :data="templates" border>
+      <ElTable v-loading="templateLoading" :data="templates" :row-key="templateKey" border>
         <ElTableColumn label="Template" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
             <div class="app-factory-page__module-name">{{ row.name || '-' }}</div>
@@ -97,6 +157,19 @@
         <ElTableColumn label="Category" width="140">
           <template #default="{ row }">{{ row.category || '-' }}</template>
         </ElTableColumn>
+        <ElTableColumn label="Version" width="120">
+          <template #default="{ row }">
+            <div>{{ row.template_version || '1.0.0' }}</div>
+            <div class="app-factory-page__muted">schema {{ row.schema_version || 1 }}</div>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="Runtime" width="105">
+          <template #default="{ row }">
+            <ElTag :type="row.runtime_target === 'service' ? 'warning' : 'info'" effect="plain">
+              {{ row.runtime_target || 'static' }}
+            </ElTag>
+          </template>
+        </ElTableColumn>
         <ElTableColumn label="Summary" min-width="260" show-overflow-tooltip>
           <template #default="{ row }">{{ row.summary || '-' }}</template>
         </ElTableColumn>
@@ -105,7 +178,7 @@
             <ElButton
               link
               type="primary"
-              :loading="applyingTemplateCode === row.code"
+              :loading="applyingTemplateCode === templateKey(row)"
               @click="applyTemplate(row)"
             >
               Apply
@@ -118,18 +191,39 @@
       </ElTable>
     </ElDrawer>
 
-    <ElDialog v-model="dialogVisible" :title="editingCode ? 'Edit Module' : 'Create Module'" width="880px" top="6vh">
+    <ElDialog
+      v-model="dialogVisible"
+      :title="editingCode ? 'Edit Module' : 'Create Module'"
+      width="880px"
+      top="6vh"
+    >
       <ElAlert
         class="app-factory-page__form-alert"
-        type="warning"
-        title="Factory page rejects scripts, inline event handlers, and javascript URLs."
+        :type="form.runtime_target === 'service' ? 'info' : 'warning'"
+        :title="
+          form.runtime_target === 'service'
+            ? 'Service templates generate manifests only. Executable code must use App Platform review.'
+            : 'Factory page rejects scripts, inline event handlers, and javascript URLs.'
+        "
         show-icon
+        :closable="false"
+      />
+      <ElAlert
+        v-if="form.template_code"
+        class="app-factory-page__form-alert"
+        type="info"
+        :title="`Template ${form.template_code}@${form.template_version || '1.0.0'} · schema ${form.template_schema_version || 1} · ${form.runtime_target}`"
         :closable="false"
       />
       <ElForm ref="formRef" :model="form" :rules="formRules" label-width="132px">
         <div class="app-factory-page__form-grid">
           <ElFormItem label="Code" prop="code">
-            <ElInput v-model="form.code" :disabled="Boolean(editingCode)" maxlength="80" placeholder="landing_page" />
+            <ElInput
+              v-model="form.code"
+              :disabled="Boolean(editingCode)"
+              maxlength="80"
+              placeholder="landing_page"
+            />
           </ElFormItem>
           <ElFormItem label="Name" prop="name">
             <ElInput v-model="form.name" maxlength="120" placeholder="Landing Page" />
@@ -152,7 +246,12 @@
             <ElInputNumber v-model="form.sort" :min="0" :step="10" controls-position="right" />
           </ElFormItem>
           <ElFormItem label="SaaS Module">
-            <ElSelect v-model="form.saas_module_code" clearable filterable placeholder="Optional entitlement module">
+            <ElSelect
+              v-model="form.saas_module_code"
+              clearable
+              filterable
+              placeholder="Optional entitlement module"
+            >
               <ElOption
                 v-for="item in saasModuleOptions"
                 :key="item.code"
@@ -162,7 +261,12 @@
             </ElSelect>
           </ElFormItem>
           <ElFormItem label="System Module">
-            <ElSelect v-model="form.system_module_code" clearable filterable placeholder="Optional runtime guard module">
+            <ElSelect
+              v-model="form.system_module_code"
+              clearable
+              filterable
+              placeholder="Optional runtime guard module"
+            >
               <ElOption
                 v-for="item in systemModuleOptions"
                 :key="item.code"
@@ -173,9 +277,15 @@
           </ElFormItem>
         </div>
         <ElFormItem label="Summary">
-          <ElInput v-model="form.summary" type="textarea" maxlength="255" show-word-limit :rows="2" />
+          <ElInput
+            v-model="form.summary"
+            type="textarea"
+            maxlength="255"
+            show-word-limit
+            :rows="2"
+          />
         </ElFormItem>
-        <ElFormItem label="HTML" prop="html_content">
+        <ElFormItem v-if="form.runtime_target === 'static'" label="HTML" prop="html_content">
           <ElInput
             v-model="form.html_content"
             type="textarea"
@@ -185,7 +295,7 @@
             placeholder="<main><h1>Hello</h1></main>"
           />
         </ElFormItem>
-        <ElFormItem label="CSS" prop="css_content">
+        <ElFormItem v-if="form.runtime_target === 'static'" label="CSS" prop="css_content">
           <ElInput
             v-model="form.css_content"
             type="textarea"
@@ -206,7 +316,20 @@
     </ElDialog>
 
     <ElDialog v-model="previewVisible" title="Factory Preview" width="900px" top="6vh">
-      <iframe class="app-factory-page__preview" :srcdoc="previewHtml" sandbox="allow-forms"></iframe>
+      <iframe
+        class="app-factory-page__preview"
+        :srcdoc="previewHtml"
+        sandbox="allow-forms"
+      ></iframe>
+    </ElDialog>
+
+    <ElDialog
+      v-model="manifestPreviewVisible"
+      :title="manifestPreviewTitle"
+      width="760px"
+      top="8vh"
+    >
+      <pre class="app-factory-page__manifest-preview">{{ manifestPreviewText }}</pre>
     </ElDialog>
   </div>
 </template>
@@ -214,13 +337,24 @@
 <script setup lang="ts">
   import { ElMessage, ElMessageBox } from 'element-plus'
   import type { FormInstance, FormRules } from 'element-plus'
-  import { Check, Collection, Edit, Plus, Promotion, Refresh, Search, View } from '@element-plus/icons-vue'
+  import {
+    Check,
+    Collection,
+    Document,
+    Edit,
+    Plus,
+    Promotion,
+    Refresh,
+    Search,
+    View
+  } from '@element-plus/icons-vue'
   import {
     createAppFactoryModule,
     fetchAppFactoryModule,
     fetchAppFactoryModules,
     fetchAppFactoryTemplate,
     fetchAppFactoryTemplates,
+    previewAppFactoryManifest,
     publishAppFactoryModule,
     updateAppFactoryModule,
     type AppFactoryModuleRecord,
@@ -239,14 +373,18 @@
   const saving = ref(false)
   const dialogVisible = ref(false)
   const previewVisible = ref(false)
+  const manifestPreviewVisible = ref(false)
   const templateDrawerVisible = ref(false)
   const loadError = ref('')
   const editingCode = ref('')
   const editLoadingCode = ref('')
   const publishingCode = ref('')
   const previewCode = ref('')
+  const manifestPreviewCode = ref('')
   const applyingTemplateCode = ref('')
   const previewHtml = ref('')
+  const manifestPreviewText = ref('')
+  const manifestPreviewTitle = ref('Generated Manifest')
   const templateKeyword = ref('')
   const templateLoading = ref(false)
   const formRef = ref<FormInstance>()
@@ -262,6 +400,11 @@
     code: '',
     name: '',
     kind: 'static_page' as const,
+    template_code: '',
+    template_version: '',
+    template_schema_version: 1,
+    runtime_target: 'static' as AppFactoryModuleRecord['runtime_target'],
+    manifest_defaults: {} as NonNullable<AppFactoryModuleRecord['manifest_defaults']>,
     category: '',
     icon: '',
     summary: '',
@@ -277,7 +420,11 @@
   const formRules: FormRules = {
     code: [
       { required: true, message: 'Code is required', trigger: 'blur' },
-      { pattern: /^[a-z][a-z0-9_]{2,79}$/, message: 'Use lowercase snake_case, 3-80 chars', trigger: 'blur' }
+      {
+        pattern: /^[a-z][a-z0-9_]{2,79}$/,
+        message: 'Use lowercase snake_case, 3-80 chars',
+        trigger: 'blur'
+      }
     ],
     name: [{ required: true, message: 'Name is required', trigger: 'blur' }]
   }
@@ -326,6 +473,11 @@
       code: '',
       name: '',
       kind: 'static_page',
+      template_code: '',
+      template_version: '',
+      template_schema_version: 1,
+      runtime_target: 'static',
+      manifest_defaults: {},
       category: '',
       icon: '',
       summary: '',
@@ -346,6 +498,11 @@
       code: row.code,
       name: row.name,
       kind: row.kind || 'static_page',
+      template_code: row.template_code || '',
+      template_version: row.template_version || '',
+      template_schema_version: row.template_schema_version || 1,
+      runtime_target: row.runtime_target || 'static',
+      manifest_defaults: { ...(row.manifest_defaults || {}) },
       category: row.category || '',
       icon: row.icon || '',
       summary: row.summary || '',
@@ -366,6 +523,11 @@
       code: template.code || '',
       name: template.name || '',
       kind: 'static_page',
+      template_code: template.code || '',
+      template_version: template.template_version || '1.0.0',
+      template_schema_version: template.schema_version || 1,
+      runtime_target: template.runtime_target || 'static',
+      manifest_defaults: { ...(template.manifest_defaults || {}) },
       category: template.category || '',
       icon: template.icon || '',
       summary: template.summary || '',
@@ -386,6 +548,11 @@
       code: cleanText(form.code),
       name: form.name.trim(),
       kind: 'static_page',
+      template_code: cleanText(form.template_code),
+      template_version: cleanText(form.template_version),
+      template_schema_version: form.template_schema_version,
+      runtime_target: form.runtime_target,
+      manifest_defaults: { ...form.manifest_defaults },
       category: cleanText(form.category),
       icon: cleanText(form.icon),
       summary: cleanText(form.summary),
@@ -405,6 +572,10 @@
     const parts = version.split('.').map((item) => Number(item))
     if (parts.length !== 3 || parts.some((item) => Number.isNaN(item))) return '1.0.0'
     return `${parts[0]}.${parts[1]}.${parts[2] + 1}`
+  }
+
+  function templateKey(template: AppFactoryTemplateRecord) {
+    return `${template.code}@${template.template_version || '1.0.0'}`
   }
 
   async function loadModules() {
@@ -503,9 +674,9 @@
   }
 
   async function applyTemplate(row: AppFactoryTemplateRecord) {
-    applyingTemplateCode.value = row.code
+    applyingTemplateCode.value = templateKey(row)
     try {
-      const detail = await fetchAppFactoryTemplate(row.code)
+      const detail = await fetchAppFactoryTemplate(row.code, row.template_version)
       editingCode.value = ''
       fillFormFromTemplate(detail)
       templateDrawerVisible.value = false
@@ -516,6 +687,10 @@
   }
 
   async function publishModule(row: AppFactoryModuleRecord) {
+    if (row.runtime_target === 'service') {
+      ElMessage.warning('Service factory output must be submitted through App Platform review')
+      return
+    }
     const defaultVersion = nextPatchVersion(row.latest_version)
     const result = (await ElMessageBox.prompt('Version', `Publish ${row.name}`, {
       inputValue: defaultVersion,
@@ -528,7 +703,11 @@
 
     publishingCode.value = row.code
     try {
-      await publishAppFactoryModule(row.code, result.value, `Published ${row.name} from module factory`)
+      await publishAppFactoryModule(
+        row.code,
+        result.value,
+        `Published ${row.name} from module factory`
+      )
       ElMessage.success('Factory module published')
       await loadModules()
     } finally {
@@ -553,6 +732,19 @@
       previewVisible.value = true
     } finally {
       previewCode.value = ''
+    }
+  }
+
+  async function openManifestPreview(row: AppFactoryModuleRecord) {
+    manifestPreviewCode.value = row.code
+    try {
+      const version = nextPatchVersion(row.latest_version)
+      const manifest = await previewAppFactoryManifest(row.code, version)
+      manifestPreviewTitle.value = `Generated Manifest · ${row.code}@${version}`
+      manifestPreviewText.value = JSON.stringify(manifest, null, 2)
+      manifestPreviewVisible.value = true
+    } finally {
+      manifestPreviewCode.value = ''
     }
   }
 
@@ -650,6 +842,22 @@
     border: 1px solid var(--el-border-color-light);
     border-radius: 6px;
     background: #fff;
+  }
+
+  .app-factory-page__manifest-preview {
+    max-height: 62vh;
+    margin: 0;
+    padding: 16px;
+    overflow: auto;
+    border: 1px solid var(--el-border-color-light);
+    border-radius: 6px;
+    background: var(--el-fill-color-light);
+    color: var(--el-text-color-primary);
+    font-family: Consolas, Monaco, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   @media (max-width: 820px) {

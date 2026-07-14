@@ -85,6 +85,18 @@ export class AppPackageEntity {
   @Column({ type: 'json', name: 'runtime_config', nullable: true })
   runtimeConfig?: Record<string, unknown> | null;
 
+  @Column({ type: 'json', name: 'screenshots', nullable: true })
+  screenshots?: string[] | null;
+
+  @Column({ type: 'varchar', name: 'documentation_url', length: 500, default: '' })
+  documentationUrl: string;
+
+  @Column({ type: 'varchar', name: 'support_url', length: 500, default: '' })
+  supportUrl: string;
+
+  @Column({ type: 'text', name: 'changelog', nullable: true })
+  changelog?: string | null;
+
   @Column({ type: 'varchar', name: 'system_module_code', length: 80, default: '' })
   systemModuleCode: string;
 

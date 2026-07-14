@@ -22,7 +22,7 @@
           clearable
           class="app-platform-page__filter-item"
           placeholder="编码、名称或分类"
-          @keyup.enter="loadApps"
+          @keyup.enter="submitSearch"
         />
         <ElSelect
           v-model="filters.type"
@@ -48,7 +48,9 @@
             :value="item"
           />
         </ElSelect>
-        <ElButton type="primary" :icon="Search" :loading="loading" @click="loadApps">查询</ElButton>
+        <ElButton type="primary" :icon="Search" :loading="loading" @click="submitSearch"
+          >查询</ElButton
+        >
         <ElButton @click="resetFilters">重置</ElButton>
       </div>
 
@@ -131,6 +133,16 @@
           <ElEmpty description="暂无应用" />
         </template>
       </ElTable>
+      <ElPagination
+        v-model:current-page="pagination.page"
+        v-model:page-size="pagination.limit"
+        class="app-platform-page__pagination"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="pagination.total"
+        layout="total, sizes, prev, pager, next, jumper"
+        @current-change="loadApps"
+        @size-change="handlePageSizeChange"
+      />
     </ElCard>
 
     <ElDialog v-model="dialogVisible" :title="editingCode ? '编辑应用' : '创建应用'" width="680px">
@@ -226,6 +238,25 @@
         </ElFormItem>
         <ElFormItem label="详细描述">
           <ElInput v-model="appForm.description" type="textarea" maxlength="1000" show-word-limit />
+        </ElFormItem>
+        <ElFormItem label="截图地址">
+          <ElInput
+            v-model="appForm.screenshots"
+            type="textarea"
+            :rows="3"
+            placeholder="每行一个 HTTPS 图片地址，最多 8 张"
+          />
+        </ElFormItem>
+        <div class="app-platform-page__form-grid">
+          <ElFormItem label="使用文档">
+            <ElInput v-model="appForm.documentation_url" maxlength="500" placeholder="https://" />
+          </ElFormItem>
+          <ElFormItem label="支持地址">
+            <ElInput v-model="appForm.support_url" maxlength="500" placeholder="https://" />
+          </ElFormItem>
+        </div>
+        <ElFormItem label="更新日志">
+          <ElInput v-model="appForm.changelog" type="textarea" :rows="4" maxlength="20000" />
         </ElFormItem>
       </ElForm>
       <template #footer>
@@ -418,6 +449,7 @@
   const { width: viewportWidth } = useWindowSize()
   const actionColumnFixed = computed(() => (viewportWidth.value > 800 ? 'right' : false))
   const records = ref<AppPackageRecord[]>([])
+  const pagination = reactive({ page: 1, limit: 20, total: 0 })
   const loading = ref(false)
   const saving = ref(false)
   const detailVisible = ref(false)
@@ -457,6 +489,10 @@
     icon: '',
     summary: '',
     description: '',
+    screenshots: '',
+    documentation_url: '',
+    support_url: '',
+    changelog: '',
     visibility: 'marketplace' as AppPackageVisibility,
     entry_url: '',
     developer_name: '',
@@ -486,6 +522,10 @@
       icon: '',
       summary: '',
       description: '',
+      screenshots: '',
+      documentation_url: '',
+      support_url: '',
+      changelog: '',
       visibility: 'marketplace',
       entry_url: '',
       developer_name: '',
@@ -501,11 +541,17 @@
     loading.value = true
     loadError.value = ''
     try {
-      records.value = await fetchPlatformApps({
+      const appPage = await fetchPlatformApps({
+        page: pagination.page,
+        limit: pagination.limit,
         keyword: cleanText(filters.keyword),
         type: filters.type || undefined,
         status: filters.status || undefined
       })
+      records.value = appPage.list
+      pagination.total = appPage.total
+      pagination.page = appPage.page
+      pagination.limit = appPage.limit
     } catch (error) {
       console.error('[AppPlatformAppsPage] load apps failed:', error)
       loadError.value = '应用列表加载失败'
@@ -513,6 +559,16 @@
     } finally {
       loading.value = false
     }
+  }
+
+  function submitSearch() {
+    pagination.page = 1
+    loadApps()
+  }
+
+  function handlePageSizeChange() {
+    pagination.page = 1
+    loadApps()
   }
 
   async function loadModuleOptions() {
@@ -534,6 +590,7 @@
     filters.keyword = ''
     filters.type = ''
     filters.status = ''
+    pagination.page = 1
     loadApps()
   }
 
@@ -562,6 +619,10 @@
       icon: row.icon || '',
       summary: row.summary || '',
       description: row.description || '',
+      screenshots: (row.screenshots || []).join('\n'),
+      documentation_url: row.documentation_url || '',
+      support_url: row.support_url || '',
+      changelog: row.changelog || '',
       visibility: row.visibility || 'marketplace',
       entry_url: row.entry_url || '',
       developer_name: row.developer_name || '',
@@ -583,6 +644,13 @@
       icon: cleanText(appForm.icon),
       summary: cleanText(appForm.summary),
       description: cleanText(appForm.description),
+      screenshots: appForm.screenshots
+        .split(/\r?\n/)
+        .map((value) => value.trim())
+        .filter(Boolean),
+      documentation_url: cleanText(appForm.documentation_url),
+      support_url: cleanText(appForm.support_url),
+      changelog: cleanText(appForm.changelog),
       visibility: appForm.type === 'service' ? 'platform' : appForm.visibility,
       entry_url: appForm.type === 'service' ? undefined : cleanText(appForm.entry_url),
       developer_name: cleanText(appForm.developer_name),
@@ -757,6 +825,11 @@
     align-items: center;
     gap: 12px;
     margin-bottom: 16px;
+  }
+
+  .app-platform-page__pagination {
+    justify-content: flex-end;
+    margin-top: 16px;
   }
 
   .app-platform-page__app-name {

@@ -83,7 +83,7 @@ for (const token of [
 
 const tenantPage = readFile('web/src/views/app-center/usage/index.vue')
 for (const token of [
-  'App Usage',
+  '应用使用情况',
   'ElSegmented',
   'ArtLineChart',
   'ElTooltip',
@@ -91,7 +91,7 @@ for (const token of [
   'version_adoption',
   'recent_failures',
   'Refresh',
-  'Retry',
+  '重试',
   'ElEmpty',
   'loadError'
 ]) {

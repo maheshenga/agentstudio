@@ -11,6 +11,7 @@ import { AppPackageEntity } from '../entities/app-package.entity';
 import { AppPackageVersionEntity } from '../entities/app-package-version.entity';
 import { AppReviewLogEntity } from '../entities/app-review-log.entity';
 import { AppPackageStorageService } from './app-package-storage.service';
+import { AppFactoryTemplateService } from './app-factory-template.service';
 import { AppFactoryService } from './app-factory.service';
 
 describe('AppFactoryService', () => {
@@ -44,7 +45,11 @@ describe('AppFactoryService', () => {
   };
   const storage = {
     resolvePackagePath: jest.fn(),
+    hashDirectory: jest.fn(),
     publishVersion: jest.fn(),
+  };
+  const templateService = {
+    getTemplate: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -64,6 +69,7 @@ describe('AppFactoryService', () => {
     appReviewLogRepo.create.mockImplementation((value) => ({ ...value }));
     appReviewLogRepo.save.mockImplementation(async (value) => ({ id: value.id ?? 30, ...value }));
     storage.resolvePackagePath.mockReturnValue(packagePath);
+    storage.hashDirectory.mockResolvedValue('a'.repeat(64));
     storage.publishVersion.mockResolvedValue({
       publishPath,
       entryUrl: '/apps-static/factory_landing_page/1.0.0/dist/index.html',
@@ -78,6 +84,7 @@ describe('AppFactoryService', () => {
         { provide: getRepositoryToken(AppPackageVersionEntity), useValue: versionRepo },
         { provide: getRepositoryToken(AppReviewLogEntity), useValue: appReviewLogRepo },
         { provide: AppPackageStorageService, useValue: storage },
+        { provide: AppFactoryTemplateService, useValue: templateService },
       ],
     }).compile();
 
@@ -117,6 +124,38 @@ describe('AppFactoryService', () => {
         createdBy: 7,
       }),
     );
+  });
+
+  it('keeps immutable template provenance when creating a module', async () => {
+    factoryRepo.findOne.mockResolvedValue(null);
+    templateService.getTemplate.mockResolvedValue({
+      code: 'job_board',
+      template_version: '2.0.0',
+      schema_version: 2,
+      runtime_target: 'static',
+      manifest_defaults: { tenant_scoped: true, permissions: ['context.read'] },
+    });
+
+    await service.createModule({
+      code: 'job_board_v2',
+      name: 'Job Board',
+      template_code: 'job_board',
+      template_version: '2.0.0',
+      template_schema_version: 99,
+      runtime_target: 'service',
+      manifest_defaults: { capabilities: ['context.read'] },
+    });
+
+    expect(factoryRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        templateCode: 'job_board',
+        templateVersion: '2.0.0',
+        templateSchemaVersion: 2,
+        runtimeTarget: 'static',
+        manifestDefaults: { tenant_scoped: true, permissions: ['context.read'] },
+      }),
+    );
+    expect(templateService.getTemplate).toHaveBeenCalledWith('job_board', '2.0.0');
   });
 
   it('rejects unsafe static page html before publish', async () => {
@@ -166,8 +205,16 @@ describe('AppFactoryService', () => {
       version: '1.0.0',
       sourceDir: packagePath,
       entryFile: 'dist/index.html',
+      expectedContentHash: 'a'.repeat(64),
     });
     expect(fs.existsSync(path.join(packagePath, 'dist', 'index.html'))).toBe(true);
+    expect(fs.existsSync(path.join(packagePath, 'manifest.json'))).toBe(true);
+    expect(JSON.parse(fs.readFileSync(path.join(packagePath, 'manifest.json'), 'utf8'))).toMatchObject({
+      code: 'factory_landing_page',
+      version: '1.0.0',
+      type: 'static',
+      entry: 'dist/index.html',
+    });
     expect(appRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({
         code: 'factory_landing_page',
@@ -181,9 +228,33 @@ describe('AppFactoryService', () => {
         version: '1.0.0',
         reviewStatus: 'approved',
         publishStatus: 'published',
+        contentHash: 'a'.repeat(64),
       }),
     );
     expect(appReviewLogRepo.save).toHaveBeenCalled();
     expect(publishLogRepo.save).toHaveBeenCalled();
+  });
+
+  it('generates a service manifest but refuses to publish executable output outside review', async () => {
+    factoryRepo.findOne.mockResolvedValue({
+      id: 2,
+      code: 'classifieds',
+      name: '分类信息服务',
+      runtimeTarget: 'service',
+      manifestDefaults: { healthPath: '/health', capabilities: ['context.read'] },
+      appCode: 'factory_classifieds',
+      status: 'draft',
+    });
+
+    await expect(service.previewManifest('classifieds', '1.0.0')).resolves.toMatchObject({
+      manifestVersion: 2,
+      runtime: 'service',
+      entry: 'dist/index.js',
+    });
+    await expect(service.publishModule('classifieds', { version: '1.0.0' }, 7)).rejects.toThrow(
+      'Service factory output must be submitted through App Platform review',
+    );
+    expect(appRepo.save).not.toHaveBeenCalled();
+    expect(storage.publishVersion).not.toHaveBeenCalled();
   });
 });

@@ -3,10 +3,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'crypto';
 import JSZip from 'jszip';
 import * as path from 'path';
-import { DataSource, In, IsNull, Repository } from 'typeorm';
+import { DataSource, FindOptionsWhere, In, IsNull, Like, Repository } from 'typeorm';
 
 import { normalizeExternalHttpUrl } from '../../../common/utils/safe-url.util';
-import { normalizeAppCapabilities, normalizeApprovedCapabilities } from '../app-runtime.constants';
+import { normalizeAppPage, type AppPageQuery } from '../app-page';
+import {
+  normalizeAppCapabilities,
+  normalizeApprovedCapabilities,
+  normalizeRuntimeCapabilities,
+} from '../app-runtime.constants';
 import { CreateAppPackageDto, UpdateAppPackageDto } from '../dto/app-platform.dto';
 import { AppCapabilityGrantEntity } from '../entities/app-capability-grant.entity';
 import { AppDeveloperProfileEntity } from '../entities/app-developer-profile.entity';
@@ -31,10 +36,11 @@ import { AppRuntimeSessionService } from './app-runtime-session.service';
 import { AppServicePackageService } from './app-service-package.service';
 import { AppServiceRuntimeService } from './app-service-runtime.service';
 
-export interface AppPlatformListQuery {
+export interface AppPlatformListQuery extends AppPageQuery {
   keyword?: string;
   type?: AppPackageType;
   status?: AppPackageStatus;
+  category?: string;
 }
 
 export interface AppReviewQueueQuery {
@@ -75,24 +81,27 @@ export class AppPlatformService {
   ) {}
 
   async listApps(query: AppPlatformListQuery = {}) {
-    const apps = await this.appRepo.find({
-      where: { deleteTime: IsNull() },
+    const { page, limit, skip } = normalizeAppPage(query);
+    const baseWhere: FindOptionsWhere<AppPackageEntity> = {
+      deleteTime: IsNull(),
+      ...(query.type ? { type: query.type } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.category?.trim() ? { category: query.category.trim() } : {}),
+    };
+    const keyword = query.keyword?.trim();
+    const where: FindOptionsWhere<AppPackageEntity> | FindOptionsWhere<AppPackageEntity>[] = keyword
+      ? ['code', 'name', 'category', 'summary'].map((field) => ({
+          ...baseWhere,
+          [field]: Like(`%${keyword}%`),
+        }))
+      : baseWhere;
+    const [apps, total] = await this.appRepo.findAndCount({
+      where,
       order: { sort: 'ASC', id: 'ASC' },
+      skip,
+      take: limit,
     });
-    const keyword = query.keyword?.trim().toLowerCase();
-
-    return apps
-      .filter((app) => {
-        if (query.type && app.type !== query.type) return false;
-        if (query.status && app.status !== query.status) return false;
-        if (!keyword) return true;
-        return [app.code, app.name, app.category, app.summary].some((value) =>
-          String(value || '')
-            .toLowerCase()
-            .includes(keyword),
-        );
-      })
-      .map((app) => this.toResponse(app));
+    return { list: apps.map((app) => this.toResponse(app)), total, page, limit };
   }
 
   async listDeveloperApps(developerId: number) {
@@ -173,7 +182,7 @@ export class AppPlatformService {
   async createApp(
     dto: CreateAppPackageDto,
     operatorId?: number,
-    options?: { trustLevel?: AppTrustLevel },
+    options?: { trustLevel?: AppTrustLevel; reviewRequired?: boolean },
   ) {
     const code = dto.code.trim();
     const existing = await this.appRepo.findOne({ where: { code }, withDeleted: true });
@@ -186,7 +195,8 @@ export class AppPlatformService {
         ? this.normalizeIframeRuntime(dto.entry_url || '', dto.allowed_origins)
         : null;
     const iframeCapabilities =
-      dto.type === 'iframe' ? normalizeApprovedCapabilities(dto.requested_capabilities) : [];
+      dto.type === 'iframe' ? normalizeRuntimeCapabilities('iframe', dto.requested_capabilities) : [];
+    const marketplaceDetail = this.normalizeMarketplaceDetail(dto);
     if (
       dto.type !== 'iframe' &&
       (dto.allowed_origins !== undefined ||
@@ -195,6 +205,7 @@ export class AppPlatformService {
     ) {
       throw new BadRequestException('Iframe version settings require an iframe app');
     }
+    const iframeReviewRequired = dto.type === 'iframe' && options?.reviewRequired === true;
     const app = this.appRepo.create({
       code,
       name: dto.name,
@@ -205,7 +216,12 @@ export class AppPlatformService {
       description: dto.description || '',
       developerId: operatorId ?? null,
       developerName: dto.developer_name || '',
-      status: dto.type === 'static' || dto.type === 'service' ? 'draft' : 'published',
+      status:
+        dto.type === 'static' || dto.type === 'service'
+          ? 'draft'
+          : iframeReviewRequired
+            ? 'pending_review'
+            : 'published',
       visibility: dto.visibility || 'marketplace',
       entryMode: this.resolveEntryMode(dto.type),
       entryUrl: iframeRuntime?.entryUrl || this.normalizeEntryUrl(dto.type, dto.entry_url || ''),
@@ -213,6 +229,10 @@ export class AppPlatformService {
       trustLevel: options?.trustLevel ?? this.trustLevel(dto.type),
       serviceHealthPath: dto.type === 'service' ? '/health' : '',
       runtimeConfig: null,
+      screenshots: marketplaceDetail.screenshots || [],
+      documentationUrl: marketplaceDetail.documentationUrl || '',
+      supportUrl: marketplaceDetail.supportUrl || '',
+      changelog: marketplaceDetail.changelog || '',
       systemModuleCode: dto.system_module_code || '',
       saasModuleCode: dto.saas_module_code || '',
       sort: dto.sort ?? 100,
@@ -232,19 +252,22 @@ export class AppPlatformService {
           allowedOrigins: iframeRuntime.allowedOrigins,
           capabilities: iframeCapabilities,
           operatorId,
+          reviewRequired: iframeReviewRequired,
         }),
       );
       const savedVersion = await versionRepo.save(version);
-      await this.capabilityPolicy.approvePlatformCapabilities(
-        {
-          appId: savedApp.id,
-          versionId: savedVersion.id,
-          requestedCapabilities: iframeCapabilities,
-          approvedCapabilities: iframeCapabilities,
-          operatorId,
-        },
-        manager.getRepository(AppCapabilityGrantEntity),
-      );
+      if (!iframeReviewRequired) {
+        await this.capabilityPolicy.approvePlatformCapabilities(
+          {
+            appId: savedApp.id,
+            versionId: savedVersion.id,
+            requestedCapabilities: iframeCapabilities,
+            approvedCapabilities: iframeCapabilities,
+            operatorId,
+          },
+          manager.getRepository(AppCapabilityGrantEntity),
+        );
+      }
       return this.toResponse(savedApp);
     });
   }
@@ -292,7 +315,7 @@ export class AppPlatformService {
       : null;
     const iframeCapabilities = iframeRuntimeChanged
       ? dto.requested_capabilities !== undefined
-        ? normalizeApprovedCapabilities(dto.requested_capabilities)
+        ? normalizeRuntimeCapabilities('iframe', dto.requested_capabilities)
         : normalizeAppCapabilities(latestIframeVersion?.manifest)
       : [];
     if (iframeRuntime && dto.version) {
@@ -307,6 +330,15 @@ export class AppPlatformService {
     if (dto.icon !== undefined) app.icon = dto.icon;
     if (dto.summary !== undefined) app.summary = dto.summary;
     if (dto.description !== undefined) app.description = dto.description;
+    const marketplaceDetail = this.normalizeMarketplaceDetail(dto);
+    if (marketplaceDetail.screenshots !== undefined) {
+      app.screenshots = marketplaceDetail.screenshots;
+    }
+    if (marketplaceDetail.documentationUrl !== undefined) {
+      app.documentationUrl = marketplaceDetail.documentationUrl;
+    }
+    if (marketplaceDetail.supportUrl !== undefined) app.supportUrl = marketplaceDetail.supportUrl;
+    if (marketplaceDetail.changelog !== undefined) app.changelog = marketplaceDetail.changelog;
     if (dto.visibility !== undefined) app.visibility = dto.visibility;
     if (dto.entry_url !== undefined) {
       app.entryUrl = iframeRuntime?.entryUrl || this.normalizeEntryUrl(app.type, dto.entry_url);
@@ -462,6 +494,7 @@ export class AppPlatformService {
       publishPath: '',
       entryFile: manifest.entry,
       fileHash: createHash('sha256').update(file.buffer).digest('hex'),
+      contentHash: extracted.contentHash,
       fileSize: file.size || file.buffer.length,
       reviewStatus: 'pending',
       publishStatus: 'unpublished',
@@ -542,6 +575,7 @@ export class AppPlatformService {
       publishPath: '',
       entryFile: installed.entryFile,
       fileHash: installed.packageSha256,
+      contentHash: installed.packageSha256,
       fileSize: installed.fileSize,
       reviewStatus: 'pending',
       publishStatus: 'unpublished',
@@ -712,10 +746,28 @@ export class AppPlatformService {
 
   async publishVersion(code: string, version: string, operatorId?: number) {
     const app = await this.findApp(code);
-    this.assertStaticApp(app);
+    this.assertBrowserApp(app);
     const appVersion = await this.findVersion(app.id, version);
     if (appVersion.reviewStatus !== 'approved') {
       throw new BadRequestException('Only approved versions can be published');
+    }
+    if (app.type === 'iframe') {
+      const entryUrl = this.iframeVersionEntryUrl(appVersion);
+      appVersion.publishStatus = 'published';
+      app.status = 'published';
+      app.entryMode = 'iframe';
+      app.entryUrl = entryUrl;
+      const savedVersion = await this.versionRepo.save(appVersion);
+      await this.appRepo.save(app);
+      await this.recordAppEvent(
+        app.id,
+        appVersion.id,
+        'publish',
+        `Published version ${version}`,
+        operatorId,
+        { entryUrl },
+      );
+      return this.toVersionResponse(savedVersion, app.code, app.entryUrl);
     }
     const shouldApplyVersionMetadata =
       app.status === 'published' || Boolean(app.entryUrl) || Boolean(appVersion.publishPath);
@@ -725,6 +777,7 @@ export class AppPlatformService {
       version,
       sourceDir: appVersion.packagePath,
       entryFile: appVersion.entryFile,
+      expectedContentHash: appVersion.contentHash,
     });
 
     appVersion.publishStatus = 'published';
@@ -753,17 +806,16 @@ export class AppPlatformService {
 
   async unpublishVersion(code: string, version: string, message = '', operatorId?: number) {
     const app = await this.findApp(code);
-    this.assertStaticApp(app);
+    this.assertBrowserApp(app);
     const appVersion = await this.findVersion(app.id, version);
     if (appVersion.publishStatus !== 'published') {
       throw new BadRequestException('Only published versions can be unpublished');
     }
 
-    const targetEntryUrl = this.createStaticEntryUrl(
-      app.code,
-      appVersion.version,
-      appVersion.entryFile,
-    );
+    const targetEntryUrl =
+      app.type === 'iframe'
+        ? this.iframeVersionEntryUrl(appVersion)
+        : this.createStaticEntryUrl(app.code, appVersion.version, appVersion.entryFile);
     const wasActiveVersion = app.entryUrl === targetEntryUrl || !app.entryUrl;
     appVersion.publishStatus = 'unpublished_retired';
     await this.runtimeSessionService.revokeVersion(appVersion.id, 'unpublished');
@@ -775,8 +827,11 @@ export class AppPlatformService {
       );
       if (fallback) {
         app.status = 'published';
-        app.entryMode = 'static';
-        app.entryUrl = this.createStaticEntryUrl(app.code, fallback.version, fallback.entryFile);
+        app.entryMode = app.type === 'iframe' ? 'iframe' : 'static';
+        app.entryUrl =
+          app.type === 'iframe'
+            ? this.iframeVersionEntryUrl(fallback)
+            : this.createStaticEntryUrl(app.code, fallback.version, fallback.entryFile);
       } else {
         app.status = 'approved';
         app.entryUrl = '';
@@ -932,6 +987,37 @@ export class AppPlatformService {
     return parsed.origin;
   }
 
+  private normalizeMarketplaceDetail(dto: CreateAppPackageDto | UpdateAppPackageDto) {
+    const screenshots =
+      dto.screenshots === undefined
+        ? undefined
+        : [
+            ...new Set(
+              dto.screenshots.map((value) =>
+                normalizeExternalHttpUrl(value, {
+                  label: 'App screenshot URL',
+                  httpsOnly: true,
+                }),
+              ),
+            ),
+          ];
+    return {
+      screenshots,
+      documentationUrl: this.normalizeOptionalMarketplaceUrl(
+        dto.documentation_url,
+        'App documentation URL',
+      ),
+      supportUrl: this.normalizeOptionalMarketplaceUrl(dto.support_url, 'App support URL'),
+      changelog: dto.changelog === undefined ? undefined : dto.changelog.trim(),
+    };
+  }
+
+  private normalizeOptionalMarketplaceUrl(value: string | undefined, label: string) {
+    if (value === undefined) return undefined;
+    if (!value.trim()) return '';
+    return normalizeExternalHttpUrl(value, { label, httpsOnly: true });
+  }
+
   private createIframeVersion(input: {
     app: AppPackageEntity;
     version: string;
@@ -939,6 +1025,7 @@ export class AppPlatformService {
     allowedOrigins: string[];
     capabilities: ReturnType<typeof normalizeApprovedCapabilities>;
     operatorId?: number;
+    reviewRequired?: boolean;
   }): Partial<AppPackageVersionEntity> {
     return {
       appId: input.app.id,
@@ -953,17 +1040,19 @@ export class AppPlatformService {
         capabilities: [...input.capabilities],
         allowedOrigins: [...input.allowedOrigins],
       },
-      approvedCapabilities: [...input.capabilities],
+      approvedCapabilities: input.reviewRequired ? [] : [...input.capabilities],
       packagePath: '',
       publishPath: '',
       entryFile: '',
       fileHash: '',
       fileSize: 0,
-      reviewStatus: 'approved',
-      publishStatus: 'published',
+      reviewStatus: input.reviewRequired ? 'pending' : 'approved',
+      publishStatus: input.reviewRequired ? 'unpublished' : 'published',
       reviewMessage: '',
-      reviewerId: input.operatorId ?? null,
-      reviewTime: new Date(),
+      reviewerId: input.reviewRequired ? null : input.operatorId ?? null,
+      submittedBy: input.reviewRequired ? input.operatorId ?? null : null,
+      submittedTime: input.reviewRequired ? new Date() : null,
+      reviewTime: input.reviewRequired ? null : new Date(),
     };
   }
 
@@ -1027,6 +1116,20 @@ export class AppPlatformService {
     if (app.type !== 'static') {
       throw new BadRequestException('Only static app versions can be governed');
     }
+  }
+
+  private assertBrowserApp(app: AppPackageEntity) {
+    if (app.type !== 'static' && app.type !== 'iframe') {
+      throw new BadRequestException('Only static or iframe app versions can be governed');
+    }
+  }
+
+  private iframeVersionEntryUrl(version: Partial<AppPackageVersionEntity>) {
+    const manifest = (version.manifest || {}) as Record<string, unknown>;
+    const allowedOrigins = Array.isArray(manifest.allowedOrigins)
+      ? manifest.allowedOrigins.filter((value): value is string => typeof value === 'string')
+      : undefined;
+    return this.normalizeIframeRuntime(String(manifest.entry || ''), allowedOrigins).entryUrl;
   }
 
   private async findPublishedVersions(appId: number) {
@@ -1117,10 +1220,14 @@ export class AppPlatformService {
     appCode?: string,
     activeEntryUrl?: string,
   ) {
-    const entryUrl =
+    const staticEntryUrl =
       appCode && version.version && version.entryFile
         ? this.createStaticEntryUrl(appCode, version.version, version.entryFile)
         : '';
+    const manifest = (version.manifest || {}) as Record<string, unknown>;
+    const iframeEntryUrl =
+      manifest.type === 'iframe' && typeof manifest.entry === 'string' ? manifest.entry : '';
+    const entryUrl = staticEntryUrl || iframeEntryUrl;
     return {
       id: version.id,
       app_id: version.appId,
@@ -1137,6 +1244,7 @@ export class AppPlatformService {
       publish_path: version.publishPath || '',
       entry_file: version.entryFile || '',
       file_hash: version.fileHash || '',
+      content_hash: version.contentHash || '',
       file_size: Number(version.fileSize) || 0,
       review_status: version.reviewStatus,
       publish_status: version.publishStatus,
@@ -1238,6 +1346,10 @@ export class AppPlatformService {
       trust_level: app.trustLevel || this.trustLevel(app.type as AppPackageType),
       service_health_path: app.serviceHealthPath || '',
       runtime_config: app.runtimeConfig || null,
+      screenshots: Array.isArray(app.screenshots) ? app.screenshots : [],
+      documentation_url: app.documentationUrl || '',
+      support_url: app.supportUrl || '',
+      changelog: app.changelog || '',
       system_module_code: app.systemModuleCode || '',
       saas_module_code: app.saasModuleCode || '',
       sort: Number(app.sort) || 0,

@@ -1,5 +1,10 @@
 import { Column, CreateDateColumn, DeleteDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
+import type {
+  AppFactoryManifestDefaults,
+  AppFactoryRuntimeTarget,
+} from '../app-factory-template-contract';
+
 export type AppFactoryModuleKind = 'static_page';
 export type AppFactoryModuleStatus = 'draft' | 'published' | 'disabled' | 'archived';
 export type AppFactoryModuleVisibility = 'platform' | 'tenant' | 'marketplace' | 'private';
@@ -20,6 +25,21 @@ export class AppFactoryModuleEntity {
 
   @Column({ type: 'varchar', name: 'kind', length: 30, default: 'static_page' })
   kind: AppFactoryModuleKind;
+
+  @Column({ type: 'varchar', name: 'template_code', length: 80, default: '' })
+  templateCode: string;
+
+  @Column({ type: 'varchar', name: 'template_version', length: 40, default: '' })
+  templateVersion: string;
+
+  @Column({ type: 'int', name: 'template_schema_version', unsigned: true, default: 1 })
+  templateSchemaVersion: number;
+
+  @Column({ type: 'varchar', name: 'runtime_target', length: 20, default: 'static' })
+  runtimeTarget: AppFactoryRuntimeTarget;
+
+  @Column({ type: 'json', name: 'manifest_defaults', nullable: true })
+  manifestDefaults?: AppFactoryManifestDefaults | null;
 
   @Column({ type: 'varchar', name: 'category', length: 50, default: '' })
   category: string;

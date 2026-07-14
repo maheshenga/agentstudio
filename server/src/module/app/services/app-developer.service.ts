@@ -43,8 +43,8 @@ export class AppDeveloperService {
     const runtimeType = dto.runtime_type || 'static';
     if (runtimeType === 'service') {
       this.assertDeveloperServiceEnabled();
-      await this.certificationService.assertRuntimeApproved(developerId, 'service');
     }
+    await this.certificationService.assertRuntimeApproved(developerId, runtimeType);
     const payload = {
       code: dto.code.trim(),
       ...metadata,
@@ -52,12 +52,23 @@ export class AppDeveloperService {
       type: runtimeType,
       visibility: 'marketplace' as const,
       developer_name: String(developerName || `User ${developerId}`).slice(0, 100),
+      ...(runtimeType === 'iframe'
+        ? {
+            entry_url: dto.entry_url,
+            allowed_origins: dto.allowed_origins,
+            requested_capabilities: dto.requested_capabilities,
+          }
+        : {}),
     };
-    return runtimeType === 'service'
-      ? this.appPlatformService.createApp(payload, developerId, {
-          trustLevel: 'developer_restricted',
-        })
-      : this.appPlatformService.createApp(payload, developerId);
+    if (runtimeType === 'service') {
+      return this.appPlatformService.createApp(payload, developerId, {
+        trustLevel: 'developer_restricted',
+      });
+    }
+    if (runtimeType === 'iframe') {
+      return this.appPlatformService.createApp(payload, developerId, { reviewRequired: true });
+    }
+    return this.appPlatformService.createApp(payload, developerId);
   }
 
   async updateApp(code: string, dto: UpdateDeveloperAppDto, developerId: number) {
@@ -73,6 +84,7 @@ export class AppDeveloperService {
     if (app.status === 'disabled' || app.status === 'archived') {
       throw new BadRequestException('Disabled or archived apps cannot upload versions');
     }
+    const runtimeType = this.developerRuntimeType(app.type);
     if (app.type === 'service') {
       if (app.trustLevel !== 'developer_restricted') {
         throw new BadRequestException('Developer uploads require a restricted service app');
@@ -81,11 +93,16 @@ export class AppDeveloperService {
       const profile = await this.certificationService.assertRuntimeApproved(developerId, 'service');
       return this.appPlatformService.uploadServiceVersion(code, file, developerId, profile);
     }
+    await this.certificationService.assertRuntimeApproved(developerId, runtimeType);
     return this.appPlatformService.uploadStaticVersion(code, file, developerId);
   }
 
   async submitVersion(code: string, version: string, developerId: number) {
-    await this.findOwnedApp(code, developerId);
+    const app = await this.findOwnedApp(code, developerId);
+    await this.certificationService.assertRuntimeApproved(
+      developerId,
+      this.developerRuntimeType(app.type),
+    );
     return this.appPlatformService.submitVersion(code, version, developerId);
   }
 
@@ -199,6 +216,12 @@ export class AppDeveloperService {
         metadata[key] = dto[key]?.trim();
       }
     }
+    if (dto.screenshots !== undefined) {
+      metadata.screenshots = dto.screenshots.map((value) => value.trim()).filter(Boolean);
+    }
+    for (const key of ['documentation_url', 'support_url', 'changelog'] as const) {
+      if (dto[key] !== undefined) metadata[key] = dto[key]?.trim();
+    }
     return metadata;
   }
 
@@ -208,6 +231,14 @@ export class AppDeveloperService {
       throw new BadRequestException('App name is required');
     }
     return name;
+  }
+
+  private developerRuntimeType(type: AppPackageEntity['type'] | undefined) {
+    const runtimeType = type || 'static';
+    if (!['static', 'iframe', 'service'].includes(runtimeType)) {
+      throw new BadRequestException('Developer app runtime type is not supported');
+    }
+    return runtimeType as 'static' | 'iframe' | 'service';
   }
 
   private assertDeveloperServiceEnabled() {

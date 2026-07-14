@@ -253,7 +253,7 @@ Use `server/.env.example` as a placeholder-only template. Replace `change_me_*` 
 9. Open `/#/saas-platform/payment-config` and confirm Alipay config status and edit form render.
 10. Open or call `GET /api/saas/platform/runtime-health` and confirm dependencies, required env keys, payment config, and operational switches render without exposing secret values.
 11. Open `/#/app-platform/apps` and confirm platform admins can create internal/iframe/static apps, upload static zip packages, review pending versions, publish approved versions, unpublish unsafe versions, rollback to a previous approved version, and disable apps.
-12. Open `/#/app-platform/factory` and confirm platform admins can use curated templates, create static HTML/CSS modules, bind optional SaaS/system modules, preview content, and publish a generated static marketplace app version.
+12. Open `/#/app-platform/factory` and confirm platform admins can select an exact versioned template, create static HTML/CSS modules, bind optional SaaS/system modules, preview page content and generated manifests, and publish a generated static marketplace app version. Confirm service templates generate only a constrained service Manifest V2 and expose no direct publish action.
 13. Open `/#/app-platform/reviews` and confirm reviewers can filter pending versions and perform approve/reject/publish/rollback/unpublish actions from one queue.
 14. Open `/#/app-platform/analytics` with `app:analytics:platform` and confirm 7/30/90-day overview metrics, app rows, sanitized failures, and per-app version and tenant adoption render.
 15. Remove `app:analytics:platform` and confirm the platform analytics menu and API are unavailable to the account.
@@ -340,8 +340,8 @@ pnpm.cmd run verify:app-runtime-live-e2e
 - App marketplace flow uses `GET /api/app-tenant/marketplace`, `POST /api/app-tenant/apps/:code/install`, and `GET /api/app-tenant/apps/:code/open`.
 - Static app packages are reviewed before publishing and served from `/apps-static/`.
 - Platform app versions can be unpublished or rolled back with audit reasons.
-- Module factory flow uses `GET /api/app-platform/factory/modules`, creates static HTML/CSS modules only, and publishes generated apps through the existing marketplace runtime.
-- Module factory template flow uses `GET /api/app-platform/factory/templates`, applies curated static templates into drafts, and never executes template code on the backend.
+- Module factory flow uses `GET /api/app-platform/factory/modules`; static HTML/CSS modules publish through the existing marketplace runtime with a verified content hash, while service factory output must enter App Platform review and cannot publish executable code directly.
+- Module factory template flow uses `GET /api/app-platform/factory/templates`, resolves immutable template versions through `template_version`, preserves template provenance in generated drafts, and never executes template code on the backend. Service templates generate a constrained service Manifest V2 for preview only.
 - Developer app flow uses authenticated ownership checks for every detail and mutation and exposes no platform governance action.
 - Platform app analytics require `app:analytics:platform` and run with tenant filtering explicitly disabled only inside the platform controller boundary.
 - Tenant app analytics require `app:analytics:tenant` and derive tenant identity only from authenticated context through `getTenantId()`.

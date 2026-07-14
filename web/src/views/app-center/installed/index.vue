@@ -4,13 +4,13 @@
       <template #header>
         <div class="app-installed-page__header">
           <div>
-            <h1 class="app-installed-page__title">Installed Apps</h1>
+            <h1 class="app-installed-page__title">已安装应用</h1>
             <p class="app-installed-page__subtitle"
-              >Open tenant apps or remove apps that are no longer needed.</p
+              >打开租户应用、调整权限，或卸载不再需要的应用。</p
             >
           </div>
           <ElButton type="primary" :icon="Refresh" :loading="loading" @click="loadInstalled"
-            >Refresh</ElButton
+            >刷新</ElButton
           >
         </div>
       </template>
@@ -18,37 +18,37 @@
       <div v-if="loadError" class="app-installed-page__load-error">
         <ElAlert type="error" :title="loadError" show-icon :closable="false" />
         <ElButton size="small" type="primary" link :loading="loading" @click="loadInstalled"
-          >Retry</ElButton
+          >重试</ElButton
         >
       </div>
 
       <ElTable v-loading="loading" :data="records" border>
-        <ElTableColumn label="App" min-width="220" show-overflow-tooltip>
+        <ElTableColumn label="应用" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
             <div class="app-installed-page__app-name">{{
-              row.app?.name || `App #${row.app_id}`
+              row.app?.name || `应用 #${row.app_id}`
             }}</div>
             <div class="app-installed-page__app-code">{{ row.app?.code || '-' }}</div>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Type" width="120">
+        <ElTableColumn label="类型" width="120">
           <template #default="{ row }">
             <ElTag :type="typeTagType(row.app?.type)" effect="light">{{
               typeText(row.app?.type)
             }}</ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Status" width="120">
+        <ElTableColumn label="状态" width="120">
           <template #default="{ row }">
             <ElTag
               :type="row.enabled && row.app?.available !== false ? 'success' : 'info'"
               effect="light"
             >
-              {{ row.enabled && row.app?.available !== false ? 'Enabled' : 'Disabled' }}
+              {{ row.enabled && row.app?.available !== false ? '已启用' : '已停用' }}
             </ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Access" min-width="220" show-overflow-tooltip>
+        <ElTableColumn label="可用状态" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
             <span v-if="row.app?.available === false">
               {{ row.app?.availability_reason || availabilityText(row.app?.availability_status) }}
@@ -56,32 +56,32 @@
             <span v-else>{{ availabilityText(row.app?.availability_status) }}</span>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="License" min-width="190">
+        <ElTableColumn label="授权" min-width="190">
           <template #default="{ row }">
             <div class="app-installed-page__license">
               <ElTag :type="commerceTagType(row.app?.commerce?.access_status)" effect="light">
                 {{ commerceLabel(row.app?.commerce?.access_status) }}
               </ElTag>
               <span v-if="row.app?.commerce?.license_expires_at">
-                Expires {{ formatDateTime(row.app.commerce.license_expires_at) }}
+                到期时间 {{ formatDateTime(row.app.commerce.license_expires_at) }}
               </span>
             </div>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Source" width="130">
+        <ElTableColumn label="来源" width="130">
           <template #default="{ row }">{{ sourceText(row.source) }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Installed" width="170">
+        <ElTableColumn label="安装时间" width="170">
           <template #default="{ row }">{{
             formatDateTime(row.installed_time || row.create_time)
           }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Summary" min-width="260" show-overflow-tooltip>
+        <ElTableColumn label="简介" min-width="260" show-overflow-tooltip>
           <template #default="{ row }">{{
             row.app?.summary || row.app?.description || '-'
           }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Capabilities" min-width="180">
+        <ElTableColumn label="有效能力" min-width="180">
           <template #default="{ row }">
             <div v-if="row.effective_capabilities?.length" class="app-installed-page__capabilities">
               <ElTag
@@ -94,11 +94,11 @@
                 {{ capabilityLabel(capability) }}
               </ElTag>
             </div>
-            <span v-else-if="row.tenant_approved_capabilities?.length">Consent inactive</span>
-            <span v-else>None granted</span>
+            <span v-else-if="row.tenant_approved_capabilities?.length">授权当前未生效</span>
+            <span v-else>未授予能力</span>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Actions" fixed="right" width="270">
+        <ElTableColumn label="操作" fixed="right" width="270">
           <template #default="{ row }">
             <ElButton
               v-if="row.app?.commerce_action === 'renew'"
@@ -106,7 +106,7 @@
               type="warning"
               @click="renewApp(row.app?.code)"
             >
-              Renew
+              续费
             </ElButton>
             <ElButton
               v-else-if="row.app?.commerce_action === 'contact_admin'"
@@ -114,7 +114,7 @@
               type="danger"
               disabled
             >
-              Contact administrator
+              联系管理员
             </ElButton>
             <ElButton
               v-if="row.app?.type !== 'service'"
@@ -124,15 +124,15 @@
               :disabled="isOpenDisabled(row)"
               @click="openApp(row.app?.code)"
             >
-              Open
+              打开
             </ElButton>
             <ElTag v-else :type="row.app?.service_callable ? 'success' : 'warning'" effect="light">
               {{
                 row.app?.service_callable
-                  ? 'Callable'
+                  ? '可调用'
                   : row.app?.service_status === 'update_required'
-                    ? 'Update required'
-                    : 'Unavailable'
+                    ? '需要升级'
+                    : '不可用'
               }}
             </ElTag>
             <ElButton
@@ -141,7 +141,7 @@
               :disabled="!row.app?.code || !row.requested_capabilities?.length"
               @click="openPermissions(row)"
             >
-              Permissions
+              权限设置
             </ElButton>
             <ElButton
               link
@@ -151,17 +151,17 @@
               :loading="operatingCode === row.app?.code"
               @click="uninstallApp(row)"
             >
-              Uninstall
+              卸载
             </ElButton>
           </template>
         </ElTableColumn>
         <template #empty>
-          <ElEmpty description="No installed apps" />
+          <ElEmpty description="暂无已安装应用" />
         </template>
       </ElTable>
     </ElCard>
 
-    <ElDialog v-model="permissionDialogVisible" title="App permissions" width="520px">
+    <ElDialog v-model="permissionDialogVisible" title="权限设置" width="520px">
       <div v-loading="permissionLoading" class="app-installed-page__permission-body">
         <ElAlert
           v-if="permissionError"
@@ -173,7 +173,7 @@
         <ElAlert
           v-else-if="!permissionLoading && !platformApprovedCapabilities.length"
           type="warning"
-          title="No capabilities are currently approved by the platform."
+          title="平台当前未批准任何可用能力。"
           :closable="false"
           show-icon
         />
@@ -195,7 +195,7 @@
         <ElButton
           :disabled="permissionSaving || permissionLoading"
           @click="permissionDialogVisible = false"
-          >Cancel</ElButton
+          >取消</ElButton
         >
         <ElButton
           type="danger"
@@ -204,7 +204,7 @@
           :loading="permissionSaving"
           @click="revokeAllCapabilities"
         >
-          Revoke all
+          全部撤销
         </ElButton>
         <ElButton
           type="primary"
@@ -212,7 +212,7 @@
           :loading="permissionSaving"
           @click="savePermissions"
         >
-          Save
+          保存
         </ElButton>
       </template>
     </ElDialog>
@@ -227,10 +227,16 @@
     fetchTenantAppCapabilities,
     updateTenantAppCapabilities,
     uninstallTenantApp,
-    type AppPackageType,
     type TenantAppInstallRecord
   } from '@/api/app-marketplace'
-  import type { AppCommerceAccessStatus } from '@/api/app-commerce'
+  import {
+    appAvailabilityText as availabilityText,
+    appCapabilityLabel as capabilityLabel,
+    appCenterTypeTagType as typeTagType,
+    appCenterTypeText as typeText,
+    appCommerceLabel as commerceLabel,
+    appCommerceTagType as commerceTagType
+  } from '../shared/app-center-display'
 
   defineOptions({ name: 'AppCenterInstalledPage' })
 
@@ -256,74 +262,20 @@
     hour12: false
   })
 
-  function typeText(type?: AppPackageType) {
-    const map: Record<string, string> = {
-      internal: 'Internal',
-      static: 'Static',
-      iframe: 'Iframe',
-      service: 'Service'
-    }
-    return type ? map[type] || type : '-'
-  }
-
-  function typeTagType(type?: AppPackageType) {
-    const map: Record<string, 'success' | 'warning' | 'info'> = {
-      internal: 'success',
-      static: 'warning',
-      iframe: 'info'
-    }
-    return type ? map[type] || 'info' : 'info'
-  }
-
   function sourceText(source?: string) {
     const map: Record<string, string> = {
-      marketplace: 'Marketplace',
-      plan: 'Plan',
-      platform: 'Platform',
-      manual: 'Manual'
+      marketplace: '应用市场',
+      plan: '套餐包含',
+      platform: '平台安装',
+      manual: '手动安装'
     }
     return source ? map[source] || source : '-'
-  }
-
-  function availabilityText(status?: string) {
-    const map: Record<string, string> = {
-      available: 'Ready',
-      missing_plan_module: 'Requires upgrade',
-      missing_system_module: 'Module disabled for tenant',
-      system_module_unavailable: 'System module unavailable'
-    }
-    return status ? map[status] || status : 'Ready'
   }
 
   function isOpenDisabled(row: TenantAppInstallRecord) {
     return (
       row.app?.available === false || row.app?.can_open === false || !row.enabled || !row.app?.code
     )
-  }
-
-  function commerceLabel(status?: AppCommerceAccessStatus) {
-    const map: Record<string, string> = {
-      legacy_free: 'Legacy free',
-      free: 'Free',
-      included: 'Included',
-      trialing: 'Trial active',
-      licensed: 'Licensed',
-      purchase_required: 'Purchase required',
-      expired: 'Expired',
-      revoked: 'Revoked'
-    }
-    return status ? map[status] || status : 'Free'
-  }
-
-  function commerceTagType(status?: AppCommerceAccessStatus) {
-    if (status === 'expired' || status === 'purchase_required') return 'warning'
-    if (status === 'revoked') return 'danger'
-    if (status === 'licensed' || status === 'trialing' || status === 'included') return 'success'
-    return 'info'
-  }
-
-  function capabilityLabel(capability: string) {
-    return capability === 'context.read' ? 'Read tenant and user context' : capability
   }
 
   function formatDateTime(value: unknown) {
@@ -339,7 +291,7 @@
       records.value = await fetchTenantInstalledApps()
     } catch (error) {
       console.error('[AppCenterInstalledPage] load installed failed:', error)
-      loadError.value = 'Installed apps failed to load'
+      loadError.value = '已安装应用加载失败'
       ElMessage.error(loadError.value)
     } finally {
       loading.value = false
@@ -359,15 +311,15 @@
   async function uninstallApp(row: TenantAppInstallRecord) {
     const code = row.app?.code
     if (!code) return
-    await ElMessageBox.confirm(`Uninstall ${row.app?.name || code}?`, 'Uninstall app', {
+    await ElMessageBox.confirm(`确认卸载 ${row.app?.name || code}？`, '卸载应用', {
       type: 'warning',
-      confirmButtonText: 'Uninstall',
-      cancelButtonText: 'Cancel'
+      confirmButtonText: '卸载',
+      cancelButtonText: '取消'
     })
     operatingCode.value = code
     try {
       await uninstallTenantApp(code)
-      ElMessage.success('App uninstalled')
+      ElMessage.success('应用已卸载')
       await loadInstalled()
     } finally {
       operatingCode.value = ''
@@ -390,7 +342,7 @@
         state.platform_approved.includes(capability)
       )
     } catch {
-      permissionError.value = 'Permissions failed to load. Close and try again.'
+      permissionError.value = '权限加载失败，请关闭后重试。'
     } finally {
       permissionLoading.value = false
     }
@@ -402,11 +354,11 @@
     permissionError.value = ''
     try {
       await updateTenantAppCapabilities(permissionAppCode.value, capabilities)
-      ElMessage.success('App permissions updated')
+      ElMessage.success('应用权限已更新')
       permissionDialogVisible.value = false
       await loadInstalled()
     } catch {
-      permissionError.value = 'Permissions could not be saved. Try again.'
+      permissionError.value = '权限保存失败，请重试。'
     } finally {
       permissionSaving.value = false
     }

@@ -14,6 +14,7 @@ import { SystemTenantModuleConfigEntity } from './entities/system-tenant-module-
 import { SystemTenantModuleEntity } from './entities/system-tenant-module.entity';
 import { SysMenuEntity } from '../system/menu/entities/menu.entity';
 import { SystemModuleAccessService } from './services/system-module-access.service';
+import { SystemModuleAccessCacheService } from './services/system-module-access-cache.service';
 import { SystemModuleRegistryService } from './services/system-module-registry.service';
 import { SystemModulePlatformController } from './system-module-platform.controller';
 import { SystemModuleTenantController } from './system-module-tenant.controller';
@@ -37,7 +38,15 @@ import { SystemModuleTenantController } from './system-module-tenant.controller'
     SaasModule,
   ],
   controllers: [SystemModulePlatformController, SystemModuleTenantController],
-  providers: [SystemModuleRegistryService, SystemModuleAccessService],
-  exports: [SystemModuleRegistryService, SystemModuleAccessService],
+  providers: [
+    SystemModuleRegistryService,
+    SystemModuleAccessService,
+    SystemModuleAccessCacheService,
+  ],
+  exports: [
+    SystemModuleRegistryService,
+    SystemModuleAccessService,
+    SystemModuleAccessCacheService,
+  ],
 })
 export class SystemModuleRegistryModule {}

@@ -8,7 +8,10 @@
   },
   "scripts": {
     "dev": "vite --open",
-    "build": "vite build && vue-tsc --noEmit",
+    "build": "vite build && tsx scripts/verify-build-budget.ts && vue-tsc --noEmit",
+    "verify:build-budget": "tsx scripts/verify-build-budget.ts",
+    "verify:app-center-localization": "tsx scripts/verify-app-center-localization.ts",
+    "verify:app-center-display": "tsx scripts/verify-app-center-display.ts",
     "serve": "vite preview",
     "lint": "eslint",
     "fix": "eslint --fix",

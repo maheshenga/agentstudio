@@ -15,6 +15,7 @@ import {
   isBaselineTenantSystemModule,
   resolveSystemModuleCodesFromSaasModules,
 } from '../system-module-entitlement.util';
+import { SystemModuleAccessCacheService } from './system-module-access-cache.service';
 
 export interface AssertModuleAccessOptions {
   tenantId?: number;
@@ -65,6 +66,7 @@ export class SystemModuleAccessService {
     @InjectRepository(SystemModuleSaasBridgeEntity)
     private readonly bridgeRepo: Repository<SystemModuleSaasBridgeEntity>,
     private readonly saasModuleService: SaasModuleService,
+    private readonly accessCache: SystemModuleAccessCacheService,
   ) {}
 
   async assertModuleAccess(options: AssertModuleAccessOptions) {
@@ -96,6 +98,14 @@ export class SystemModuleAccessService {
   }
 
   async diagnoseModuleAccess(options: AssertModuleAccessOptions): Promise<SystemModuleAccessDiagnosis> {
+    return this.accessCache.getOrLoad(this.accessCacheKey(options), () =>
+      this.diagnoseModuleAccessUncached(options),
+    );
+  }
+
+  private async diagnoseModuleAccessUncached(
+    options: AssertModuleAccessOptions,
+  ): Promise<SystemModuleAccessDiagnosis> {
     let tenantEntitlement:
       | {
           enabled: boolean;
@@ -215,6 +225,23 @@ export class SystemModuleAccessService {
       tenant_entitlement_source: tenantEntitlement?.source ?? null,
       tenant_saas_module_codes: tenantEntitlement?.tenantSaasModuleCodes ?? options.saasModuleCodes ?? [],
       suggestions: [],
+    });
+  }
+
+  private accessCacheKey(options: AssertModuleAccessOptions) {
+    const normalizeCodes = (values: Array<string | undefined>) =>
+      [...new Set(values.filter((value): value is string => Boolean(value)))].sort();
+    const permissionGranted = options.permission
+      ? (options.userPermissions || []).includes(options.permission)
+      : true;
+    return JSON.stringify({
+      moduleCode: options.moduleCode,
+      tenantId: options.tenantId ?? null,
+      requiredSaasModuleCode: options.requiredSaasModuleCode || '',
+      requiredAnySaasModuleCodes: normalizeCodes(options.requiredAnySaasModuleCodes || []),
+      saasModuleCodes: normalizeCodes(options.saasModuleCodes || []),
+      permission: options.permission || '',
+      permissionGranted,
     });
   }
 

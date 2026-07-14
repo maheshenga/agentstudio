@@ -13,6 +13,7 @@ import {
   StreamableFile,
   UploadedFile,
   UseFilters,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -24,6 +25,11 @@ import { memoryStorage } from 'multer';
 import { Public } from '../../common/decorators/auth.decorator';
 import { ResultData } from '../../common/utils/result';
 import { AppRuntimeHttpExceptionFilter } from './app-runtime-http-exception.filter';
+import {
+  AppRuntimeAuthorizedRequest,
+  getAppRuntimeRequestMetadata,
+  getAppRuntimeToken,
+} from './app-runtime-request';
 import { SetAppRuntimeKvDto } from './dto/app-runtime-kv.dto';
 import { AppRuntimeFileParamsDto } from './dto/app-runtime-file.dto';
 import { AppRuntimeHttpRequestDto, AppRuntimeWebhookDto } from './dto/app-runtime-http.dto';
@@ -37,6 +43,7 @@ import { AppRuntimeKvService } from './services/app-runtime-kv.service';
 import { AppRuntimeHttpService } from './services/app-runtime-http.service';
 import { AppRuntimeSessionService } from './services/app-runtime-session.service';
 import { AppServiceInvocationPolicyService } from './services/app-service-invocation-policy.service';
+import { AppRuntimeFileUploadGuard } from './guards/app-runtime-file-upload.guard';
 
 @ApiTags('App Runtime')
 @Controller('api/app-runtime')
@@ -55,12 +62,11 @@ export class AppRuntimeController {
   @Public()
   @ApiOperation({ summary: 'Get sanitized app runtime context' })
   async context(@Req() request: Request) {
-    const token = this.getRuntimeToken(request);
-    const session = await this.sessionService.authorize(token, 'context.read', {
-      requestId: this.header(request, 'x-request-id', 100),
-      ip: String(request.ip || '').slice(0, 80),
-      userAgent: this.header(request, 'user-agent', 500),
-    });
+    const session = await this.sessionService.authorize(
+      getAppRuntimeToken(request),
+      'context.read',
+      getAppRuntimeRequestMetadata(request),
+    );
     const context = await this.contextService.buildAuthorizedContext(session);
     if (!context) throw new ServiceUnavailableException('App runtime context is unavailable');
     return ResultData.ok(context);
@@ -68,14 +74,21 @@ export class AppRuntimeController {
 
   @Post('files')
   @Public()
+  @UseGuards(AppRuntimeFileUploadGuard)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
       limits: { files: 1, fileSize: 50 * 1024 * 1024 },
     }),
   )
-  async filesUpload(@Req() request: Request, @UploadedFile() file: Express.Multer.File) {
-    const session = await this.authorize(request, 'files.write');
+  async filesUpload(
+    @Req() request: AppRuntimeAuthorizedRequest,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    const session = request.appRuntimeSession;
+    if (!session) {
+      throw new BadRequestException('App runtime upload authorization is required');
+    }
     return ResultData.ok(await this.fileService.upload(session, file));
   }
 
@@ -182,32 +195,10 @@ export class AppRuntimeController {
       | 'webhook.emit'
       | 'service.invoke',
   ) {
-    return this.sessionService.authorize(this.getRuntimeToken(request), capability, {
-      requestId: this.header(request, 'x-request-id', 100),
-      ip: String(request.ip || '').slice(0, 80),
-      userAgent: this.header(request, 'user-agent', 500),
-    });
-  }
-
-  private getRuntimeToken(request: Request) {
-    const rawHeaders = Array.isArray(request.rawHeaders) ? request.rawHeaders : [];
-    let count = 0;
-    for (let index = 0; index < rawHeaders.length; index += 2) {
-      if (String(rawHeaders[index] || '').toLowerCase() === 'x-app-runtime-token') count += 1;
-    }
-    const value = request.headers?.['x-app-runtime-token'];
-    if (count !== 1 || Array.isArray(value) || typeof value !== 'string') {
-      throw new BadRequestException('A single app runtime token header is required');
-    }
-    const token = value.trim();
-    if (!token || token.length > 256 || token.includes(',')) {
-      throw new BadRequestException('Invalid app runtime token header');
-    }
-    return token;
-  }
-
-  private header(request: Request, name: string, maxLength: number) {
-    const value = request.headers?.[name];
-    return (Array.isArray(value) ? value[0] : String(value || '')).slice(0, maxLength);
+    return this.sessionService.authorize(
+      getAppRuntimeToken(request),
+      capability,
+      getAppRuntimeRequestMetadata(request),
+    );
   }
 }

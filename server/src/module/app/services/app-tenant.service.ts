@@ -1,8 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, IsNull, Repository } from 'typeorm';
+import { DataSource, FindOptionsWhere, In, IsNull, Like, Repository } from 'typeorm';
 
 import { normalizeExternalHttpUrl } from '../../../common/utils/safe-url.util';
+import {
+  normalizeAppPage,
+  type AppPageQuery,
+  type AppPageResult,
+} from '../app-page';
 import {
   AppLicenseAccessService,
   type TenantAppCommerceAccess,
@@ -26,6 +31,12 @@ export interface AppOpenClientInfo {
   userAgent?: string;
 }
 
+export interface AppMarketplaceListQuery extends AppPageQuery {
+  keyword?: string;
+  category?: string;
+  type?: AppPackageEntity['type'];
+}
+
 export type AppAvailabilityStatus =
   | 'available'
   | 'missing_plan_module'
@@ -38,6 +49,21 @@ export interface AppAvailability {
   availability_reason: string;
   required_saas_module_code: string;
   required_system_module_code: string;
+}
+
+interface AppCapabilityState {
+  requested: string[];
+  platform_approved: string[];
+  tenant_approved: string[];
+  effective: string[];
+}
+
+interface AppCatalogVersionState {
+  selected: AppPackageVersionEntity | null;
+  latest: AppPackageVersionEntity | null;
+  byId: Map<number, AppPackageVersionEntity>;
+  capability: AppCapabilityState;
+  latestCapability: AppCapabilityState;
 }
 
 const STATIC_APP_SANDBOX = 'allow-scripts allow-forms allow-popups allow-downloads';
@@ -57,6 +83,7 @@ const APP_OPEN_FAILURE_MESSAGES: Record<AppOpenFailureReason, string> = {
   license_revoked: 'Application license is inactive',
   service_not_openable: 'Service apps cannot be opened directly',
   published_version_missing: 'App has no published version',
+  upgrade_required: 'Installed app version is no longer available; upgrade required',
   open_metadata_error: 'Unable to open app',
 };
 
@@ -83,20 +110,51 @@ export class AppTenantService {
     private readonly dataSource: DataSource,
   ) {}
 
-  async listMarketplace(tenantId: number) {
-    const [allApps, installs] = await Promise.all([
-      this.appRepo.find({ where: { deleteTime: IsNull() }, order: { sort: 'ASC', id: 'ASC' } }),
-      this.installRepo.find({ where: { tenantId, deleteTime: IsNull() }, order: { id: 'ASC' } }),
-    ]);
-    const apps = allApps
-      .filter((app) => app.status === 'published')
-      .filter((app) =>
-        ['marketplace', 'tenant', 'platform'].includes(app.visibility || 'marketplace'),
-      );
+  async listMarketplace(tenantId: number): Promise<Record<string, unknown>[]>;
+  async listMarketplace(
+    tenantId: number,
+    query: AppMarketplaceListQuery,
+  ): Promise<AppPageResult<Record<string, unknown>>>;
+  async listMarketplace(
+    tenantId: number,
+    query?: AppMarketplaceListQuery,
+  ): Promise<Record<string, unknown>[] | AppPageResult<Record<string, unknown>>> {
+    const normalizedQuery = query || {};
+    const { page, limit, skip } = normalizeAppPage(normalizedQuery);
+    const baseWhere: FindOptionsWhere<AppPackageEntity> = {
+      deleteTime: IsNull(),
+      status: 'published',
+      visibility: In(['marketplace', 'tenant', 'platform']),
+      ...(normalizedQuery.type ? { type: normalizedQuery.type } : {}),
+      ...(normalizedQuery.category?.trim()
+        ? { category: normalizedQuery.category.trim() }
+        : {}),
+    };
+    const keyword = normalizedQuery.keyword?.trim();
+    const where: FindOptionsWhere<AppPackageEntity> | FindOptionsWhere<AppPackageEntity>[] = keyword
+      ? ['code', 'name', 'category', 'summary'].map((field) => ({
+          ...baseWhere,
+          [field]: Like(`%${keyword}%`),
+        }))
+      : baseWhere;
+    const [apps, total] = await this.appRepo.findAndCount({
+      where,
+      order: { sort: 'ASC', id: 'ASC' },
+      skip,
+      take: limit,
+    });
+    const appIds = apps.map((app) => Number(app.id));
+    const installs = appIds.length
+      ? await this.installRepo.find({
+          where: { tenantId, appId: In(appIds), deleteTime: IsNull() },
+          order: { id: 'ASC' },
+        })
+      : [];
     const installByAppId = new Map(installs.map((install) => [Number(install.appId), install]));
-    const [capabilityStateByAppId, serviceStateByAppId] = await Promise.all([
-      this.loadCapabilityStates(tenantId, apps, installByAppId),
-      this.loadServiceRuntimeStates(apps),
+    const serviceStateByAppId = await this.loadServiceRuntimeStates(apps);
+    const [versionStateByAppId, availabilityByAppId] = await Promise.all([
+      this.loadVersionStates(tenantId, apps, installByAppId, serviceStateByAppId),
+      this.loadAvailabilityStates(tenantId, apps),
     ]);
     const commerceByAppId = await this.appLicenseAccessService.getAccessStates(
       tenantId,
@@ -106,13 +164,12 @@ export class AppTenantService {
       })),
     );
 
-    return Promise.all(
-      apps.map(async (app) => {
+    const list = apps.map((app) => {
         const install = installByAppId.get(Number(app.id));
         const installed = Boolean(install && Number(install.enabled) === 1);
-        const capabilityState =
-          capabilityStateByAppId.get(Number(app.id)) || this.emptyCapabilityState();
-        const availability = await this.getAppAvailability(tenantId, app);
+        const versionState =
+          versionStateByAppId.get(Number(app.id)) || this.emptyVersionState();
+        const availability = availabilityByAppId.get(Number(app.id))!;
         const commerce = this.requireCommerceState(commerceByAppId, app.id);
         const serviceState = this.toTenantServiceState(
           app,
@@ -127,10 +184,26 @@ export class AppTenantService {
           installed,
           ...this.toCommerceResponse(commerce, availability, installed, app, serviceState),
           ...serviceState,
-          ...this.toCapabilityResponse(capabilityState),
+          ...this.toCapabilityResponse(versionState.capability),
+          ...this.toVersionResponse(app, install, versionState),
         };
-      }),
-    );
+      });
+    const result = { list, total, page, limit };
+    return query === undefined ? list : result;
+  }
+
+  private async loadAvailabilityStates(tenantId: number, apps: AppPackageEntity[]) {
+    const byRequirement = new Map<string, Promise<AppAvailability>>();
+    const entries = apps.map(async (app) => {
+      const key = `${app.saasModuleCode || ''}\0${app.systemModuleCode || ''}`;
+      let availability = byRequirement.get(key);
+      if (!availability) {
+        availability = this.getAppAvailability(tenantId, app);
+        byRequirement.set(key, availability);
+      }
+      return [Number(app.id), await availability] as const;
+    });
+    return new Map(await Promise.all(entries));
   }
 
   async listInstalled(tenantId: number) {
@@ -146,10 +219,13 @@ export class AppTenantService {
       : [];
     const appById = new Map(apps.map((app) => [Number(app.id), app]));
     const installByAppId = new Map(installs.map((install) => [Number(install.appId), install]));
-    const [capabilityStateByAppId, serviceStateByAppId] = await Promise.all([
-      this.loadCapabilityStates(tenantId, apps, installByAppId),
-      this.loadServiceRuntimeStates(apps),
-    ]);
+    const serviceStateByAppId = await this.loadServiceRuntimeStates(apps);
+    const versionStateByAppId = await this.loadVersionStates(
+      tenantId,
+      apps,
+      installByAppId,
+      serviceStateByAppId,
+    );
     const commerceByAppId = await this.appLicenseAccessService.getAccessStates(
       tenantId,
       apps.map((app) => ({
@@ -161,11 +237,11 @@ export class AppTenantService {
     return Promise.all(
       installs.map(async (install) => {
         const app = appById.get(Number(install.appId));
-        const capabilityState =
-          capabilityStateByAppId.get(Number(install.appId)) || this.emptyCapabilityState();
+        const versionState =
+          versionStateByAppId.get(Number(install.appId)) || this.emptyVersionState();
         return {
           ...this.toInstallResponse(install),
-          ...this.toCapabilityResponse(capabilityState),
+          ...this.toCapabilityResponse(versionState.capability),
           app: app
             ? await this.toInstalledAppResponse(
                 tenantId,
@@ -173,6 +249,7 @@ export class AppTenantService {
                 install,
                 commerceByAppId,
                 serviceStateByAppId,
+                versionState,
               )
             : null,
         };
@@ -199,6 +276,13 @@ export class AppTenantService {
       where: { tenantId, appId: app.id },
       withDeleted: true,
     } as any);
+    if (
+      existing &&
+      Number(existing.enabled) === 1 &&
+      Number(existing.versionId || 0) !== Number(version?.id || 0)
+    ) {
+      throw new BadRequestException('Use the app upgrade endpoint to change versions');
+    }
 
     const installedTime = new Date();
     const install =
@@ -241,6 +325,90 @@ export class AppTenantService {
       return savedInstall;
     });
     return this.toInstallResponse(saved);
+  }
+
+  async upgradeApp(
+    tenantId: number,
+    code: string,
+    operatorId?: number,
+    capabilities: string[] = [],
+  ) {
+    const app = await this.findPublishedApp(code);
+    if (!['static', 'iframe', 'service'].includes(app.type)) {
+      throw new BadRequestException('App type does not support version upgrades');
+    }
+    this.assertCommerceAccess(
+      await this.appLicenseAccessService.getAccessState(tenantId, { ...app, installed: true }),
+      'open',
+    );
+    this.assertAvailability(await this.getAppAvailability(tenantId, app));
+
+    const existing = await this.installRepo.findOne({
+      where: { tenantId, appId: app.id, enabled: 1, deleteTime: IsNull() },
+    });
+    if (!existing) throw new BadRequestException('App is not installed');
+
+    const target =
+      app.type === 'service'
+        ? await this.findActiveServiceVersion(app.id)
+        : await this.findPublishedVersion(app.id);
+    if (Number(existing.versionId || 0) === Number(target.id)) {
+      throw new BadRequestException('App is already on the latest available version');
+    }
+
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const installRepo = manager.getRepository(TenantAppInstallEntity);
+      const lockedInstall = await installRepo.findOne({
+        where: { id: existing.id, tenantId, appId: app.id, enabled: 1, deleteTime: IsNull() },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!lockedInstall) throw new BadRequestException('App installation changed during upgrade');
+      if (Number(lockedInstall.versionId || 0) === Number(target.id)) {
+        throw new BadRequestException('App is already on the latest available version');
+      }
+
+      const availableTarget = await manager.getRepository(AppPackageVersionEntity).findOne({
+        where: {
+          id: target.id,
+          appId: app.id,
+          reviewStatus: 'approved',
+          publishStatus: 'published',
+          deleteTime: IsNull(),
+        },
+      } as any);
+      if (!availableTarget) throw new BadRequestException('Upgrade version is no longer available');
+
+      lockedInstall.versionId = availableTarget.id;
+      lockedInstall.installedBy = operatorId ?? null;
+      lockedInstall.installedTime = new Date();
+      const savedInstall = await installRepo.save(lockedInstall);
+      await this.capabilityPolicy.setTenantCapabilities(
+        {
+          tenantId,
+          appId: app.id,
+          versionId: availableTarget.id,
+          capabilities,
+          operatorId,
+        },
+        manager.getRepository(AppCapabilityGrantEntity),
+      );
+      return { install: savedInstall, version: availableTarget };
+    });
+
+    await this.appRuntimeSessionService.revokeInstall(tenantId, saved.install.id, 'upgraded');
+    return {
+      ...this.toInstallResponse(saved.install),
+      version_id: saved.version.id,
+      version: saved.version.version,
+      update_available: false,
+      ...this.toCapabilityResponse(
+        await this.capabilityPolicy.getCapabilityState(
+          tenantId,
+          saved.version.id,
+          normalizeAppCapabilities(saved.version.manifest),
+        ),
+      ),
+    };
   }
 
   async getCapabilities(tenantId: number, code: string) {
@@ -384,6 +552,12 @@ export class AppTenantService {
           version = await this.resolveOpenVersion(app, install);
         } catch (error) {
           if (
+            error instanceof BadRequestException &&
+            error.message === APP_OPEN_FAILURE_MESSAGES.upgrade_required
+          ) {
+            return await fail('upgrade_required', error);
+          }
+          if (
             app.type === 'static' &&
             error instanceof BadRequestException &&
             error.message === 'App has no published version'
@@ -393,11 +567,6 @@ export class AppTenantService {
           if (app.type === 'static') throw error;
           version = null;
         }
-      }
-
-      if (version && Number(install.versionId || 0) !== Number(version.id)) {
-        install.versionId = version.id;
-        await this.installRepo.save(install);
       }
 
       openMode = app.type === 'internal' ? 'internal_route' : 'iframe';
@@ -535,6 +704,7 @@ export class AppTenantService {
     install: TenantAppInstallEntity,
     commerceByAppId: Map<number, TenantAppCommerceAccess>,
     serviceStateByAppId: Map<number, { versionId: number; version: string }>,
+    versionState: AppCatalogVersionState,
   ) {
     const availability = await this.getAppAvailability(tenantId, app);
     const commerce = this.requireCommerceState(commerceByAppId, app.id);
@@ -556,6 +726,7 @@ export class AppTenantService {
         serviceState,
       ),
       ...serviceState,
+      ...this.toVersionResponse(app, install, versionState),
     };
   }
 
@@ -783,23 +954,30 @@ export class AppTenantService {
     if (!install) {
       throw new BadRequestException('App is not installed');
     }
-    const version = install.versionId
-      ? await this.findVersionById(app.id, Number(install.versionId))
-      : await this.findPublishedVersion(app.id);
+    if (!install.versionId) {
+      throw new BadRequestException(APP_OPEN_FAILURE_MESSAGES.upgrade_required);
+    }
+    let version: AppPackageVersionEntity;
+    try {
+      version = await this.findVersionById(app.id, Number(install.versionId));
+    } catch (error) {
+      if (!(error instanceof BadRequestException)) throw error;
+      throw new BadRequestException(APP_OPEN_FAILURE_MESSAGES.upgrade_required);
+    }
     return { app, install, version };
   }
 
-  private async loadCapabilityStates(
+  private async loadVersionStates(
     tenantId: number,
     apps: AppPackageEntity[],
     installByAppId: Map<number, TenantAppInstallEntity>,
+    serviceStateByAppId: Map<number, { versionId: number; version: string }>,
   ) {
     const versionedAppIds = apps
       .filter((app) => app.type === 'static' || app.type === 'iframe' || app.type === 'service')
       .map((app) => Number(app.id))
       .filter(Boolean);
-    if (!versionedAppIds.length)
-      return new Map<number, ReturnType<AppTenantService['emptyCapabilityState']>>();
+    if (!versionedAppIds.length) return new Map<number, AppCatalogVersionState>();
 
     const versions = await this.versionRepo.find({
       where: {
@@ -817,17 +995,56 @@ export class AppTenantService {
       if (!latestByAppId.has(appId)) latestByAppId.set(appId, version);
     }
 
+    const versionsByAppId = new Map<number, AppPackageVersionEntity[]>();
+    for (const version of versions) {
+      const appId = Number(version.appId);
+      versionsByAppId.set(appId, [...(versionsByAppId.get(appId) || []), version]);
+    }
+
+    const appById = new Map(apps.map((app) => [Number(app.id), app]));
     const entries = await Promise.all(
       versionedAppIds.map(async (appId) => {
-        const installedVersionId = Number(installByAppId.get(appId)?.versionId || 0);
-        const version = versionById.get(installedVersionId) || latestByAppId.get(appId);
-        if (!version) return [appId, this.emptyCapabilityState()] as const;
-        const state = await this.capabilityPolicy.getCapabilityState(
-          tenantId,
-          version.id,
-          normalizeAppCapabilities(version.manifest),
-        );
-        return [appId, state] as const;
+        const app = appById.get(appId);
+        const install = installByAppId.get(appId);
+        const installedVersionId = Number(install?.versionId || 0);
+        const selected =
+          Number(install?.enabled) === 1 && installedVersionId
+            ? versionById.get(installedVersionId) || null
+            : latestByAppId.get(appId) || null;
+        const serviceVersionId = serviceStateByAppId.get(appId)?.versionId;
+        const latest =
+          app?.type === 'service'
+            ? serviceVersionId
+              ? versionById.get(serviceVersionId) || null
+              : null
+            : latestByAppId.get(appId) || null;
+        const capability = selected
+          ? await this.capabilityPolicy.getCapabilityState(
+              tenantId,
+              selected.id,
+              normalizeAppCapabilities(selected.manifest),
+            )
+          : this.emptyCapabilityState();
+        const latestCapability =
+          latest && Number(latest.id) !== Number(selected?.id || 0)
+            ? await this.capabilityPolicy.getCapabilityState(
+                tenantId,
+                latest.id,
+                normalizeAppCapabilities(latest.manifest),
+              )
+            : capability;
+        return [
+          appId,
+          {
+            selected,
+            latest,
+            byId: new Map(
+              (versionsByAppId.get(appId) || []).map((version) => [Number(version.id), version]),
+            ),
+            capability,
+            latestCapability,
+          } satisfies AppCatalogVersionState,
+        ] as const;
       }),
     );
     return new Map(entries);
@@ -926,6 +1143,56 @@ export class AppTenantService {
     };
   }
 
+  private emptyVersionState(): AppCatalogVersionState {
+    const capability = this.emptyCapabilityState();
+    return {
+      selected: null,
+      latest: null,
+      byId: new Map(),
+      capability,
+      latestCapability: capability,
+    };
+  }
+
+  private toVersionResponse(
+    app: AppPackageEntity,
+    install: TenantAppInstallEntity | undefined,
+    state: AppCatalogVersionState,
+  ) {
+    if (!['static', 'iframe', 'service'].includes(app.type)) {
+      return {
+        installed_version_id: null,
+        installed_version: '',
+        latest_version_id: null,
+        latest_version: '',
+        update_available: false,
+        latest_requested_capabilities: [] as string[],
+        latest_platform_approved_capabilities: [] as string[],
+        new_capabilities: [] as string[],
+      };
+    }
+
+    const installedVersionId = Number(install?.versionId || 0);
+    const installedVersion = installedVersionId ? state.byId.get(installedVersionId) || null : null;
+    const latestVersion = state.latest;
+    const latestVersionId = Number(latestVersion?.id || 0);
+    const installedRequested = new Set(normalizeAppCapabilities(installedVersion?.manifest));
+    const latestRequested = normalizeAppCapabilities(latestVersion?.manifest);
+
+    return {
+      installed_version_id: installedVersionId || null,
+      installed_version: installedVersion?.version || '',
+      latest_version_id: latestVersionId || null,
+      latest_version: latestVersion?.version || '',
+      update_available:
+        Boolean(install && Number(install.enabled) === 1 && installedVersionId && latestVersionId) &&
+        installedVersionId !== latestVersionId,
+      latest_requested_capabilities: latestRequested,
+      latest_platform_approved_capabilities: state.latestCapability.platform_approved,
+      new_capabilities: latestRequested.filter((capability) => !installedRequested.has(capability)),
+    };
+  }
+
   private toCapabilityResponse(state: ReturnType<AppTenantService['emptyCapabilityState']>) {
     return {
       requested_capabilities: state.requested,
@@ -936,16 +1203,16 @@ export class AppTenantService {
   }
 
   private async resolveOpenVersion(app: AppPackageEntity, install: TenantAppInstallEntity) {
-    if (install.versionId) {
-      try {
-        return await this.findVersionById(app.id, Number(install.versionId));
-      } catch (error) {
-        if (!(error instanceof BadRequestException)) {
-          throw error;
-        }
-      }
+    if (!install.versionId) {
+      await this.findPublishedVersion(app.id);
+      throw new BadRequestException(APP_OPEN_FAILURE_MESSAGES.upgrade_required);
     }
-    return this.findPublishedVersion(app.id);
+    try {
+      return await this.findVersionById(app.id, Number(install.versionId));
+    } catch (error) {
+      if (!(error instanceof BadRequestException)) throw error;
+      throw new BadRequestException(APP_OPEN_FAILURE_MESSAGES.upgrade_required);
+    }
   }
 
   private async findVersionById(appId: number, id: number) {
@@ -974,6 +1241,10 @@ export class AppTenantService {
       icon: app.icon || '',
       summary: app.summary || '',
       description: app.description || '',
+      screenshots: Array.isArray(app.screenshots) ? app.screenshots : [],
+      documentation_url: app.documentationUrl || '',
+      support_url: app.supportUrl || '',
+      changelog: app.changelog || '',
       status: app.status,
       visibility: app.visibility || 'marketplace',
       entry_mode: app.entryMode || '',

@@ -45,6 +45,7 @@ export class AppOpenLogEntity {
     | 'license_revoked'
     | 'service_not_openable'
     | 'published_version_missing'
+    | 'upgrade_required'
     | 'open_metadata_error';
 
   @Column({ type: 'varchar', name: 'failure_message', length: 255, default: '' })

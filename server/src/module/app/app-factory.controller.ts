@@ -7,6 +7,8 @@ import { User } from '../system/user/user.decorator';
 import type { UserDto } from '../system/user/user.decorator';
 import {
   AppFactoryListQueryDto,
+  AppFactoryManifestPreviewQueryDto,
+  AppFactoryTemplateDetailQueryDto,
   AppFactoryTemplateListQueryDto,
   PublishAppFactoryModuleDto,
   SaveAppFactoryModuleDto,
@@ -37,8 +39,10 @@ export class AppFactoryController {
   @Get('templates/:code')
   @ApiOperation({ summary: 'Get app factory template' })
   @RequirePermission('app:factory:template:list')
-  getTemplate(@Param('code') code: string) {
-    return this.templateService.getTemplate(code).then((data) => ResultData.ok(data));
+  getTemplate(@Param('code') code: string, @Query() query: AppFactoryTemplateDetailQueryDto) {
+    return this.templateService
+      .getTemplate(code, query.template_version)
+      .then((data) => ResultData.ok(data));
   }
 
   @Get('modules')
@@ -53,6 +57,15 @@ export class AppFactoryController {
   @RequirePermission('app:factory:create')
   createModule(@Body() body: SaveAppFactoryModuleDto, @User() user: UserDto) {
     return this.factoryService.createModule(body, this.getOperatorId(user)).then((data) => ResultData.ok(data));
+  }
+
+  @Get('modules/:code/manifest-preview')
+  @ApiOperation({ summary: 'Preview generated app factory manifest' })
+  @RequirePermission('app:factory:list')
+  previewManifest(@Param('code') code: string, @Query() query: AppFactoryManifestPreviewQueryDto) {
+    return this.factoryService
+      .previewManifest(code, query.version)
+      .then((data) => ResultData.ok(data));
   }
 
   @Get('modules/:code')

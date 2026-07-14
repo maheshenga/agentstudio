@@ -96,6 +96,9 @@ export class AppPackageVersionEntity {
   @Column({ type: 'varchar', name: 'file_hash', length: 64, default: '' })
   fileHash: string;
 
+  @Column({ type: 'char', name: 'content_hash', length: 64, default: '' })
+  contentHash: string;
+
   @Column({ type: 'bigint', name: 'file_size', default: 0 })
   fileSize: number;
 

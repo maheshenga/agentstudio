@@ -244,6 +244,34 @@
           show-icon
           class="developer-apps-page__runtime-alert"
         />
+        <template v-if="!editingCode && form.runtime_type === 'iframe'">
+          <ElFormItem label="入口地址" prop="entry_url">
+            <ElInput
+              v-model="form.entry_url"
+              maxlength="500"
+              placeholder="https://example.com/app"
+            />
+          </ElFormItem>
+          <ElFormItem label="允许访问的域名">
+            <ElInput
+              v-model="form.allowed_origins"
+              type="textarea"
+              :rows="3"
+              placeholder="每行一个 HTTPS 域名，例如 https://api.example.com"
+            />
+          </ElFormItem>
+          <ElFormItem label="申请能力">
+            <ElCheckboxGroup v-model="form.requested_capabilities">
+              <ElCheckbox
+                v-for="capability in runtimeCapabilities"
+                :key="capability"
+                :value="capability"
+              >
+                {{ capability }}
+              </ElCheckbox>
+            </ElCheckboxGroup>
+          </ElFormItem>
+        </template>
         <div class="developer-apps-page__form-grid">
           <ElFormItem label="应用编码" prop="code">
             <ElInput
@@ -280,6 +308,25 @@
             maxlength="5000"
             show-word-limit
           />
+        </ElFormItem>
+        <ElFormItem label="截图地址">
+          <ElInput
+            v-model="form.screenshots"
+            type="textarea"
+            :rows="3"
+            placeholder="每行一个 HTTPS 图片地址，最多 8 张"
+          />
+        </ElFormItem>
+        <div class="developer-apps-page__form-grid">
+          <ElFormItem label="使用文档">
+            <ElInput v-model="form.documentation_url" maxlength="500" placeholder="https://" />
+          </ElFormItem>
+          <ElFormItem label="支持地址">
+            <ElInput v-model="form.support_url" maxlength="500" placeholder="https://" />
+          </ElFormItem>
+        </div>
+        <ElFormItem label="更新日志">
+          <ElInput v-model="form.changelog" type="textarea" :rows="4" maxlength="20000" />
         </ElFormItem>
       </ElForm>
       <template #footer>
@@ -574,12 +621,29 @@
   const form = reactive({
     code: '',
     name: '',
-    runtime_type: 'static' as 'static' | 'service',
+    runtime_type: 'static' as DeveloperRuntimeType,
     category: '',
     icon: '',
     summary: '',
-    description: ''
+    description: '',
+    entry_url: '',
+    allowed_origins: '',
+    requested_capabilities: [] as string[],
+    screenshots: '',
+    documentation_url: '',
+    support_url: '',
+    changelog: ''
   })
+  const runtimeCapabilities = [
+    'context.read',
+    'kv.read',
+    'kv.write',
+    'kv.delete',
+    'files.read',
+    'files.write',
+    'http.request',
+    'webhook.emit'
+  ]
   const certificationRuntimeTypes: DeveloperRuntimeType[] = ['static', 'iframe', 'service']
   const certificationForm = reactive({
     display_name: '',
@@ -600,15 +664,20 @@
   }
   const { width: viewportWidth } = useWindowSize()
   const versionsDrawerSize = computed(() => (viewportWidth.value <= 800 ? '100%' : '920px'))
-  const serviceRuntimeApproved = computed(
-    () =>
+  function runtimeApproved(runtimeType: DeveloperRuntimeType) {
+    return Boolean(
       !profileError.value &&
       profile.value?.certification_status === 'certified' &&
       !profile.value.disabled &&
-      profile.value.approved_runtime_types.includes('service')
-  )
+      profile.value.approved_runtime_types.includes(runtimeType)
+    )
+  }
+  const staticRuntimeApproved = computed(() => runtimeApproved('static'))
+  const iframeRuntimeApproved = computed(() => runtimeApproved('iframe'))
+  const serviceRuntimeApproved = computed(() => runtimeApproved('service'))
   const runtimeOptions = computed(() => [
-    { label: '静态应用', value: 'static' },
+    { label: '静态应用', value: 'static', disabled: !staticRuntimeApproved.value },
+    { label: '外部应用', value: 'iframe', disabled: !iframeRuntimeApproved.value },
     { label: '服务应用', value: 'service', disabled: !serviceRuntimeApproved.value }
   ])
   const uploadDialogTitle = computed(() =>
@@ -678,7 +747,8 @@
 
   function canUpload(row: DeveloperAppRecord) {
     if (row.status === 'disabled' || row.status === 'archived') return false
-    return row.type !== 'service' || serviceRuntimeApproved.value
+    if (row.type === 'iframe' || row.type === 'internal') return false
+    return runtimeApproved(row.type)
   }
 
   function resetFilters() {
@@ -694,7 +764,14 @@
       category: '',
       icon: '',
       summary: '',
-      description: ''
+      description: '',
+      entry_url: '',
+      allowed_origins: '',
+      requested_capabilities: [],
+      screenshots: '',
+      documentation_url: '',
+      support_url: '',
+      changelog: ''
     })
     formRef.value?.clearValidate()
   }
@@ -729,6 +806,8 @@
   function openCreateDialog() {
     editingCode.value = ''
     resetForm()
+    form.runtime_type =
+      certificationRuntimeTypes.find((runtimeType) => runtimeApproved(runtimeType)) || 'static'
     formDialogVisible.value = true
   }
 
@@ -741,7 +820,11 @@
       category: row.category || '',
       icon: row.icon || '',
       summary: row.summary || '',
-      description: row.description || ''
+      description: row.description || '',
+      screenshots: (row.screenshots || []).join('\n'),
+      documentation_url: row.documentation_url || '',
+      support_url: row.support_url || '',
+      changelog: row.changelog || ''
     })
     formDialogVisible.value = true
   }
@@ -753,7 +836,14 @@
       category: cleanText(form.category),
       icon: cleanText(form.icon),
       summary: cleanText(form.summary),
-      description: cleanText(form.description)
+      description: cleanText(form.description),
+      screenshots: form.screenshots
+        .split(/\r?\n/)
+        .map((value) => value.trim())
+        .filter(Boolean),
+      documentation_url: cleanText(form.documentation_url),
+      support_url: cleanText(form.support_url),
+      changelog: cleanText(form.changelog)
     }
     saving.value = true
     try {
@@ -761,10 +851,26 @@
         await updateDeveloperApp(editingCode.value, params)
         ElMessage.success('应用已更新')
       } else {
-        const runtimeParams =
-          form.runtime_type === 'service'
-            ? { runtime_type: 'service' as const }
-            : { runtime_type: 'static' as const }
+        if (!runtimeApproved(form.runtime_type)) {
+          return ElMessage.warning('当前开发者认证未批准所选运行类型')
+        }
+        if (form.runtime_type === 'iframe' && !form.entry_url.trim()) {
+          return ElMessage.warning('请输入外部应用入口地址')
+        }
+        const runtimeParams: Pick<SaveDeveloperAppParams, 'runtime_type'> &
+          Partial<SaveDeveloperAppParams> = {
+          runtime_type: form.runtime_type,
+          ...(form.runtime_type === 'iframe'
+            ? {
+                entry_url: form.entry_url.trim(),
+                allowed_origins: form.allowed_origins
+                  .split(/\r?\n/)
+                  .map((value) => value.trim())
+                  .filter(Boolean),
+                requested_capabilities: [...form.requested_capabilities]
+              }
+            : {})
+        }
         await createDeveloperApp({ ...params, ...runtimeParams, code: form.code.trim() })
         ElMessage.success('应用已创建')
       }

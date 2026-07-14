@@ -189,6 +189,7 @@ describe('SystemModuleRegistryService', () => {
       listTenantModules: jest.fn().mockResolvedValue([]),
       listPlatformModules: jest.fn().mockResolvedValue([]),
     };
+    const accessCache = { invalidateAll: jest.fn() };
     const dataSource = new MemoryDataSource(
       new Map<Function, MemoryRepository<EntityRecord>>([
         [SystemModuleEntity, moduleRepo],
@@ -218,6 +219,7 @@ describe('SystemModuleRegistryService', () => {
       tenantConfigRepo as any,
       sysMenuRepo as any,
       saasModuleService as any,
+      accessCache as any,
     );
 
     return {
@@ -235,6 +237,7 @@ describe('SystemModuleRegistryService', () => {
       tenantConfigRepo,
       sysMenuRepo,
       saasModuleService,
+      accessCache,
     };
   };
 
@@ -497,16 +500,16 @@ describe('SystemModuleRegistryService', () => {
     const { service, moduleRepo } = createService();
 
     await service.registerBuiltInModules();
-    await service.updateStatus('core_system', 'disabled', 7);
+    await service.updateStatus('ops_monitor', 'disabled', 7);
     moduleRepo.savedInputs = [];
     await service.registerBuiltInModules();
 
-    await expect(service.getModule('core_system')).resolves.toEqual(
+    await expect(service.getModule('ops_monitor')).resolves.toEqual(
       expect.objectContaining({ status: 'disabled' }),
     );
     expect(moduleRepo.savedInputs).not.toContainEqual(
       expect.objectContaining({
-        code: 'core_system',
+        code: 'ops_monitor',
         status: expect.any(String),
       }),
     );
@@ -771,6 +774,36 @@ describe('SystemModuleRegistryService', () => {
     expect(dataSource.transactionCalls).toBe(1);
     expect(moduleRepo.saveCalls).toBe(0);
     expect(eventRepo.saveCalls).toBe(0);
+    expect(eventRepo.records).toHaveLength(0);
+  });
+
+  it('rejects disabling a module while an enabled module still depends on it', async () => {
+    const { service, moduleRepo, dependencyRepo, eventRepo } = createService();
+    await moduleRepo.save({
+      code: 'core_system',
+      name: 'Core System',
+      source: 'built_in',
+      version: '1.0.0',
+      status: 'enabled',
+    });
+    await moduleRepo.save({
+      code: 'tenant_saas',
+      name: 'Tenant SaaS',
+      source: 'built_in',
+      version: '1.0.0',
+      status: 'enabled',
+    });
+    await dependencyRepo.save({
+      moduleCode: 'tenant_saas',
+      dependsOnCode: 'core_system',
+      versionRange: '^1.0.0',
+      required: 1,
+    });
+
+    await expect(service.updateStatus('core_system', 'disabled', 7)).rejects.toThrow(
+      'Enabled modules still depend on core_system: tenant_saas',
+    );
+    expect(moduleRepo.records.find((item) => item.code === 'core_system')?.status).toBe('enabled');
     expect(eventRepo.records).toHaveLength(0);
   });
 

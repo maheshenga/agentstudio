@@ -5,6 +5,7 @@ import { SystemModuleEntity } from '../entities/system-module.entity';
 import { SystemModuleSaasBridgeEntity } from '../entities/system-module-saas-bridge.entity';
 import { SystemTenantModuleEntity } from '../entities/system-tenant-module.entity';
 import { SystemModuleAccessService } from './system-module-access.service';
+import { SystemModuleAccessCacheService } from './system-module-access-cache.service';
 
 type EntityRecord = Record<string, any>;
 
@@ -88,6 +89,7 @@ describe('SystemModuleAccessService', () => {
       tenantModuleRepo as any,
       bridgeRepo as any,
       saasModuleService as any,
+      new SystemModuleAccessCacheService(),
     );
 
     return { service, moduleRepo, dependencyRepo, tenantModuleRepo, bridgeRepo, saasModuleService };

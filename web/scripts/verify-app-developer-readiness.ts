@@ -44,7 +44,10 @@ for (const token of [
   'updateDeveloperApp',
   'uploadDeveloperAppVersion',
   'submitDeveloperAppVersion',
-  'FormData'
+  'FormData',
+  "runtime_type?: 'static' | 'iframe' | 'service'",
+  'allowed_origins',
+  'requested_capabilities'
 ]) {
   assertIncludes(apiSource, token, 'developer app API')
 }
@@ -63,7 +66,12 @@ for (const token of [
   'ElDialog',
   'ElDrawer',
   'ElUpload',
-  'ElEmpty'
+  'ElEmpty',
+  'iframeRuntimeApproved',
+  'form.entry_url',
+  'form.allowed_origins',
+  'form.documentation_url',
+  'form.support_url'
 ]) {
   assertIncludes(pageSource, token, 'developer app page')
 }
@@ -99,7 +107,9 @@ for (const token of [
   'developerId',
   'findOwnedApp',
   'deleteTime: IsNull()',
-  'Disabled or archived apps'
+  'Disabled or archived apps',
+  'assertRuntimeApproved(developerId, runtimeType)',
+  'reviewRequired: true'
 ]) {
   assertIncludes(serviceSource, token, 'developer app service')
 }

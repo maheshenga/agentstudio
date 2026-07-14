@@ -25,6 +25,13 @@ export type AppAvailabilityStatus =
   | 'missing_system_module'
   | 'system_module_unavailable'
 
+export interface AppPageResult<T> {
+  list: T[]
+  total: number
+  page: number
+  limit: number
+}
+
 export interface FrozenAppReviewSnapshot {
   schema_version: 1
   app: {
@@ -79,6 +86,10 @@ export interface AppPackageRecord {
   icon?: string
   summary?: string
   description?: string
+  screenshots?: string[]
+  documentation_url?: string
+  support_url?: string
+  changelog?: string
   developer_id?: number | null
   developer_name?: string
   status: AppPackageStatus
@@ -106,6 +117,14 @@ export interface AppPackageRecord {
   service_status?: 'ready' | 'update_required' | 'unavailable'
   service_version?: string
   service_callable?: boolean
+  installed_version_id?: number | null
+  installed_version?: string
+  latest_version_id?: number | null
+  latest_version?: string
+  update_available?: boolean
+  latest_requested_capabilities?: string[]
+  latest_platform_approved_capabilities?: string[]
+  new_capabilities?: string[]
 }
 
 export interface AppPackageVersionRecord {
@@ -157,9 +176,20 @@ export interface AppPackageDetailRecord extends AppPackageRecord {
 }
 
 export interface AppPlatformListParams {
+  page?: number
+  limit?: number
   keyword?: string
+  category?: string
   type?: AppPackageType | ''
   status?: AppPackageStatus | ''
+}
+
+export interface AppMarketplaceListParams {
+  page?: number
+  limit?: number
+  keyword?: string
+  category?: string
+  type?: AppPackageType | ''
 }
 
 export interface AppReviewQueueParams {
@@ -187,6 +217,10 @@ export interface SaveAppPackageParams {
   icon?: string
   summary?: string
   description?: string
+  screenshots?: string[]
+  documentation_url?: string
+  support_url?: string
+  changelog?: string
   visibility?: AppPackageVisibility
   entry_url?: string
   version?: string
@@ -254,7 +288,7 @@ export interface AppOpenMetadata {
 }
 
 export function fetchPlatformApps(params: AppPlatformListParams = {}) {
-  return request.get<AppPackageRecord[]>({ url: '/api/app-platform/apps', params })
+  return request.get<AppPageResult<AppPackageRecord>>({ url: '/api/app-platform/apps', params })
 }
 
 export function fetchPlatformApp(code: string) {
@@ -339,8 +373,11 @@ export function rollbackPlatformAppVersion(code: string, version: string, messag
   })
 }
 
-export function fetchTenantAppMarketplace() {
-  return request.get<TenantMarketplaceAppRecord[]>({ url: '/api/app-tenant/marketplace' })
+export function fetchTenantAppMarketplace(params: AppMarketplaceListParams = {}) {
+  return request.get<AppPageResult<TenantMarketplaceAppRecord>>({
+    url: '/api/app-tenant/marketplace',
+    params
+  })
 }
 
 export function fetchTenantInstalledApps() {
@@ -350,6 +387,13 @@ export function fetchTenantInstalledApps() {
 export function installTenantApp(code: string, capabilities: string[] = []) {
   return request.post<TenantAppInstallRecord>({
     url: `/api/app-tenant/apps/${code}/install`,
+    data: { capabilities }
+  })
+}
+
+export function upgradeTenantApp(code: string, capabilities: string[] = []) {
+  return request.post<TenantAppInstallRecord & { version: string; update_available: false }>({
+    url: `/api/app-tenant/apps/${code}/upgrade`,
     data: { capabilities }
   })
 }

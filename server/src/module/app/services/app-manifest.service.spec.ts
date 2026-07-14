@@ -29,6 +29,46 @@ describe('AppManifestService', () => {
     });
   });
 
+  it('persists normalized exact HTTPS origins for static runtime HTTP access', () => {
+    expect(
+      service.validateStaticManifest({
+        manifest: {
+          ...validManifest,
+          permissions: ['http.request'],
+          allowedOrigins: ['https://api.example.com:443', 'https://api.example.com'],
+        },
+        entries,
+      }),
+    ).toMatchObject({
+      permissions: ['http.request'],
+      allowedOrigins: ['https://api.example.com'],
+    });
+  });
+
+  it('persists normalized static capability names without duplicates', () => {
+    expect(
+      service.validateStaticManifest({
+        manifest: {
+          ...validManifest,
+          permissions: ['runtime:context:read', 'context.read'],
+        },
+        entries,
+      }),
+    ).toMatchObject({ permissions: ['context.read'] });
+  });
+
+  it.each([
+    ['http://api.example.com', 'Static allowed origins must be exact HTTPS origins'],
+    ['https://api.example.com/path', 'Static allowed origins must be exact HTTPS origins'],
+  ])('rejects unsafe static runtime origin %s', (origin, message) => {
+    expect(() =>
+      service.validateStaticManifest({
+        manifest: { ...validManifest, allowedOrigins: [origin] },
+        entries,
+      }),
+    ).toThrow(message);
+  });
+
   it('normalizes declared service targets for a static service.invoke caller', () => {
     expect(
       service.validateStaticManifest({
@@ -198,7 +238,7 @@ describe('AppManifestService', () => {
       runtime: 'service',
       entry: 'dist/index.js',
       healthPath: '/health',
-      capabilities: ['context.read', 'kv.read'],
+      capabilities: ['context.read'],
       allowedOrigins: [],
     };
 
@@ -210,21 +250,21 @@ describe('AppManifestService', () => {
         runtime: 'service',
         entry: 'dist/index.js',
         healthPath: '/health',
-        capabilities: ['context.read', 'kv.read'],
+        capabilities: ['context.read'],
         serviceTargets: [],
         allowedOrigins: [],
         runtimeConfig: {},
       });
     });
 
-    it('rejects service.invoke without a declared service target', () => {
+  it('rejects service.invoke because service runtimes cannot call the browser capability gateway', () => {
       expect(() =>
         service.validateServiceManifest({
           ...serviceManifest,
           capabilities: ['service.invoke'],
           serviceTargets: [],
         }),
-      ).toThrow('service.invoke requires a service target');
+    ).toThrow('Capability service.invoke is not available for service apps');
     });
 
     it('rejects declared service targets without service.invoke', () => {
@@ -244,6 +284,10 @@ describe('AppManifestService', () => {
       [{ ...serviceManifest, healthPath: 'health' }, 'Invalid service health path'],
       [{ ...serviceManifest, healthPath: '/health?secret=1' }, 'Invalid service health path'],
       [{ ...serviceManifest, capabilities: ['unknown.capability'] }, 'Unsupported app capability'],
+      [
+        { ...serviceManifest, capabilities: ['kv.read'] },
+        'Capability kv.read is not available for service apps',
+      ],
       [
         { ...serviceManifest, allowedOrigins: ['https://api.example.com'] },
         'Direct service origins are not available in P10',

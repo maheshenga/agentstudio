@@ -4,10 +4,9 @@
       <template #header>
         <div class="app-usage-page__header">
           <div>
-            <h1 class="app-usage-page__title">App Usage</h1>
+            <h1 class="app-usage-page__title">应用使用情况</h1>
             <p class="app-usage-page__subtitle">
-              Track installed app activity, reliability, entitlement blockers, and version adoption
-              for this workspace.
+              查看当前租户的应用活跃度、稳定性、授权阻断与版本使用情况。
             </p>
           </div>
           <div class="app-usage-page__controls">
@@ -17,12 +16,12 @@
               :disabled="loading"
               @change="loadUsage"
             />
-            <ElTooltip content="Refresh" placement="bottom">
+            <ElTooltip content="刷新" placement="bottom">
               <ElButton
                 circle
                 :icon="Refresh"
                 :loading="loading"
-                aria-label="Refresh app usage"
+                aria-label="刷新应用用量"
                 @click="loadUsage"
               />
             </ElTooltip>
@@ -32,12 +31,12 @@
 
       <div v-if="loadError" class="app-usage-page__error">
         <ElAlert type="error" :title="loadError" show-icon :closable="false" />
-        <ElButton link type="primary" :loading="loading" @click="loadUsage">Retry</ElButton>
+        <ElButton link type="primary" :loading="loading" @click="loadUsage">重试</ElButton>
       </div>
 
       <div v-loading="loading" class="app-usage-page__content">
         <template v-if="overview">
-          <section aria-label="Tenant app usage summary">
+          <section aria-label="租户应用使用摘要">
             <div class="app-usage-page__kpis">
               <div v-for="item in kpis" :key="item.label" class="app-usage-page__kpi">
                 <span>{{ item.label }}</span>
@@ -50,8 +49,8 @@
           <section class="app-usage-page__section">
             <div class="app-usage-page__section-heading">
               <div>
-                <h2>Open trend</h2>
-                <p>Successful and failed app-open attempts in the selected window.</p>
+                <h2>打开趋势</h2>
+                <p>所选时间范围内成功与失败的应用打开次数。</p>
               </div>
             </div>
             <div class="app-usage-page__chart">
@@ -70,49 +69,49 @@
           <section class="app-usage-page__section">
             <div class="app-usage-page__section-heading">
               <div>
-                <h2>Installed apps</h2>
-                <p>Usage and reliability for apps currently enabled in this workspace.</p>
+                <h2>已安装应用</h2>
+                <p>当前租户已启用应用的使用量与稳定性。</p>
               </div>
             </div>
             <div class="app-usage-page__table-wrap">
               <ElTable :data="overview.apps" border>
-                <ElTableColumn label="App" min-width="210" fixed="left">
+                <ElTableColumn label="应用" min-width="210" fixed="left">
                   <template #default="{ row }">
                     <div class="app-usage-page__primary">{{ row.name || row.code }}</div>
                     <div class="app-usage-page__muted">{{ row.code }}</div>
                   </template>
                 </ElTableColumn>
-                <ElTableColumn label="Type" width="105">
+                <ElTableColumn label="类型" width="105">
                   <template #default="{ row }">
                     <ElTag effect="light" type="info">{{ formatType(row.type) }}</ElTag>
                   </template>
                 </ElTableColumn>
-                <ElTableColumn label="Version" min-width="130">
-                  <template #default="{ row }">{{ row.version || 'Unassigned' }}</template>
+                <ElTableColumn label="版本" min-width="130">
+                  <template #default="{ row }">{{ row.version || '未指定' }}</template>
                 </ElTableColumn>
-                <ElTableColumn label="Opens" width="100" align="right">
+                <ElTableColumn label="打开次数" width="100" align="right">
                   <template #default="{ row }">{{ formatInteger(row.total_opens) }}</template>
                 </ElTableColumn>
-                <ElTableColumn label="Failed" width="95" align="right">
+                <ElTableColumn label="失败" width="95" align="right">
                   <template #default="{ row }">{{ formatInteger(row.failed_opens) }}</template>
                 </ElTableColumn>
-                <ElTableColumn label="Blocked" width="100" align="right">
+                <ElTableColumn label="授权阻断" width="100" align="right">
                   <template #default="{ row }">{{
                     formatInteger(row.entitlement_blockers)
                   }}</template>
                 </ElTableColumn>
-                <ElTableColumn label="Success" width="110" align="right">
+                <ElTableColumn label="成功率" width="110" align="right">
                   <template #default="{ row }">
                     <ElTag :type="rateTagType(row.success_rate)" effect="light">{{
                       formatRate(row.success_rate)
                     }}</ElTag>
                   </template>
                 </ElTableColumn>
-                <ElTableColumn label="Last open" width="180">
+                <ElTableColumn label="最后打开" width="180">
                   <template #default="{ row }">{{ formatDateTime(row.last_open_time) }}</template>
                 </ElTableColumn>
                 <template #empty>
-                  <ElEmpty description="No enabled apps" />
+                  <ElEmpty description="暂无已启用应用" />
                 </template>
               </ElTable>
             </div>
@@ -121,27 +120,27 @@
           <section class="app-usage-page__section">
             <div class="app-usage-page__section-heading">
               <div>
-                <h2>Version adoption</h2>
-                <p>Successful opens grouped by app and resolved version.</p>
+                <h2>版本使用情况</h2>
+                <p>按应用与实际版本统计成功打开次数。</p>
               </div>
             </div>
             <div class="app-usage-page__table-wrap">
               <ElTable :data="overview.version_adoption" border>
-                <ElTableColumn label="App" min-width="210">
+                <ElTableColumn label="应用" min-width="210">
                   <template #default="{ row }">
                     <div class="app-usage-page__primary">{{ row.app_name || row.app_code }}</div>
                     <div class="app-usage-page__muted">{{ row.app_code }}</div>
                   </template>
                 </ElTableColumn>
-                <ElTableColumn prop="version" label="Version" min-width="140" />
-                <ElTableColumn label="Successful opens" width="160" align="right">
+                <ElTableColumn prop="version" label="版本" min-width="140" />
+                <ElTableColumn label="成功打开" width="160" align="right">
                   <template #default="{ row }">{{ formatInteger(row.successful_opens) }}</template>
                 </ElTableColumn>
-                <ElTableColumn label="Share" width="120" align="right">
+                <ElTableColumn label="占比" width="120" align="right">
                   <template #default="{ row }">{{ formatRate(row.percentage) }}</template>
                 </ElTableColumn>
                 <template #empty>
-                  <ElEmpty description="No version adoption data" />
+                  <ElEmpty description="暂无版本使用数据" />
                 </template>
               </ElTable>
             </div>
@@ -150,19 +149,19 @@
           <section class="app-usage-page__section">
             <div class="app-usage-page__section-heading">
               <div>
-                <h2>Recent failures</h2>
-                <p>Sanitized app-open failures, limited to the 20 most recent records.</p>
+                <h2>最近失败</h2>
+                <p>最近 20 条经过脱敏处理的应用打开失败记录。</p>
               </div>
             </div>
             <div class="app-usage-page__table-wrap">
               <ElTable :data="overview.recent_failures" border>
-                <ElTableColumn label="App" min-width="210">
+                <ElTableColumn label="应用" min-width="210">
                   <template #default="{ row }">
                     <div class="app-usage-page__primary">{{ row.app_name || row.app_code }}</div>
                     <div class="app-usage-page__muted">{{ row.app_code }}</div>
                   </template>
                 </ElTableColumn>
-                <ElTableColumn label="Reason" min-width="190">
+                <ElTableColumn label="原因" min-width="190">
                   <template #default="{ row }">
                     <ElTag :type="reasonTagType(row.reason_code)" effect="light">{{
                       reasonText(row.reason_code)
@@ -171,22 +170,22 @@
                 </ElTableColumn>
                 <ElTableColumn
                   prop="failure_message"
-                  label="Message"
+                  label="说明"
                   min-width="280"
                   show-overflow-tooltip
                 />
-                <ElTableColumn label="Time" width="180">
+                <ElTableColumn label="时间" width="180">
                   <template #default="{ row }">{{ formatDateTime(row.create_time) }}</template>
                 </ElTableColumn>
                 <template #empty>
-                  <ElEmpty description="No failed opens in this window" />
+                  <ElEmpty description="所选范围内暂无打开失败" />
                 </template>
               </ElTable>
             </div>
           </section>
         </template>
 
-        <ElEmpty v-else-if="!loading && !loadError" description="No app usage data" />
+        <ElEmpty v-else-if="!loading && !loadError" description="暂无应用使用数据" />
       </div>
     </ElCard>
   </div>
@@ -204,15 +203,15 @@
   defineOptions({ name: 'AppCenterUsagePage' })
 
   const windowOptions = [
-    { label: '7 days', value: 7 },
-    { label: '30 days', value: 30 },
-    { label: '90 days', value: 90 }
+    { label: '7 天', value: 7 },
+    { label: '30 天', value: 30 },
+    { label: '90 天', value: 90 }
   ]
   const days = ref<AppAnalyticsWindow>(30)
   const overview = ref<TenantAppUsageOverview | null>(null)
   const loading = ref(false)
   const loadError = ref('')
-  const numberFormatter = new Intl.NumberFormat('en-US')
+  const numberFormatter = new Intl.NumberFormat('zh-CN')
   const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
     year: 'numeric',
     month: '2-digit',
@@ -227,42 +226,42 @@
     if (!summary) return []
     return [
       {
-        label: 'Enabled apps',
+        label: '已启用应用',
         value: formatInteger(summary.enabled_apps),
-        note: 'Current workspace'
+        note: '当前租户'
       },
       {
-        label: 'Open attempts',
+        label: '打开尝试',
         value: formatInteger(summary.total_opens),
         note: `${days.value}-day window`
       },
       {
-        label: 'Successful opens',
+        label: '成功打开',
         value: formatInteger(summary.successful_opens),
-        note: 'Completed launches'
+        note: '已完成启动'
       },
       {
-        label: 'Success rate',
+        label: '成功率',
         value: formatRate(summary.success_rate),
-        note: 'Launch reliability'
+        note: '启动稳定性'
       },
       {
-        label: 'Failed opens',
+        label: '打开失败',
         value: formatInteger(summary.failed_opens),
-        note: 'Sanitized failures'
+        note: '脱敏失败记录'
       },
       {
-        label: 'Entitlement blocks',
+        label: '授权阻断',
         value: formatInteger(summary.entitlement_blockers),
-        note: 'Plan or module access'
+        note: '套餐或模块限制'
       }
     ]
   })
 
   const trendLabels = computed(() => overview.value?.trend.map((item) => item.date.slice(5)) || [])
   const trendSeries = computed<LineDataItem[]>(() => [
-    { name: 'Successful', data: overview.value?.trend.map((item) => item.successful_opens) || [] },
-    { name: 'Failed', data: overview.value?.trend.map((item) => item.failed_opens) || [] }
+    { name: '成功', data: overview.value?.trend.map((item) => item.successful_opens) || [] },
+    { name: '失败', data: overview.value?.trend.map((item) => item.failed_opens) || [] }
   ])
 
   function formatInteger(value: unknown) {
@@ -278,9 +277,10 @@
   function formatType(value: unknown) {
     const normalized = String(value || '')
     const labels: Record<string, string> = {
-      internal: 'Internal',
-      static: 'Static',
-      iframe: 'Iframe'
+      internal: '内置应用',
+      static: '静态应用',
+      iframe: '外部应用',
+      service: '服务应用'
     }
     return labels[normalized] || normalized || '-'
   }
@@ -299,16 +299,17 @@
 
   function reasonText(reason: string) {
     const labels: Record<string, string> = {
-      missing_plan_module: 'Plan module missing',
-      missing_system_module: 'Workspace module disabled',
-      system_module_unavailable: 'System module unavailable',
-      app_not_found: 'App not found',
-      app_not_published: 'App not published',
-      app_not_installed: 'App not installed',
-      published_version_missing: 'Published version missing',
-      open_metadata_error: 'Open metadata error'
+      missing_plan_module: '缺少套餐模块',
+      missing_system_module: '租户模块未启用',
+      system_module_unavailable: '系统模块不可用',
+      app_not_found: '应用不存在',
+      app_not_published: '应用未发布',
+      app_not_installed: '应用未安装',
+      published_version_missing: '缺少已发布版本',
+      upgrade_required: '需要升级应用',
+      open_metadata_error: '打开信息异常'
     }
-    return labels[reason] || reason || 'Unknown failure'
+    return labels[reason] || reason || '未知失败'
   }
 
   function reasonTagType(reason: string) {
@@ -326,7 +327,7 @@
       overview.value = await fetchTenantAppUsageOverview(days.value)
     } catch {
       overview.value = null
-      loadError.value = 'App usage failed to load'
+      loadError.value = '应用使用情况加载失败'
     } finally {
       loading.value = false
     }

@@ -30,6 +30,7 @@ const expectedFiles = [
   'web/src/views/app-center/marketplace/index.vue',
   'web/src/views/app-center/installed/index.vue',
   'web/src/views/app-center/open/index.vue',
+  'web/scripts/verify-build-budget.ts',
   'server/src/module/app/app-platform.controller.ts',
   'server/src/module/app/app-platform-review.controller.ts',
   'server/src/module/app/app-tenant.controller.ts',
@@ -54,6 +55,7 @@ for (const token of [
   '/api/app-tenant/marketplace',
   '/api/app-tenant/installed',
   '/api/app-tenant/apps/${code}/install',
+  '/api/app-tenant/apps/${code}/upgrade',
   '/api/app-tenant/apps/${code}/open',
   '/api/app-tenant/runtime/iframe/exchange',
   '/api/app-tenant/apps/${code}/capabilities',
@@ -75,7 +77,18 @@ for (const token of [
   'runtime_type',
   'trust_level',
   'scan_result',
-  'uploadPlatformServiceAppVersion'
+  'uploadPlatformServiceAppVersion',
+  'upgradeTenantApp',
+  'update_available',
+  'latest_version',
+  'screenshots',
+  'documentation_url',
+  'support_url',
+  'changelog',
+  'AppPageResult',
+  'AppMarketplaceListParams',
+  'page?: number',
+  'limit?: number'
 ]) {
   assertIncludes(apiSource, token, 'app marketplace API')
 }
@@ -104,7 +117,13 @@ for (const token of [
   'ElDrawer',
   "value: 'service'",
   '平台可信',
-  'scanStatusText'
+  'scanStatusText',
+  'ElPagination',
+  'appPage.list',
+  'pagination.page',
+  'appForm.screenshots',
+  'appForm.documentation_url',
+  'appForm.support_url'
 ]) {
   assertIncludes(platformPage, token, 'platform apps page')
 }
@@ -140,7 +159,18 @@ for (const token of [
   'requested_capabilities',
   'consentDialogVisible',
   'ElCheckboxGroup',
-  'installTenantApp(consentApp.code, selectedCapabilities)'
+  'installTenantApp(consentApp.code, selectedCapabilities)',
+  'upgradeTenantApp',
+  'upgradeDialogVisible',
+  'new_capabilities',
+  'detailDrawerVisible',
+  'selectedDetail',
+  '应用市场',
+  '查看详情',
+  'rel="noopener noreferrer"',
+  'ElPagination',
+  'appPage.list',
+  'pagination.page'
 ]) {
   assertIncludes(marketplacePage, token, 'tenant marketplace page')
 }
@@ -158,7 +188,8 @@ for (const token of [
   'updateTenantAppCapabilities',
   'tenant_approved_capabilities',
   'ElCheckboxGroup',
-  'Revoke all'
+  'revokeAllCapabilities',
+  '全部撤销'
 ]) {
   assertIncludes(installedPage, token, 'tenant installed page')
 }
@@ -248,6 +279,12 @@ assert(
     'tsx scripts/verify-app-marketplace-readiness.ts',
   'web/package.json must define verify:app-marketplace-readiness'
 )
+assert(
+  packageJson.scripts?.build?.includes('verify-build-budget.ts'),
+  'web build must enforce the generated asset budget'
+)
+const viteConfig = readFile('web/vite.config.ts')
+assertIncludes(viteConfig, 'chunkSizeWarningLimit: 900', 'Vite build config')
 
 const checklist = readFile('docs/saas-launch-readiness-checklist.md')
 assertIncludes(

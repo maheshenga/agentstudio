@@ -34,6 +34,10 @@ describe('AppFactoryTemplateService', () => {
         category: 'Recruitment',
         htmlContent: '<section>Jobs</section>',
         cssContent: '.jobs{}',
+        schemaVersion: 2,
+        templateVersion: '2.0.0',
+        runtimeTarget: 'static',
+        manifestDefaults: { tenant_scoped: true, permissions: [] },
         status: 1,
         sort: 20,
       },
@@ -46,6 +50,10 @@ describe('AppFactoryTemplateService', () => {
         category: 'Recruitment',
         html_content: '<section>Jobs</section>',
         css_content: '.jobs{}',
+        schema_version: 2,
+        template_version: '2.0.0',
+        runtime_target: 'static',
+        manifest_defaults: { tenant_scoped: true, permissions: [] },
         status: 1,
       }),
     ]);
@@ -76,6 +84,29 @@ describe('AppFactoryTemplateService', () => {
       name: 'Landing Page',
       default_visibility: 'marketplace',
     });
+  });
+
+  it('loads an immutable published template version by code and version', async () => {
+    templateRepo.findOne.mockResolvedValue({
+      id: 2,
+      code: 'job_board',
+      templateVersion: '2.0.0',
+      schemaVersion: 2,
+      runtimeTarget: 'static',
+      status: 1,
+    });
+
+    await expect(service.getTemplate('job_board', '2.0.0')).resolves.toMatchObject({
+      code: 'job_board',
+      template_version: '2.0.0',
+      schema_version: 2,
+      runtime_target: 'static',
+    });
+    expect(templateRepo.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ code: 'job_board', templateVersion: '2.0.0' }),
+      }),
+    );
   });
 
   it('throws when template detail is missing', async () => {

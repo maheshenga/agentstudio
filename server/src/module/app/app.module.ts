@@ -34,6 +34,7 @@ import { AppStorageObjectEntity } from './entities/app-storage-object.entity';
 import { AppServiceInstanceEntity } from './entities/app-service-instance.entity';
 import { AppServiceInvocationEntity } from './entities/app-service-invocation.entity';
 import { TenantAppInstallEntity } from './entities/tenant-app-install.entity';
+import { AppRuntimeFileUploadGuard } from './guards/app-runtime-file-upload.guard';
 import { AppManifestService } from './services/app-manifest.service';
 import { AppAnalyticsService } from './services/app-analytics.service';
 import { AppCapabilityPolicyService } from './services/app-capability-policy.service';
@@ -149,6 +150,7 @@ import { AppTenantService } from './services/app-tenant.service';
     AppRuntimeHttpService,
     UndiciAppRuntimeHttpTransport,
     AppRuntimeSessionService,
+    AppRuntimeFileUploadGuard,
     AppTenantService,
     AppFactoryService,
     AppFactoryTemplateService,

@@ -32,14 +32,14 @@ export default ({ mode }: { mode: string }) => {
       hmr: true,
       open: true,
       proxy: {
-        [env.VITE_API_URL]: {
-          target: env.VITE_API_PROXY_URL,
-          rewrite: (path) => path.replace(new RegExp('^' + env.VITE_API_URL), ''),
+        [VITE_API_URL]: {
+          target: VITE_API_PROXY_URL,
+          rewrite: (path) => path.replace(new RegExp('^' + VITE_API_URL), ''),
           changeOrigin: true,
           ws: true
         },
         '/ws': {
-          target: env.VITE_API_PROXY_URL,
+          target: VITE_API_PROXY_URL,
           ws: true,
           changeOrigin: true
         }
@@ -99,7 +99,7 @@ export default ({ mode }: { mode: string }) => {
         }
       },
       outDir: 'dist',
-      chunkSizeWarningLimit: 2000,
+      chunkSizeWarningLimit: 900,
       minify: 'esbuild'
     },
     plugins: [

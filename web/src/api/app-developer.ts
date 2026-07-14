@@ -19,7 +19,14 @@ export interface SaveDeveloperAppParams {
   icon?: string
   summary?: string
   description?: string
-  runtime_type?: 'static' | 'service'
+  runtime_type?: 'static' | 'iframe' | 'service'
+  entry_url?: string
+  allowed_origins?: string[]
+  requested_capabilities?: string[]
+  screenshots?: string[]
+  documentation_url?: string
+  support_url?: string
+  changelog?: string
 }
 
 export interface DeveloperServiceRuntimeRecord {
