@@ -72,6 +72,7 @@ const AGENTSTUDIO_LABEL_PREFIX = 'io.agentstudio.';
 const MANAGED_LABELS = [
   'io.agentstudio.app-code',
   'io.agentstudio.managed',
+  'io.agentstudio.runtime-image',
   'io.agentstudio.version',
 ];
 
@@ -108,6 +109,8 @@ export class PodmanAppServiceRuntimeDriver implements AppServiceRuntimeDriver {
           `io.agentstudio.app-code=${spec.appCode}`,
           '--label',
           `io.agentstudio.version=${spec.version}`,
+          '--label',
+          `io.agentstudio.runtime-image=${config.podmanImage}`,
           '--read-only',
           '--network=none',
           '--cap-drop=ALL',
@@ -513,7 +516,11 @@ export class PodmanAppServiceRuntimeDriver implements AppServiceRuntimeDriver {
     ) {
       throw new ServiceUnavailableException('Service container identity is invalid');
     }
-    if (this.extractDigest(record.ImageDigest) !== this.extractDigest(config.podmanImage)) {
+    const runtimeImage = labels['io.agentstudio.runtime-image'];
+    if (
+      !IMAGE_PATTERN.test(runtimeImage || '') ||
+      this.extractDigest(record.ImageDigest) !== this.extractDigest(runtimeImage)
+    ) {
       throw new ServiceUnavailableException('Service container image is invalid');
     }
     return record;

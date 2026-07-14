@@ -120,6 +120,8 @@ describe('PodmanAppServiceRuntimeDriver', () => {
       `io.agentstudio.app-code=${appCode}`,
       '--label',
       `io.agentstudio.version=${version}`,
+      '--label',
+      `io.agentstudio.runtime-image=${image}`,
       '--read-only',
       '--network=none',
       '--cap-drop=ALL',
@@ -255,6 +257,17 @@ describe('PodmanAppServiceRuntimeDriver', () => {
       restartCount: 2,
       memoryBytes: 123456,
       cpuPercent: 1.5,
+    });
+  });
+
+  it('continues to manage a historical digest after the configured image is upgraded', async () => {
+    configValues['appMarketplace.serviceRuntime.podmanImage'] =
+      `registry.example/agentstudio-service-runtime@sha256:${'b'.repeat(64)}`;
+    driver = createDriver();
+
+    await expect(driver.describe(processName)).resolves.toMatchObject({
+      processName,
+      status: 'online',
     });
   });
 
@@ -415,6 +428,7 @@ describe('PodmanAppServiceRuntimeDriver', () => {
           'io.agentstudio.managed': 'true',
           'io.agentstudio.app-code': appCode,
           'io.agentstudio.version': version,
+          'io.agentstudio.runtime-image': image,
           ...overrides.labels,
         },
       },

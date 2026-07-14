@@ -19,8 +19,9 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createServer } from 'node:net';
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
+import { Agent, request as undiciRequest } from 'undici';
 
 import JSZip from 'jszip';
 
@@ -58,6 +59,7 @@ type RuntimeInstance = {
   version: string;
   process_name: string;
   loopback_port: number;
+  runtime_driver: 'pm2' | 'podman';
   role: 'candidate' | 'active' | 'standby' | 'retired';
   process_status: 'starting' | 'online' | 'stopped' | 'failed';
   health_status: 'unknown' | 'checking' | 'healthy' | 'unhealthy';
@@ -100,9 +102,12 @@ type Config = {
   redisPassword: string;
   redisDb: string;
   runtimeRoot: string;
-  pm2Home: string;
+  podmanHome: string;
+  podmanXdgRuntimeDir: string;
+  socketRoot: string;
   runtimeUser: string;
-  pm2Command: string;
+  podmanCommand: string;
+  podmanImage: string;
   servicePortMin: number;
   servicePortMax: number;
 };
@@ -115,7 +120,7 @@ const terminationController = new AbortController();
 const processLogs = new Map<ChildProcess, { label: string; output: string }>();
 const sensitiveValues = new Set<string>();
 const safeSteps: Array<{ label: string; at: string }> = [];
-const ownedProcessNames = new Set<string>();
+const ownedContainerNames = new Set<string>();
 const redisOwnerKey = 'agentstudio:app-service-e2e:owner';
 const claimRedisScript = `
   if redis.call('DBSIZE') ~= 0 then return 0 end
@@ -201,21 +206,26 @@ export function assertRuntimeRootOutsideRepository(runtimeRoot: string) {
   );
 }
 
-export function assertDedicatedPm2Home(pm2Home: string, runtimeRoot: string) {
-  assert.equal(
-    isInside(pm2Home, repoRoot),
-    false,
-    'isolated PM2 home must be outside the repository',
+export function assertEmptyOwnedDirectory(target: string, label: string) {
+  assert.equal(isInside(target, repoRoot), false, `${label} must be outside the repository`);
+  assert.match(target.toLowerCase(), /(e2e|test)/, `${label} must identify a disposable path`);
+  assert.equal(existsSync(target), true, `${label} must exist`);
+  assert.equal(statSync(target).isDirectory(), true, `${label} must be a directory`);
+  assert.equal(readdirSync(target).length, 0, `${label} must be empty before the gate`);
+  assert.equal(statSync(target).mode & 0o022, 0, `${label} must not be group or world writable`);
+}
+
+export function assertDedicatedPodmanHome(podmanHome: string, socketRoot: string) {
+  assert.equal(isInside(podmanHome, repoRoot), false, 'Podman home must be outside repository');
+  assert.match(podmanHome.toLowerCase(), /(e2e|test)/, 'Podman home must be disposable');
+  assert.equal(existsSync(podmanHome), true, 'Podman home must exist');
+  assert.equal(statSync(podmanHome).isDirectory(), true, 'Podman home must be a directory');
+  assert.equal(statSync(podmanHome).mode & 0o022, 0, 'Podman home must be private');
+  assert.deepEqual(
+    readdirSync(podmanHome),
+    [basename(socketRoot)],
+    'Podman home must contain only the empty socket root before the gate',
   );
-  assert.match(pm2Home.toLowerCase(), /(e2e|test)/, 'PM2 home must identify an isolated E2E path');
-  assert.notEqual(
-    resolve(pm2Home),
-    resolve(runtimeRoot),
-    'PM2 home must be isolated from runtime root',
-  );
-  assert.equal(existsSync(pm2Home), true, 'PM2 home must exist');
-  assert.equal(statSync(pm2Home).isDirectory(), true, 'PM2 home must be a directory');
-  assert.equal(readdirSync(pm2Home).length, 0, 'PM2 home must be empty before the gate');
 }
 
 export function assertNonRootRuntimeUser(runtimeUser: string) {
@@ -230,27 +240,44 @@ export function assertNonRootRuntimeUser(runtimeUser: string) {
   assert.notEqual(String(result.stdout || '').trim(), '0', 'runtime user must not resolve to root');
 }
 
-function resolvePm2Command() {
-  const configured = requiredEnv('APP_SERVICE_E2E_PM2_COMMAND');
-  if (configured) return configured;
-  const result = spawnSync('which', ['pm2'], { encoding: 'utf8', shell: false, stdio: 'pipe' });
-  assert.equal(
-    result.status,
-    0,
-    'PM2 must be available or APP_SERVICE_E2E_PM2_COMMAND must be set',
+export function assertDigestPinnedImage(image: string) {
+  assert.match(
+    image,
+    /^(?:[a-z0-9]+(?:[._-][a-z0-9]+)*(?::\d+)?\/)*(?:[a-z0-9]+(?:[._-][a-z0-9]+)*)@sha256:[a-f0-9]{64}$/,
+    'Podman image must be credential-free and digest pinned',
   );
-  const command = String(result.stdout || '').trim();
-  assert.equal(isAbsolute(command), true, 'resolved PM2 command must be absolute');
+}
+
+function resolvePodmanCommand() {
+  const configured = requiredEnv('APP_SERVICE_E2E_PODMAN_COMMAND');
+  let command = configured;
+  if (!command) {
+    const result = spawnSync('which', ['podman'], {
+      encoding: 'utf8',
+      shell: false,
+      stdio: 'pipe',
+    });
+    assert.equal(
+      result.status,
+      0,
+      'Podman must be available or APP_SERVICE_E2E_PODMAN_COMMAND must be set',
+    );
+    command = String(result.stdout || '').trim();
+  }
+  assert.equal(isAbsolute(command), true, 'resolved Podman command must be absolute');
+  assert.match(command, /^\/[A-Za-z0-9_./-]+$/, 'resolved Podman command must be fixed');
   return command;
 }
 
 function assertRunuserBoundary(input: Config) {
-  const env = pm2Environment(input);
+  const env = podmanEnvironment(input);
   for (const args of [
     ['-u', input.runtimeUser, '--', '/usr/bin/test', '-r', input.runtimeRoot],
     ['-u', input.runtimeUser, '--', '/usr/bin/test', '-x', input.runtimeRoot],
-    ['-u', input.runtimeUser, '--', '/usr/bin/test', '-w', input.pm2Home],
-    ['-u', input.runtimeUser, '--', input.pm2Command, '--version'],
+    ['-u', input.runtimeUser, '--', '/usr/bin/test', '-w', input.podmanHome],
+    ['-u', input.runtimeUser, '--', '/usr/bin/test', '-w', input.podmanXdgRuntimeDir],
+    ['-u', input.runtimeUser, '--', '/usr/bin/test', '-w', input.socketRoot],
+    ['-u', input.runtimeUser, '--', input.podmanCommand, '--version'],
   ]) {
     const result = spawnSync('runuser', args, {
       env,
@@ -264,6 +291,14 @@ function assertRunuserBoundary(input: Config) {
       'runuser boundary must allow the configured low-privilege runtime',
     );
   }
+  assertRootlessPodman(input);
+}
+
+export function assertRootlessPodman(input: Config) {
+  const info = podmanCommand(['info', '--format', 'json'], false, input);
+  assert.match(info.stdout, /"rootless"\s*:\s*true/i, 'Podman must run rootless');
+  const image = podmanCommand(['image', 'exists', input.podmanImage], true, input);
+  assert.equal(image.status, 0, 'digest-pinned runtime image must be preloaded');
 }
 
 function loadConfig(): Config {
@@ -277,7 +312,10 @@ function loadConfig(): Config {
     'APP_SERVICE_E2E_REDIS_DB',
     'APP_SERVICE_E2E_REDIS_ISOLATED',
     'APP_SERVICE_E2E_RUNTIME_ROOT',
-    'APP_SERVICE_E2E_PM2_HOME',
+    'APP_SERVICE_E2E_PODMAN_HOME',
+    'APP_SERVICE_E2E_PODMAN_XDG_RUNTIME_DIR',
+    'APP_SERVICE_E2E_SOCKET_ROOT',
+    'APP_SERVICE_E2E_PODMAN_IMAGE',
     'APP_SERVICE_E2E_RUNTIME_USER',
   ];
   const missing = required.filter((name) => !requiredEnv(name));
@@ -296,17 +334,44 @@ function loadConfig(): Config {
   }
 
   const runtimeRoot = resolve(requiredEnv('APP_SERVICE_E2E_RUNTIME_ROOT'));
-  const pm2Home = resolve(requiredEnv('APP_SERVICE_E2E_PM2_HOME'));
+  const podmanHome = resolve(requiredEnv('APP_SERVICE_E2E_PODMAN_HOME'));
+  const podmanXdgRuntimeDir = resolve(requiredEnv('APP_SERVICE_E2E_PODMAN_XDG_RUNTIME_DIR'));
+  const socketRoot = resolve(requiredEnv('APP_SERVICE_E2E_SOCKET_ROOT'));
   if (
     !isAbsolute(requiredEnv('APP_SERVICE_E2E_RUNTIME_ROOT')) ||
-    !isAbsolute(requiredEnv('APP_SERVICE_E2E_PM2_HOME'))
+    !isAbsolute(requiredEnv('APP_SERVICE_E2E_PODMAN_HOME')) ||
+    !isAbsolute(requiredEnv('APP_SERVICE_E2E_PODMAN_XDG_RUNTIME_DIR')) ||
+    !isAbsolute(requiredEnv('APP_SERVICE_E2E_SOCKET_ROOT'))
   ) {
-    throw new Error('Runtime root and isolated PM2 home must be absolute');
+    throw new Error('Runtime, Podman, XDG, and socket roots must be absolute');
   }
   assertRuntimeRootOutsideRepository(runtimeRoot);
-  assertDedicatedPm2Home(pm2Home, runtimeRoot);
+  assertEmptyOwnedDirectory(podmanXdgRuntimeDir, 'Podman XDG runtime directory');
+  assertEmptyOwnedDirectory(socketRoot, 'service socket root');
+  assertDedicatedPodmanHome(podmanHome, socketRoot);
+  assert.equal(isInside(socketRoot, podmanHome), true, 'socket root must be inside Podman home');
+  assert.notEqual(
+    resolve(socketRoot),
+    resolve(podmanHome),
+    'socket root must not equal Podman home',
+  );
+  assert.equal(
+    isInside(runtimeRoot, podmanHome) || isInside(podmanHome, runtimeRoot),
+    false,
+    'runtime root and Podman home must not overlap',
+  );
+  assert.equal(
+    isInside(runtimeRoot, podmanXdgRuntimeDir) ||
+      isInside(podmanXdgRuntimeDir, runtimeRoot) ||
+      isInside(podmanHome, podmanXdgRuntimeDir) ||
+      isInside(podmanXdgRuntimeDir, podmanHome),
+    false,
+    'release, Podman, and XDG roots must remain isolated',
+  );
   const runtimeUser = requiredEnv('APP_SERVICE_E2E_RUNTIME_USER');
   assertNonRootRuntimeUser(runtimeUser);
+  const podmanImage = requiredEnv('APP_SERVICE_E2E_PODMAN_IMAGE');
+  assertDigestPinnedImage(podmanImage);
 
   const servicePortMin = Number(requiredEnv('APP_SERVICE_E2E_PORT_MIN') || 32000);
   const servicePortMax = Number(requiredEnv('APP_SERVICE_E2E_PORT_MAX') || 32199);
@@ -331,9 +396,12 @@ function loadConfig(): Config {
     redisPassword: requiredEnv('APP_SERVICE_E2E_REDIS_PASSWORD'),
     redisDb,
     runtimeRoot,
-    pm2Home,
+    podmanHome,
+    podmanXdgRuntimeDir,
+    socketRoot,
     runtimeUser,
-    pm2Command: resolvePm2Command(),
+    podmanCommand: resolvePodmanCommand(),
+    podmanImage,
     servicePortMin,
     servicePortMax,
   };
@@ -465,31 +533,33 @@ function releaseRedisDatabase() {
   redisLeaseAcquired = false;
 }
 
-function pm2Environment(input = config) {
+function podmanEnvironment(input = config) {
   return {
     PATH: '/usr/local/bin:/usr/bin:/bin',
-    HOME: dirname(input.pm2Home),
-    PM2_HOME: input.pm2Home,
+    HOME: input.podmanHome,
+    XDG_RUNTIME_DIR: input.podmanXdgRuntimeDir,
     NODE_ENV: 'production',
   };
 }
 
-function pm2Command(args: string[], allowFailure = false) {
+function podmanCommand(args: string[], allowFailure = false, input = config) {
   const result = spawnSync(
     'runuser',
-    ['-u', config.runtimeUser, '--', config.pm2Command, ...args],
+    ['-u', input.runtimeUser, '--', input.podmanCommand, ...args],
     {
-      cwd: config.runtimeRoot,
-      env: pm2Environment(),
+      cwd: input.runtimeRoot,
+      env: podmanEnvironment(input),
       encoding: 'utf8',
       stdio: 'pipe',
       shell: false,
     },
   );
-  if (result.error) throw new Error(`PM2 command failed to start: ${redact(result.error.message)}`);
+  if (result.error) {
+    throw new Error(`Podman command failed to start: ${redact(result.error.message)}`);
+  }
   if (!allowFailure && result.status !== 0) {
     throw new Error(
-      `PM2 command failed with exit code ${result.status}: ${tail(String(result.stderr || ''))}`,
+      `Podman command failed with exit code ${result.status}: ${tail(String(result.stderr || ''))}`,
     );
   }
   return {
@@ -499,20 +569,87 @@ function pm2Command(args: string[], allowFailure = false) {
   };
 }
 
-function listPm2Processes() {
-  const result = pm2Command(['jlist']);
-  const parsed = JSON.parse(result.stdout || '[]') as Array<{ name?: unknown }>;
-  assert.equal(Array.isArray(parsed), true, 'PM2 process list must be an array');
-  return parsed.map((item) => String(item.name || '')).filter(Boolean);
+function listOwnedContainers() {
+  if (!appCode) return [];
+  const result = podmanCommand([
+    'ps',
+    '--all',
+    '--filter',
+    `label=io.agentstudio.app-code=${appCode}`,
+    '--format',
+    'json',
+  ]);
+  const parsed = JSON.parse(result.stdout || '[]') as Array<{
+    Name?: unknown;
+    Names?: unknown;
+  }>;
+  assert.equal(Array.isArray(parsed), true, 'Podman container list must be an array');
+  return parsed
+    .map((item) => {
+      if (typeof item.Name === 'string') return item.Name;
+      if (typeof item.Names === 'string') return item.Names;
+      if (Array.isArray(item.Names) && typeof item.Names[0] === 'string') return item.Names[0];
+      return '';
+    })
+    .filter(Boolean);
 }
 
-export function assertNoOwnedProcesses() {
-  const active = listPm2Processes().filter((name) => ownedProcessNames.has(name));
-  assert.deepEqual(active, [], 'verify PM2 cleanup must remove every owned service process');
+function inspectOwnedContainer(processName: string) {
+  assert.equal(
+    ownedContainerNames.has(processName),
+    true,
+    'container name must belong to this run',
+  );
+  const result = podmanCommand(['inspect', '--format', 'json', processName]);
+  const records = JSON.parse(result.stdout || '[]') as Array<Record<string, any>>;
+  assert.equal(records.length, 1, 'owned container inspect must return exactly one record');
+  const labels = records[0]?.Config?.Labels || {};
+  assert.equal(labels['io.agentstudio.managed'], 'true', 'container must be platform managed');
+  assert.equal(labels['io.agentstudio.app-code'], appCode, 'container must carry this run label');
+  return records[0];
+}
+
+function removeOwnedContainer(processName: string) {
+  inspectOwnedContainer(processName);
+  podmanCommand(['rm', '--force', processName]);
+}
+
+export function assertNoOwnedContainers() {
+  const active = listOwnedContainers().filter((name) => ownedContainerNames.has(name));
+  assert.deepEqual(active, [], 'verify Podman cleanup must remove every owned service container');
 }
 
 function processNameFor(code: string, version: string) {
   return `agentstudio-app-${code.replace(/_/g, '-')}-${version.replace(/\./g, '-')}`;
+}
+
+function assertPodmanIsolation(instance: RuntimeInstance) {
+  assert.equal(instance.runtime_driver, 'podman', 'live runtime must persist the Podman driver');
+  const record = inspectOwnedContainer(instance.process_name);
+  const hostConfig = (record.HostConfig || {}) as Record<string, any>;
+  assert.equal(String(hostConfig.NetworkMode || '').toLowerCase(), 'none');
+  assert.equal(hostConfig.ReadonlyRootfs, true, 'container root filesystem must be read-only');
+  assert.ok(Number(hostConfig.PidsLimit) >= 16 && Number(hostConfig.PidsLimit) <= 512);
+  assert.ok(Number(hostConfig.Memory) >= 128 * 1024 * 1024);
+  assert.ok(Number(hostConfig.NanoCpus) > 0);
+  const securityOptions = JSON.stringify(hostConfig.SecurityOpt || []).toLowerCase();
+  assert.match(securityOptions, /no-new-privileges/);
+  const effectiveCaps = Array.isArray(record.EffectiveCaps) ? record.EffectiveCaps : [];
+  const droppedCaps = JSON.stringify(hostConfig.CapDrop || []).toUpperCase();
+  assert.ok(
+    effectiveCaps.length === 0 || droppedCaps.includes('ALL'),
+    'container must retain no Linux capabilities',
+  );
+  assert.match(String(record.Config?.User || ''), /^65532(?::65532)?$/);
+  assert.doesNotMatch(JSON.stringify(record.Mounts || []), /podman\.sock|docker\.sock/i);
+}
+
+export function assertSocketCleanup() {
+  if (!config?.socketRoot || !appCode) return;
+  const residue = readdirSync(config.socketRoot).filter((entry) =>
+    entry.startsWith(`agentstudio-app-${appCode.replace(/_/g, '-')}-`),
+  );
+  assert.deepEqual(residue, [], 'verify socket cleanup must leave no owned socket directories');
 }
 
 function appendProcessOutput(child: ChildProcess, chunk: unknown) {
@@ -719,12 +856,19 @@ function backendEnvironment(input: { port: number; jwtSecret: string; enabled: b
     APP_PACKAGE_DIR: resolve(artifactRoot, 'packages'),
     APP_PUBLIC_DIR: resolve(artifactRoot, 'public'),
     APP_SERVICE_RUNTIME_ENABLED: input.enabled ? 'true' : 'false',
+    APP_SERVICE_RUNTIME_DRIVER: 'podman',
     APP_SERVICE_RUNTIME_DIR: config.runtimeRoot,
     APP_SERVICE_RUNTIME_USER: config.runtimeUser,
-    APP_SERVICE_PM2_HOME: config.pm2Home,
-    APP_SERVICE_PM2_COMMAND: config.pm2Command,
-    APP_SERVICE_RUNTIME_INTERPRETER: 'node',
+    APP_SERVICE_PODMAN_COMMAND: config.podmanCommand,
+    APP_SERVICE_PODMAN_IMAGE: config.podmanImage,
+    APP_SERVICE_PODMAN_HOME: config.podmanHome,
+    APP_SERVICE_PODMAN_XDG_RUNTIME_DIR: config.podmanXdgRuntimeDir,
+    APP_SERVICE_SOCKET_DIR: config.socketRoot,
     APP_SERVICE_MEMORY_MB: '256',
+    APP_SERVICE_CPU_LIMIT: '1',
+    APP_SERVICE_PIDS_LIMIT: '64',
+    APP_SERVICE_TMPFS_MB: '16',
+    APP_SERVICE_CONTAINER_UID: '65532',
     APP_SERVICE_PORT_MIN: String(config.servicePortMin),
     APP_SERVICE_PORT_MAX: String(config.servicePortMax),
     APP_SERVICE_HEALTH_SUCCESS_COUNT: '3',
@@ -779,23 +923,30 @@ async function createServiceZip(version: string) {
   return buffer;
 }
 
-async function directCandidateInvoke(port: number, payload: Record<string, unknown>) {
-  assert.ok(
-    Number.isInteger(port) && port >= config.servicePortMin && port <= config.servicePortMax,
-  );
-  const response = await fetch(`http://127.0.0.1:${port}/invoke`, {
-    method: 'POST',
-    headers: { accept: 'application/json', 'content-type': 'application/json' },
-    body: JSON.stringify(payload),
-    redirect: 'manual',
-    signal: terminationController.signal,
-  });
-  assert.equal(
-    response.status,
-    200,
-    'candidate fixture control must use the loopback invoke endpoint',
-  );
-  return response.json() as Promise<Record<string, unknown>>;
+async function directCandidateInvoke(instance: RuntimeInstance, payload: Record<string, unknown>) {
+  assert.equal(instance.runtime_driver, 'podman');
+  const socketPath = resolve(config.socketRoot, instance.process_name, 'service.sock');
+  assert.equal(isInside(socketPath, config.socketRoot), true);
+  assert.equal(lstatSync(socketPath).isSocket(), true, 'candidate must expose a Unix socket');
+  const dispatcher = new Agent({ connect: { socketPath }, connections: 1, pipelining: 0 });
+  try {
+    const response = await undiciRequest('http://localhost/invoke', {
+      dispatcher,
+      method: 'POST',
+      headers: { accept: 'application/json', 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+      maxRedirections: 0,
+      signal: terminationController.signal,
+    });
+    assert.equal(
+      response.statusCode,
+      200,
+      'candidate fixture control must use the Unix socket invoke endpoint',
+    );
+    return JSON.parse(await response.body.text()) as Record<string, unknown>;
+  } finally {
+    await dispatcher.close();
+  }
 }
 
 function assertProbeVersion(probe: RuntimeProbe, version: string) {
@@ -901,8 +1052,8 @@ async function main() {
   assertDisposableDatabaseName(databaseName);
   artifactRoot = mkdtempSync(join(tmpdir(), 'agentstudio-service-e2e-'));
   appCode = `service_e2e_${suffix}`.slice(0, 70);
-  ownedProcessNames.add(processNameFor(appCode, '1.0.0'));
-  ownedProcessNames.add(processNameFor(appCode, '2.0.0'));
+  ownedContainerNames.add(processNameFor(appCode, '1.0.0'));
+  ownedContainerNames.add(processNameFor(appCode, '2.0.0'));
   const reviewerUsername = `service_reviewer_${suffix}`.slice(0, 30);
   const reviewerPassword = `Rv${randomBytes(18).toString('hex')}9`;
   const jwtSecret = randomBytes(48).toString('base64url');
@@ -1020,7 +1171,7 @@ async function main() {
   await requestJson(backendUrl, `/api/app-platform/apps/${appCode}/versions/1.0.0/approve`, {
     method: 'POST',
     token: reviewer.accessToken,
-    body: { message: 'Independent P10 service review', approved_capabilities: [] },
+    body: { message: 'Independent P0 service review', approved_capabilities: [] },
   });
   assert.equal(
     Number(
@@ -1039,7 +1190,16 @@ async function main() {
     { method: 'POST', token: reviewer.accessToken, body: {} },
   );
   assert.equal(detail.candidate_version, '1.0.0');
-  assert.equal(detail.instances.find((item) => item.version === '1.0.0')?.health_status, 'healthy');
+  const candidateOne = detail.instances.find((item) => item.version === '1.0.0');
+  assert.equal(candidateOne?.health_status, 'healthy');
+  assert.ok(candidateOne);
+
+  addStep('verify Podman isolation');
+  assertPodmanIsolation(candidateOne);
+
+  addStep('verify Unix socket invocation');
+  const directOne = await directCandidateInvoke(candidateOne, { unix_socket: true });
+  assert.equal(directOne.version, '1.0.0');
 
   addStep('verify version one publish and probe');
   detail = await requestJson<RuntimeDetail>(
@@ -1065,7 +1225,7 @@ async function main() {
   await requestJson(backendUrl, `/api/app-platform/apps/${appCode}/versions/2.0.0/approve`, {
     method: 'POST',
     token: reviewer.accessToken,
-    body: { message: 'Independent P10 version two review', approved_capabilities: [] },
+    body: { message: 'Independent P0 version two review', approved_capabilities: [] },
   });
   detail = await requestJson<RuntimeDetail>(
     backendUrl,
@@ -1078,7 +1238,7 @@ async function main() {
   assert.ok(candidateTwo && candidateTwo.health_status === 'healthy');
 
   addStep('verify unhealthy version two preserves active');
-  await directCandidateInvoke(candidateTwo.loopback_port, { __e2e_health: 'unhealthy' });
+  await directCandidateInvoke(candidateTwo, { __e2e_health: 'unhealthy' });
   await requestDenied(
     backendUrl,
     `/api/app-platform/runtime/apps/${appCode}/versions/2.0.0/publish`,
@@ -1104,7 +1264,7 @@ async function main() {
   assertProbeVersion(probe, '1.0.0');
 
   addStep('verify healthy version two publish and role swap');
-  await directCandidateInvoke(candidateTwo.loopback_port, { __e2e_health: 'healthy' });
+  await directCandidateInvoke(candidateTwo, { __e2e_health: 'healthy' });
   detail = await requestJson<RuntimeDetail>(
     backendUrl,
     `/api/app-platform/runtime/apps/${appCode}/versions/2.0.0/publish`,
@@ -1122,16 +1282,16 @@ async function main() {
     {
       method: 'POST',
       token: reviewer.accessToken,
-      body: { reason: 'Restore verified version one during P10 E2E' },
+      body: { reason: 'Restore verified version one during P0 E2E' },
     },
   );
   assert.equal(detail.active_version, '1.0.0');
   assert.equal(detail.standby_version, '2.0.0');
 
-  addStep('verify active process crash reconciliation');
+  addStep('verify active container crash reconciliation');
   const activeOne = detail.instances.find((item) => item.role === 'active');
   assert.ok(activeOne);
-  pm2Command(['delete', activeOne.process_name, '--silent']);
+  removeOwnedContainer(activeOne.process_name);
   const reconcile = await requestJson<{ restarted?: number; failed?: number }>(
     backendUrl,
     '/api/app-platform/runtime/reconcile',
@@ -1190,7 +1350,9 @@ async function main() {
 
   await stopProcess(backend);
   backend = undefined;
-  const processesBeforeDisabled = listPm2Processes().filter((name) => ownedProcessNames.has(name));
+  const containersBeforeDisabled = listOwnedContainers().filter((name) =>
+    ownedContainerNames.has(name),
+  );
   running = await startBackend(false, jwtSecret);
   backend = running.child;
 
@@ -1200,11 +1362,13 @@ async function main() {
     token: reviewer.accessToken,
     body: {},
   });
-  const processesAfterDisabled = listPm2Processes().filter((name) => ownedProcessNames.has(name));
+  const containersAfterDisabled = listOwnedContainers().filter((name) =>
+    ownedContainerNames.has(name),
+  );
   assert.deepEqual(
-    processesAfterDisabled,
-    processesBeforeDisabled,
-    'disabled runtime must not start PM2 processes',
+    containersAfterDisabled,
+    containersBeforeDisabled,
+    'disabled runtime must not start Podman containers',
   );
 }
 
@@ -1228,24 +1392,40 @@ async function cleanupResources() {
 
     try {
       if (config) {
-        for (const processName of ownedProcessNames) {
-          pm2Command(['delete', processName, '--silent'], true);
+        for (const processName of listOwnedContainers()) {
+          if (!ownedContainerNames.has(processName)) continue;
+          removeOwnedContainer(processName);
         }
-        addStep('verify PM2 cleanup');
-        assertNoOwnedProcesses();
-        pm2Command(['kill'], true);
+        addStep('verify Podman cleanup');
+        assertNoOwnedContainers();
       }
     } catch (error) {
       errors.push(error);
     }
 
     try {
-      if (config?.pm2Home && existsSync(config.pm2Home)) {
-        makeWritable(config.pm2Home);
-        for (const entry of readdirSync(config.pm2Home)) {
-          rmSync(resolve(config.pm2Home, entry), { recursive: true, force: true });
+      if (config?.socketRoot && existsSync(config.socketRoot)) {
+        for (const entry of readdirSync(config.socketRoot)) {
+          if (!entry.startsWith(`agentstudio-app-${appCode.replace(/_/g, '-')}-`)) continue;
+          rmSync(resolve(config.socketRoot, entry), { recursive: true, force: true });
         }
-        chmodSync(config.pm2Home, 0o700);
+        addStep('verify socket cleanup');
+        assertSocketCleanup();
+      }
+    } catch (error) {
+      errors.push(error);
+    }
+
+    try {
+      for (const target of [config?.podmanHome, config?.podmanXdgRuntimeDir].filter(
+        (value): value is string => Boolean(value),
+      )) {
+        if (!existsSync(target)) continue;
+        makeWritable(target);
+        for (const entry of readdirSync(target)) {
+          rmSync(resolve(target, entry), { recursive: true, force: true });
+        }
+        chmodSync(target, 0o700);
       }
     } catch (error) {
       errors.push(error);
