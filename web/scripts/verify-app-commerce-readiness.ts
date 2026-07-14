@@ -135,12 +135,12 @@ for (const forbidden of [
 
 const platformPage = readFile('web/src/views/app-platform/commercial/index.vue')
 for (const token of [
-  'Commercial Operations',
-  'Price Plans',
-  'Orders',
-  'Licenses',
-  'Revenue',
-  'Settlements',
+  '商业运营',
+  '价格方案',
+  '订单',
+  '使用授权',
+  '收入',
+  '开发者结算',
   'ElTabs',
   'refundPlatformAppOrder',
   'revokePlatformAppLicense',
@@ -150,7 +150,7 @@ for (const token of [
   'ElDialog',
   'ElEmpty',
   'loadError',
-  'Retry'
+  '重试'
 ]) {
   assertIncludes(platformPage, token, 'platform commercial operations page')
 }

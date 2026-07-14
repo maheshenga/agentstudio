@@ -86,7 +86,6 @@ for (const token of [
   'createPlatformApp',
   'uploadPlatformStaticAppVersion',
   'uploadPlatformServiceAppVersion',
-  'approvePlatformAppVersion',
   'publishPlatformAppVersion',
   'fetchPlatformModules',
   'fetchSystemModules',
@@ -95,8 +94,8 @@ for (const token of [
   'unpublishPlatformAppVersion',
   'rollbackPlatformAppVersion',
   'versionGovernance',
-  'Rollback',
-  'Unpublish',
+  '回滚',
+  '下线',
   'is_active',
   'entry_url',
   'ElOption',
@@ -104,7 +103,7 @@ for (const token of [
   'ElDialog',
   'ElDrawer',
   "value: 'service'",
-  'platform_trusted',
+  '平台可信',
   'scanStatusText'
 ]) {
   assertIncludes(platformPage, token, 'platform apps page')
@@ -112,7 +111,7 @@ for (const token of [
 
 const reviewPage = readFile('web/src/views/app-platform/reviews/index.vue')
 for (const token of [
-  'Review Center',
+  '应用审核中心',
   'fetchPlatformAppReviews',
   'approvePlatformAppVersion',
   'rejectPlatformAppVersion',
@@ -136,7 +135,7 @@ for (const token of [
   '/app-center/open',
   'ElTable',
   'availability_reason',
-  ':disabled="!row.available"',
+  ':disabled="!row.can_install"',
   'Upgrade',
   'requested_capabilities',
   'consentDialogVisible',

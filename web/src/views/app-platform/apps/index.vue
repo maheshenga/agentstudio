@@ -93,7 +93,7 @@
         <ElTableColumn label="更新时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.update_time) }}</template>
         </ElTableColumn>
-        <ElTableColumn label="操作" fixed="right" width="330">
+        <ElTableColumn label="操作" :fixed="actionColumnFixed" width="330">
           <template #default="{ row }">
             <ElButton link type="primary" :icon="Edit" @click="openEditDialog(row)">编辑</ElButton>
             <ElButton
@@ -318,7 +318,7 @@
           >
             <template #default="{ row }">{{ row.review_message || '-' }}</template>
           </ElTableColumn>
-          <ElTableColumn label="操作" fixed="right" width="260">
+          <ElTableColumn label="操作" :fixed="actionColumnFixed" width="260">
             <template #default="{ row }">
               <ElButton
                 v-if="selectedDetail.type !== 'service'"
@@ -376,6 +376,7 @@
     Upload,
     View
   } from '@element-plus/icons-vue'
+  import { useWindowSize } from '@vueuse/core'
   import {
     createPlatformApp,
     fetchPlatformApp,
@@ -414,6 +415,8 @@
 
   defineOptions({ name: 'AppPlatformAppsPage' })
 
+  const { width: viewportWidth } = useWindowSize()
+  const actionColumnFixed = computed(() => (viewportWidth.value > 800 ? 'right' : false))
   const records = ref<AppPackageRecord[]>([])
   const loading = ref(false)
   const saving = ref(false)

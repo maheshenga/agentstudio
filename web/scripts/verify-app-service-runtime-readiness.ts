@@ -98,10 +98,10 @@ for (const token of [
   "value: 'service'",
   "row.type === 'service'",
   'uploadPlatformServiceAppVersion',
-  'platform_trusted',
+  '平台可信',
   'scan_result',
   'scanStatusText',
-  'Service'
+  '服务应用'
 ]) {
   assertIncludes(appsPage, token, 'platform apps page')
 }

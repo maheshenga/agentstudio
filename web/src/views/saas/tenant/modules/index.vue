@@ -5,10 +5,17 @@
         <h1>租户模块</h1>
         <p>查看模块授权来源、可用状态和租户级配置。</p>
       </div>
-      <ElButton type="primary" :icon="Refresh" :loading="loading" @click="loadModules">刷新</ElButton>
+      <ElButton type="primary" :icon="Refresh" :loading="loading" @click="loadModules"
+        >刷新</ElButton
+      >
     </div>
 
-    <ElAlert v-if="loadError" type="error" :title="loadError" show-icon :closable="false" />
+    <div v-if="loadError" class="tenant-modules-page__load-error">
+      <ElAlert type="error" :title="loadError" show-icon :closable="false" />
+      <ElButton size="small" type="primary" link :loading="loading" @click="loadModules">
+        重试
+      </ElButton>
+    </div>
     <ElTable v-loading="loading" :data="records" border>
       <ElTableColumn label="模块" min-width="190">
         <template #default="{ row }">
@@ -35,13 +42,32 @@
       </ElTableColumn>
       <ElTableColumn label="操作" fixed="right" width="210">
         <template #default="{ row }">
-          <ElButton v-if="isEnabled(row)" link type="primary" :icon="Setting" @click="openConfig(row)">
+          <ElButton
+            v-if="isEnabled(row)"
+            link
+            type="primary"
+            :icon="Setting"
+            @click="openConfig(row)"
+          >
             配置
           </ElButton>
-          <ElButton v-if="isEnabled(row) && row.entry_route" link type="primary" :icon="Link" @click="router.push(row.entry_route)">
+          <ElButton
+            v-if="isEnabled(row) && row.entry_route"
+            link
+            type="primary"
+            :icon="Link"
+            @click="router.push(row.entry_route)"
+          >
             进入
           </ElButton>
-          <ElButton v-if="!isEnabled(row)" link type="warning" :icon="InfoFilled" :loading="diagnosingCode === row.code" @click="showDiagnosis(row)">
+          <ElButton
+            v-if="!isEnabled(row)"
+            link
+            type="warning"
+            :icon="InfoFilled"
+            :loading="diagnosingCode === row.code"
+            @click="showDiagnosis(row)"
+          >
             查看原因
           </ElButton>
         </template>
@@ -49,10 +75,21 @@
       <template #empty><ElEmpty description="暂无模块数据" /></template>
     </ElTable>
 
-    <ElDialog v-model="configVisible" :title="`${selectedModule?.name || '模块'}配置`" width="min(680px, 92vw)" destroy-on-close>
+    <ElDialog
+      v-model="configVisible"
+      :title="`${selectedModule?.name || '模块'}配置`"
+      width="min(680px, 92vw)"
+      destroy-on-close
+    >
       <ElForm label-position="top">
         <ElFormItem label="租户覆盖配置">
-          <ElInput v-model="tenantConfigText" type="textarea" :rows="10" resize="vertical" spellcheck="false" />
+          <ElInput
+            v-model="tenantConfigText"
+            type="textarea"
+            :rows="10"
+            resize="vertical"
+            spellcheck="false"
+          />
         </ElFormItem>
         <ElFormItem label="当前有效配置">
           <pre class="tenant-modules-page__effective">{{ effectiveConfigText }}</pre>
@@ -74,6 +111,7 @@
     fetchTenantSystemModuleConfig,
     fetchTenantSystemModules,
     saveTenantSystemModuleConfig,
+    type SystemModuleAccessDiagnosis,
     type SystemModuleRecord
   } from '@/api/system-module'
 
@@ -83,6 +121,7 @@
   const loading = ref(false)
   const loadError = ref('')
   const diagnosingCode = ref('')
+  const diagnosisByCode = reactive<Record<string, SystemModuleAccessDiagnosis>>({})
   const configVisible = ref(false)
   const savingConfig = ref(false)
   const selectedModule = ref<SystemModuleRecord | null>(null)
@@ -93,15 +132,29 @@
     return row.tenant_enabled === true || row.tenant_enabled === 1
   }
   function entitlementText(source?: string) {
-    return ({ plan: '套餐', platform: '平台授权', manual: '手动授权', trial: '试用', system: '系统基线' } as Record<string, string>)[source || ''] || source || '-'
+    return (
+      (
+        {
+          plan: '套餐',
+          platform: '平台授权',
+          manual: '手动授权',
+          trial: '试用',
+          system: '系统基线'
+        } as Record<string, string>
+      )[source || ''] ||
+      source ||
+      '-'
+    )
   }
   function accessText(row: SystemModuleRecord) {
-    if (isEnabled(row)) return row.entitlement_source === 'plan' ? '当前套餐已包含' : '当前租户已开通'
-    return '当前租户尚未开通该模块'
+    if (isEnabled(row))
+      return row.entitlement_source === 'plan' ? '当前套餐已包含' : '当前租户已开通'
+    return diagnosisByCode[row.code]?.reason || '当前租户未启用该系统模块'
   }
   function parseConfig() {
     const value = JSON.parse(tenantConfigText.value)
-    if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error('配置必须是 JSON 对象')
+    if (!value || Array.isArray(value) || typeof value !== 'object')
+      throw new Error('配置必须是 JSON 对象')
     return value as Record<string, any>
   }
 
@@ -111,20 +164,29 @@
     try {
       records.value = await fetchTenantSystemModules()
     } catch (error) {
-      console.error('[TenantModulesPage] load failed:', error)
+      console.error('[TenantModulesPage] load modules failed:', error)
       records.value = []
       loadError.value = '租户模块加载失败，请稍后重试'
+      ElMessage.error(loadError.value)
     } finally {
       loading.value = false
     }
   }
 
   async function showDiagnosis(row: SystemModuleRecord) {
+    if (!row.code) return
     diagnosingCode.value = row.code
     try {
-      const diagnosis = await fetchTenantSystemModuleAccessDiagnosis(row.code)
-      const content = [diagnosis.reason, ...(diagnosis.suggestions || [])].filter(Boolean).join('\n')
+      const diagnosis =
+        diagnosisByCode[row.code] || (await fetchTenantSystemModuleAccessDiagnosis(row.code))
+      diagnosisByCode[row.code] = diagnosis
+      const content = [diagnosis.reason, ...(diagnosis.suggestions || [])]
+        .filter(Boolean)
+        .join('\n')
       await ElMessageBox.alert(content, '模块访问诊断', { confirmButtonText: '知道了' })
+    } catch (error) {
+      console.error('[TenantModulesPage] load module diagnosis failed:', error)
+      ElMessage.error('模块诊断失败，请稍后重试')
     } finally {
       diagnosingCode.value = ''
     }
@@ -162,12 +224,61 @@
 </script>
 
 <style scoped>
-  .tenant-modules-page { display: grid; align-content: start; gap: 16px; }
-  .tenant-modules-page__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-  .tenant-modules-page__header h1 { margin: 0; font-size: 18px; line-height: 1.4; letter-spacing: 0; }
-  .tenant-modules-page__header p { margin: 5px 0 0; color: var(--el-text-color-secondary); font-size: 13px; }
-  .tenant-modules-page__module { display: grid; gap: 2px; }
-  .tenant-modules-page__module span { color: var(--el-text-color-secondary); font-size: 12px; }
-  .tenant-modules-page__effective { width: 100%; max-height: 260px; margin: 0; overflow: auto; padding: 12px; border: 1px solid var(--el-border-color-light); border-radius: 6px; background: var(--el-fill-color-lighter); font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
-  @media (max-width: 640px) { .tenant-modules-page__header { display: grid; } }
+  .tenant-modules-page {
+    display: grid;
+    align-content: start;
+    gap: 16px;
+  }
+  .tenant-modules-page__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .tenant-modules-page__header h1 {
+    margin: 0;
+    font-size: 18px;
+    line-height: 1.4;
+    letter-spacing: 0;
+  }
+  .tenant-modules-page__header p {
+    margin: 5px 0 0;
+    color: var(--el-text-color-secondary);
+    font-size: 13px;
+  }
+  .tenant-modules-page__module {
+    display: grid;
+    gap: 2px;
+  }
+  .tenant-modules-page__module span {
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+  }
+  .tenant-modules-page__load-error {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .tenant-modules-page__load-error :deep(.el-alert) {
+    flex: 1;
+  }
+  .tenant-modules-page__effective {
+    width: 100%;
+    max-height: 260px;
+    margin: 0;
+    overflow: auto;
+    padding: 12px;
+    border: 1px solid var(--el-border-color-light);
+    border-radius: 6px;
+    background: var(--el-fill-color-lighter);
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  @media (max-width: 640px) {
+    .tenant-modules-page__header {
+      display: grid;
+    }
+  }
 </style>

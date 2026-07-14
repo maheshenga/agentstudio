@@ -126,7 +126,7 @@
             formatDateTime(row.update_time || row.create_time)
           }}</template>
         </ElTableColumn>
-        <ElTableColumn label="操作" fixed="right" width="500">
+        <ElTableColumn label="操作" :fixed="actionColumnFixed" width="500">
           <template #default="{ row }">
             <ElButton link :icon="View" @click="openEvidence(row)">审核证据</ElButton>
             <ElButton
@@ -357,6 +357,7 @@
   import { computed, onMounted, reactive, ref } from 'vue'
   import { ElMessage, ElMessageBox } from 'element-plus'
   import { Refresh, Search, View } from '@element-plus/icons-vue'
+  import { useWindowSize } from '@vueuse/core'
   import {
     approvePlatformAppVersion,
     fetchPlatformAppReviews,
@@ -389,6 +390,8 @@
 
   defineOptions({ name: 'AppPlatformReviewCenterPage' })
 
+  const { width: viewportWidth } = useWindowSize()
+  const actionColumnFixed = computed(() => (viewportWidth.value > 800 ? 'right' : false))
   const records = ref<AppReviewQueueRecord[]>([])
   const loading = ref(false)
   const loadError = ref('')

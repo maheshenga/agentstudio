@@ -51,7 +51,7 @@ for (const token of [
 
 const pageSource = readFile('web/src/views/app-center/developer/index.vue')
 for (const token of [
-  'Developer Apps',
+  '开发者应用',
   'fetchDeveloperApps',
   'fetchDeveloperApp',
   'createDeveloperApp',
