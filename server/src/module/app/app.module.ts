@@ -63,6 +63,11 @@ import {
   AppServiceProcessManager,
   NodeAppServiceCommandRunner,
 } from './services/app-service-process-manager';
+import { PodmanAppServiceRuntimeDriver } from './services/app-service-podman-runtime.driver';
+import {
+  APP_SERVICE_PODMAN_RUNTIME_DRIVER,
+  AppServiceRuntimeDriverRegistry,
+} from './services/app-service-runtime-driver-registry';
 import {
   AppServiceDelay,
   AppServicePortAllocator,
@@ -125,6 +130,12 @@ import { AppTenantService } from './services/app-tenant.service';
     AppServiceLogRedactor,
     AppServiceHostEnvironment,
     AppServiceProcessManager,
+    PodmanAppServiceRuntimeDriver,
+    AppServiceRuntimeDriverRegistry,
+    {
+      provide: APP_SERVICE_PODMAN_RUNTIME_DRIVER,
+      useExisting: PodmanAppServiceRuntimeDriver,
+    },
     { provide: AppServiceCommandRunner, useClass: NodeAppServiceCommandRunner },
     AppServiceLoopbackTransport,
     AppServiceRuntimeService,
@@ -151,6 +162,8 @@ import { AppTenantService } from './services/app-tenant.service';
     AppServicePackageService,
     AppServiceLogRedactor,
     AppServiceProcessManager,
+    PodmanAppServiceRuntimeDriver,
+    AppServiceRuntimeDriverRegistry,
     AppServiceLoopbackTransport,
     AppServiceRuntimeService,
     AppPlatformService,
