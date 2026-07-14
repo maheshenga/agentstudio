@@ -36,6 +36,7 @@ describe('AppServiceProcessManager', () => {
     makeReadOnly(runtimeRoot);
 
     configValues = {
+      'app.env': 'development',
       'appMarketplace.serviceRuntime.enabled': true,
       'appMarketplace.serviceRuntime.rootDir': runtimeRoot,
       'appMarketplace.serviceRuntime.user': 'agentstudio_app',
@@ -146,6 +147,14 @@ describe('AppServiceProcessManager', () => {
     manager = createManager('win32');
 
     await expect(manager.start(spec())).rejects.toThrow('Linux');
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('rejects the shared-user service runtime in production', async () => {
+    configValues['app.env'] = 'production';
+    manager = createManager();
+
+    await expect(manager.start(spec())).rejects.toThrow('per-app isolation');
     expect(runner.run).not.toHaveBeenCalled();
   });
 

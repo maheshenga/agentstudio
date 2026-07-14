@@ -162,9 +162,7 @@
   const resourceTypeOptions = [
     { label: '用户数', value: 'users' },
     { label: 'AI 调用次数', value: 'ai_calls' },
-    { label: 'Token', value: 'tokens' },
-    { label: '存储空间', value: 'storage_mb' },
-    { label: '知识库文档', value: 'rag_documents' }
+    { label: 'Token', value: 'tokens' }
   ]
   const form = reactive({
     code: '',

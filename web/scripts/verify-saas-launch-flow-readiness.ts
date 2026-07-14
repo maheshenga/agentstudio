@@ -21,6 +21,12 @@ function assertIncludes(source: string, token: string, label: string) {
   }
 }
 
+function assertNotIncludes(source: string, token: string, label: string) {
+  if (source.includes(token)) {
+    failures.push(`${label} must not include ${token}`)
+  }
+}
+
 function assertFileExists(root: string, path: string) {
   if (!existsSync(resolve(root, path))) {
     failures.push(`${path} must exist`)
@@ -144,11 +150,12 @@ for (const token of [
   'createTenantMember',
   'changeTenantMemberRole',
   'updateTenantMemberStatus',
-  'removeTenantMember',
-  'resetTenantMemberPassword'
+  'removeTenantMember'
 ]) {
   assertIncludes(tenantMemberPage, token, 'tenant member page')
 }
+assertNotIncludes(tenantMemberPage, 'resetTenantMemberPassword', 'tenant member page')
+assertNotIncludes(apiSource, 'export function resetTenantMemberPassword', 'saas api export')
 
 const tenantResourcePackPage = readProjectFile(webRoot, 'src/views/saas/tenant/resource-pack/index.vue')
 for (const token of [

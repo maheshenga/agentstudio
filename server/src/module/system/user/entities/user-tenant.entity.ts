@@ -17,4 +17,7 @@ export class SysUserTenantEntity extends BaseEntity {
 
   @Column({ type: 'tinyint', name: 'is_default', default: 0, comment: '是否默认' })
   isDefault: number;
+
+  @Column({ type: 'tinyint', name: 'status', default: 1, comment: 'Membership status: 1 enabled, 0 disabled' })
+  status: number;
 }

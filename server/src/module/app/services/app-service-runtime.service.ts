@@ -1096,6 +1096,10 @@ export class AppServiceRuntimeService {
     if (!this.configService.get<boolean>('appMarketplace.serviceRuntime.enabled')) {
       throw new ServiceUnavailableException('Service runtime is disabled');
     }
+    const appEnv = String(this.configService.get<string>('app.env') || 'development').toLowerCase();
+    if (appEnv === 'production') {
+      throw new ServiceUnavailableException('Production service runtime requires per-app isolation');
+    }
   }
 
   private healthSuccessCount() {

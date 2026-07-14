@@ -188,7 +188,7 @@
   const moduleRows = ref<SaasModuleRecord[]>([])
   const selectedModuleCodes = ref<string[]>([])
 
-  const quotaTypes = ['users', 'storage_mb', 'ai_calls', 'rag_documents', 'tokens']
+  const quotaTypes = ['users', 'ai_calls', 'tokens']
   const quotaLabels: Record<string, string> = {
     users: '用户数',
     storage_mb: '存储 MB',

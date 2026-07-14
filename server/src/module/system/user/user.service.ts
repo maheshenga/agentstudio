@@ -457,7 +457,7 @@ export class UserService {
    */
   private async assertActiveTenantMembership(userId: number, tenantId: number) {
     const userTenant = await this.sysUserTenantEntityRep.findOne({
-      where: { userId, tenantId, deleteTime: IsNull() },
+      where: { userId, tenantId, status: 1, deleteTime: IsNull() },
     });
     if (!userTenant) {
       return ResultData.fail(403, '您不属于该租户');
@@ -1283,13 +1283,13 @@ export class UserService {
    */
   private async getDefaultTenantId(userId: number): Promise<number | null> {
     const preferred = await this.sysUserTenantEntityRep.findOne({
-      where: { userId, isDefault: 1, deleteTime: IsNull() },
+      where: { userId, isDefault: 1, status: 1, deleteTime: IsNull() },
       select: { tenantId: true },
     });
     if (preferred?.tenantId) return Number(preferred.tenantId);
 
     const any = await this.sysUserTenantEntityRep.findOne({
-      where: { userId, deleteTime: IsNull() },
+      where: { userId, status: 1, deleteTime: IsNull() },
       order: { id: 'ASC' },
       select: { tenantId: true },
     });
@@ -1334,6 +1334,12 @@ export class UserService {
     }
     if (!tenantId) {
       return ResultData.fail(401, 'Tenant context expired, please log in again');
+    }
+
+    const tenantCheck = await this.assertActiveTenantMembership(userId, tenantId);
+    if (tenantCheck.code !== 200) {
+      await this.deleteRefreshToken(body.refreshToken);
+      return tenantCheck;
     }
 
     await this.deleteRefreshToken(body.refreshToken);
@@ -1425,7 +1431,7 @@ export class UserService {
     }
 
     const userTenants = await this.sysUserTenantEntityRep.find({
-      where: { userId: user.id, deleteTime: IsNull() },
+      where: { userId: user.id, status: 1, deleteTime: IsNull() },
     });
     if (!userTenants.length) {
       return ResultData.ok([]);
@@ -1463,7 +1469,7 @@ export class UserService {
     }
 
     const userTenant = await this.sysUserTenantEntityRep.findOne({
-      where: { userId, tenantId: newTenantId, deleteTime: IsNull() },
+      where: { userId, tenantId: newTenantId, status: 1, deleteTime: IsNull() },
     });
     if (!userTenant) {
       return ResultData.fail(403, '您不属于该租户');

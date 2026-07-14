@@ -46,6 +46,9 @@ describe('ChatService SaaS quota integration', () => {
   const saasQuotaService = {
     assertTenantQuotaAvailable: jest.fn(),
     consumeAiUsage: jest.fn(),
+    reserveAiUsage: jest.fn(),
+    finalizeAiUsage: jest.fn(),
+    releaseAiUsage: jest.fn(),
   };
   const systemModuleAccessService = {
     assertModuleAccess: jest.fn(),
@@ -58,6 +61,7 @@ describe('ChatService SaaS quota integration', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    saasQuotaService.reserveAiUsage.mockResolvedValue({ id: 'reservation-1', reservedTokens: 1029 });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -169,7 +173,7 @@ describe('ChatService SaaS quota integration', () => {
     expect(messageRepo.save).not.toHaveBeenCalled();
   });
 
-  it('consumes AI quota after a completed assistant message', async () => {
+  it('reserves maximum AI usage before provider execution and finalizes actual usage', async () => {
     const ownedSession = {
       id: 'session-db-id',
       sessionUuid: 'session-uuid',
@@ -244,7 +248,15 @@ describe('ChatService SaaS quota integration', () => {
       1,
       'Token 额度不足',
     );
-    expect(saasQuotaService.consumeAiUsage).toHaveBeenCalledWith(42, { totalTokens: 20 });
+    expect(saasQuotaService.reserveAiUsage).toHaveBeenCalledWith(42, {
+      estimatedTokens: 1029,
+      sourceId: expect.any(String),
+    });
+    expect(saasQuotaService.finalizeAiUsage).toHaveBeenCalledWith('reservation-1', 20);
+    expect(saasQuotaService.consumeAiUsage).not.toHaveBeenCalled();
+    expect(saasQuotaService.reserveAiUsage.mock.invocationCallOrder[0]).toBeLessThan(
+      llmProviderService.streamChat.mock.invocationCallOrder[0],
+    );
     expect(llmProviderService.streamChat).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'provider-1' }),
       'test-key',
@@ -258,5 +270,54 @@ describe('ChatService SaaS quota integration', () => {
         }),
       }),
     );
+  });
+
+  it('releases a pending AI quota reservation when the provider fails before returning content', async () => {
+    const ownedSession = {
+      id: 'session-db-id',
+      sessionUuid: 'session-uuid',
+      userId: 7,
+      tenantId: 42,
+      defaultModelId: 'model-1',
+      messageCount: 0,
+      title: 'New chat',
+      agentId: null,
+      summary: null,
+      summaryUpToSeq: 0,
+    };
+    aiConfigService.isAiEnabled.mockResolvedValue(true);
+    aiConfigService.resolveModel.mockResolvedValue({
+      model: {
+        id: 'model-1',
+        modelCode: 'gpt-test',
+        name: 'Test Model',
+        defaultTemperature: 0.7,
+        maxOutputTokens: 100,
+        contextWindow: 32000,
+      },
+      provider: { id: 'provider-1', name: 'Test Provider', baseUrl: 'https://llm.example.test' },
+      apiKey: 'test-key',
+    });
+    sessionRepo.findOne.mockResolvedValue(ownedSession);
+    messageRepo.save.mockImplementation(async (entity) => entity);
+    contextBuilder.buildMessages.mockResolvedValue({
+      messages: [{ role: 'user', content: 'hello' }],
+      contextRatio: 10,
+      estimatedPromptTokens: 5,
+      historyRounds: 0,
+    });
+    saasQuotaService.reserveAiUsage.mockResolvedValue({ id: 'reservation-failed', reservedTokens: 105 });
+    llmProviderService.streamChat.mockImplementation(() => {
+      throw new Error('provider unavailable');
+    });
+
+    await service.handleChatSend(
+      { userId: 7, tenantId: 42, userName: 'owner' } as any,
+      { session_uuid: 'session-uuid', content: 'hello' } as any,
+      jest.fn(),
+    );
+
+    expect(saasQuotaService.releaseAiUsage).toHaveBeenCalledWith('reservation-failed');
+    expect(saasQuotaService.finalizeAiUsage).not.toHaveBeenCalled();
   });
 });

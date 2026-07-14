@@ -12,6 +12,7 @@ import { SaasPaymentNotifyLogEntity } from './entities/saas-payment-notify-log.e
 import { SaasPlanEntity } from './entities/saas-plan.entity';
 import { SaasPaymentConfigEntity } from './entities/saas-payment-config.entity';
 import { SaasQuotaLedgerEntity } from './entities/saas-quota-ledger.entity';
+import { SaasQuotaReservationEntity } from './entities/saas-quota-reservation.entity';
 import { SaasResourcePackOrderEntity } from './entities/saas-resource-pack-order.entity';
 import { SaasResourcePackEntity } from './entities/saas-resource-pack.entity';
 import { SaasSubscriptionEntity } from './entities/saas-subscription.entity';
@@ -49,6 +50,7 @@ import { SaasTenantMemberService } from './services/saas-tenant-member.service';
       SaasPlanFeatureEntity,
       SaasPaymentConfigEntity,
       SaasQuotaLedgerEntity,
+      SaasQuotaReservationEntity,
       SaasResourcePackEntity,
       SaasResourcePackOrderEntity,
       SaasSubscriptionEntity,

@@ -3,8 +3,8 @@ import { Type } from 'class-transformer';
 import { IsArray, IsIn, IsInt, IsOptional, IsString, MaxLength, Min, ValidateNested } from 'class-validator';
 
 export class SaasPlanQuotaDto {
-  @ApiProperty({ required: true, enum: ['users', 'storage_mb', 'ai_calls', 'rag_documents', 'tokens'] })
-  @IsIn(['users', 'storage_mb', 'ai_calls', 'rag_documents', 'tokens'])
+  @ApiProperty({ required: true, enum: ['users', 'ai_calls', 'tokens'] })
+  @IsIn(['users', 'ai_calls', 'tokens'])
   quota_type: string;
 
   @ApiProperty({ required: true })

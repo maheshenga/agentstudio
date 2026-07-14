@@ -40,4 +40,20 @@ describe('SaveSaasResourcePackDto', () => {
     await expect(validate(dto)).resolves.toHaveLength(0);
     await expect(validate(Object.assign(new UpdateSaasResourcePackStatusDto(), { status: 0 }))).resolves.toHaveLength(0);
   });
+
+  it('rejects storage and RAG resource packs until those quotas are enforced', async () => {
+    const base = {
+      code: 'unenforced_pack',
+      name: 'Unenforced Pack',
+      quota_amount: 100,
+      price_cents: 1000,
+    };
+
+    await expect(
+      validate(Object.assign(new SaveSaasResourcePackDto(), base, { resource_type: 'storage_mb' })),
+    ).resolves.toEqual([expect.objectContaining({ property: 'resource_type' })]);
+    await expect(
+      validate(Object.assign(new SaveSaasResourcePackDto(), base, { resource_type: 'rag_documents' })),
+    ).resolves.toEqual([expect.objectContaining({ property: 'resource_type' })]);
+  });
 });

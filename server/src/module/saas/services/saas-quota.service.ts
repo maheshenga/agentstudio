@@ -1,13 +1,17 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, FindOptionsWhere, Repository } from 'typeorm';
+import { randomUUID } from 'crypto';
+import { DataSource, EntityManager, FindOptionsWhere, IsNull, Repository } from 'typeorm';
 
 import { SAAS_QUOTA_AI_CALLS, SAAS_QUOTA_TOKENS } from '../constants';
 import { SaasPlanQuotaEntity } from '../entities/saas-plan-quota.entity';
 import { SaasQuotaLedgerEntity } from '../entities/saas-quota-ledger.entity';
+import { SaasQuotaReservationEntity } from '../entities/saas-quota-reservation.entity';
 import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
+import { SysUserTenantEntity } from '../../system/user/entities/user-tenant.entity';
 
 export interface SaasQuotaLedgerOptions {
+  changeType?: string;
   sourceType?: string;
   sourceId?: string;
   remark?: string;
@@ -86,12 +90,22 @@ export class SaasQuotaService {
       },
     });
 
-    return resources.map((item) => ({
-      resource_type: item.resourceType,
-      quota: Number(item.totalQuota),
-      used: Number(item.usedQuota),
-      remaining: Math.max(Number(item.totalQuota) - Number(item.usedQuota), 0),
-    }));
+    const hasUserQuota = resources.some((item) => item.resourceType === 'users');
+    const activeUsers = hasUserQuota
+      ? await this.dataSource.getRepository(SysUserTenantEntity).count({
+          where: { tenantId, status: 1, deleteTime: IsNull() },
+        })
+      : 0;
+
+    return resources.map((item) => {
+      const used = item.resourceType === 'users' ? activeUsers : Number(item.usedQuota);
+      return {
+        resource_type: item.resourceType,
+        quota: Number(item.totalQuota),
+        used,
+        remaining: Math.max(Number(item.totalQuota) - used, 0),
+      };
+    });
   }
 
   async listTenantQuotaLedgers(tenantId: number, query: SaasQuotaLedgerListQuery = {}) {
@@ -218,7 +232,7 @@ export class SaasQuotaService {
     await this.writeLedger(
       tenantId,
       resourceType,
-      'consume',
+      options.changeType || 'consume',
       0,
       normalizedAmount,
       Number(resource?.totalQuota || 0),
@@ -304,6 +318,177 @@ export class SaasQuotaService {
         manager,
       );
     });
+  }
+
+  async reserveAiUsage(
+    tenantId: number,
+    input: { estimatedTokens: number; sourceId: string },
+  ): Promise<{ id: string; reservedTokens: number }> {
+    const reservedTokens = Math.max(Math.ceil(Number(input.estimatedTokens) || 0), 1);
+    const reservationId = randomUUID();
+
+    return this.dataSource.transaction(async (manager) => {
+      const reservationRepo = manager.getRepository(SaasQuotaReservationEntity);
+      const reservation = reservationRepo.create({
+        id: reservationId,
+        tenantId,
+        sourceType: 'ai_chat',
+        sourceId: String(input.sourceId || reservationId),
+        status: 'pending',
+        reservedCalls: 1,
+        reservedTokens,
+        actualTokens: 0,
+      });
+      await reservationRepo.save(reservation);
+
+      await this.consumeTenantQuota(
+        tenantId,
+        SAAS_QUOTA_AI_CALLS,
+        1,
+        {
+          changeType: 'reserve',
+          message: 'AI 调用次数额度不足',
+          sourceType: 'ai_chat_reservation',
+          sourceId: reservationId,
+          remark: 'AI call reserved',
+        },
+        manager,
+      );
+      await this.consumeTenantQuota(
+        tenantId,
+        SAAS_QUOTA_TOKENS,
+        reservedTokens,
+        {
+          changeType: 'reserve',
+          message: 'Token 额度不足',
+          sourceType: 'ai_chat_reservation',
+          sourceId: reservationId,
+          remark: 'AI tokens reserved',
+        },
+        manager,
+      );
+
+      return { id: reservationId, reservedTokens };
+    });
+  }
+
+  async finalizeAiUsage(reservationId: string, actualTokens: number): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const reservationRepo = manager.getRepository(SaasQuotaReservationEntity);
+      const reservation = await reservationRepo.findOne({
+        where: { id: reservationId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!reservation || reservation.status !== 'pending') return;
+
+      const normalizedActual = Math.max(Math.ceil(Number(actualTokens) || 0), 0);
+      const tokenDelta = normalizedActual - Number(reservation.reservedTokens || 0);
+      if (tokenDelta > 0) {
+        await this.consumeTenantQuota(
+          reservation.tenantId,
+          SAAS_QUOTA_TOKENS,
+          tokenDelta,
+          {
+            changeType: 'finalize',
+            message: 'Token 额度不足',
+            sourceType: 'ai_chat_reservation',
+            sourceId: reservation.id,
+            remark: 'AI token reservation exceeded',
+          },
+          manager,
+        );
+      } else if (tokenDelta < 0) {
+        await this.releaseTenantQuotaUsage(
+          reservation.tenantId,
+          SAAS_QUOTA_TOKENS,
+          Math.abs(tokenDelta),
+          {
+            changeType: 'release',
+            sourceType: 'ai_chat_reservation',
+            sourceId: reservation.id,
+            remark: 'Unused AI tokens released',
+          },
+          manager,
+        );
+      }
+
+      reservation.status = 'finalized';
+      reservation.actualTokens = normalizedActual;
+      await reservationRepo.save(reservation);
+    });
+  }
+
+  async releaseAiUsage(reservationId: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const reservationRepo = manager.getRepository(SaasQuotaReservationEntity);
+      const reservation = await reservationRepo.findOne({
+        where: { id: reservationId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!reservation || reservation.status !== 'pending') return;
+
+      const options = {
+        changeType: 'release',
+        sourceType: 'ai_chat_reservation',
+        sourceId: reservation.id,
+        remark: 'Failed AI reservation released',
+      };
+      await this.releaseTenantQuotaUsage(
+        reservation.tenantId,
+        SAAS_QUOTA_AI_CALLS,
+        Number(reservation.reservedCalls || 0),
+        options,
+        manager,
+      );
+      await this.releaseTenantQuotaUsage(
+        reservation.tenantId,
+        SAAS_QUOTA_TOKENS,
+        Number(reservation.reservedTokens || 0),
+        options,
+        manager,
+      );
+
+      reservation.status = 'released';
+      await reservationRepo.save(reservation);
+    });
+  }
+
+  private async releaseTenantQuotaUsage(
+    tenantId: number,
+    resourceType: string,
+    amount: number,
+    options: SaasQuotaLedgerOptions,
+    manager: EntityManager,
+  ): Promise<void> {
+    const normalizedAmount = Math.max(Math.ceil(Number(amount) || 0), 0);
+    if (normalizedAmount <= 0) return;
+
+    const tenantResourceRepo = this.resolveTenantResourceRepo(manager);
+    const updateResult = await tenantResourceRepo
+      .createQueryBuilder()
+      .update(SaasTenantResourceEntity)
+      .set({ usedQuota: () => 'GREATEST(used_quota - :amount, 0)' })
+      .where('tenant_id = :tenantId', { tenantId })
+      .andWhere('resource_type = :resourceType', { resourceType })
+      .andWhere('status = 1')
+      .setParameters({ amount: normalizedAmount })
+      .execute();
+    if ((updateResult.affected ?? 0) <= 0) {
+      throw new BadRequestException('Quota reservation resource is unavailable');
+    }
+
+    const resource = await tenantResourceRepo.findOne({ where: { tenantId, resourceType, status: 1 } });
+    await this.writeLedger(
+      tenantId,
+      resourceType,
+      options.changeType || 'release',
+      0,
+      -normalizedAmount,
+      Number(resource?.totalQuota || 0),
+      Number(resource?.usedQuota || 0),
+      options,
+      manager,
+    );
   }
 
   private resolvePlanQuotaRepo(manager?: EntityManager) {

@@ -133,14 +133,14 @@ describe('SaasPlanService', () => {
     await service.updatePlatformPlanQuotas('pro', {
       quotas: [
         { quota_type: 'tokens', total_quota: 1000000 },
-        { quota_type: 'storage_mb', total_quota: 10240 },
+        { quota_type: 'ai_calls', total_quota: 1000 },
       ],
     });
 
     expect(quotaRepo.delete).toHaveBeenCalledWith({ planId: 2 });
     expect(quotaRepo.save).toHaveBeenCalledWith([
       expect.objectContaining({ planId: 2, quotaType: 'tokens', totalQuota: 1000000, status: 1 }),
-      expect.objectContaining({ planId: 2, quotaType: 'storage_mb', totalQuota: 10240, status: 1 }),
+      expect.objectContaining({ planId: 2, quotaType: 'ai_calls', totalQuota: 1000, status: 1 }),
     ]);
   });
 
@@ -148,6 +148,21 @@ describe('SaasPlanService', () => {
     planRepo.findOne.mockResolvedValue({ id: 2, code: 'pro' });
 
     await expect(service.updatePlatformPlanQuotas('pro', { quotas: [{ quota_type: 'bad', total_quota: 1 }] as any })).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects storage and RAG quotas until their write paths are enforced', async () => {
+    planRepo.findOne.mockResolvedValue({ id: 2, code: 'pro' });
+
+    await expect(
+      service.updatePlatformPlanQuotas('pro', {
+        quotas: [{ quota_type: 'storage_mb', total_quota: 1024 }],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.updatePlatformPlanQuotas('pro', {
+        quotas: [{ quota_type: 'rag_documents', total_quota: 100 }],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('lists tenant plans with only enabled plans and quotas', async () => {

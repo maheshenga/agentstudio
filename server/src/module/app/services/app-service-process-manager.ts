@@ -81,6 +81,7 @@ export class AppServiceHostEnvironment {
 }
 
 interface RuntimeConfig {
+  appEnv: string;
   enabled: boolean;
   rootDir: string;
   user: string;
@@ -246,6 +247,7 @@ export class AppServiceProcessManager {
 
   private runtimeConfig(): RuntimeConfig {
     return {
+      appEnv: String(this.configService.get<string>('app.env') || 'development').toLowerCase(),
       enabled: Boolean(this.configService.get<boolean>('appMarketplace.serviceRuntime.enabled')),
       rootDir: String(
         this.configService.get<string>('appMarketplace.serviceRuntime.rootDir') || '',
@@ -275,6 +277,9 @@ export class AppServiceProcessManager {
   private assertBaseConfig(config: RuntimeConfig) {
     if (!config.enabled) {
       throw new ServiceUnavailableException('Service runtime is disabled');
+    }
+    if (config.appEnv === 'production') {
+      throw new ServiceUnavailableException('Production service runtime requires per-app isolation');
     }
     if (this.hostEnvironment.platform() !== 'linux') {
       throw new ServiceUnavailableException('Service runtime requires Linux');

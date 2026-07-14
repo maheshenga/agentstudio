@@ -48,14 +48,6 @@
               >
                 {{ row.status === 1 ? '停用' : '启用' }}
               </ElButton>
-              <ElButton
-                v-permission="'tenant:member:reset-password'"
-                link
-                type="primary"
-                @click="openResetPasswordDialog(row)"
-              >
-                重置密码
-              </ElButton>
               <ElButton v-permission="'tenant:member:remove'" link type="danger" @click="removeMember(row)">
                 移除
               </ElButton>
@@ -137,20 +129,6 @@
       </template>
     </ElDialog>
 
-    <ElDialog v-model="passwordDialogVisible" title="重置密码" width="420px">
-      <ElForm ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" label-width="88px">
-        <ElFormItem label="账号">
-          <ElInput :model-value="selectedMember?.username || ''" disabled />
-        </ElFormItem>
-        <ElFormItem label="新密码" prop="password">
-          <ElInput v-model="passwordForm.password" type="password" maxlength="100" show-password />
-        </ElFormItem>
-      </ElForm>
-      <template #footer>
-        <ElButton @click="passwordDialogVisible = false">取消</ElButton>
-        <ElButton type="primary" :loading="saving" @click="submitPasswordReset">保存</ElButton>
-      </template>
-    </ElDialog>
   </div>
 </template>
 
@@ -162,7 +140,6 @@
     fetchTenantModules,
     fetchTenantMembers,
     removeTenantMember,
-    resetTenantMemberPassword,
     type CreateSaasTenantMemberParams,
     type SaasTenantMemberRecord,
     updateTenantMemberStatus
@@ -178,9 +155,7 @@
   const saving = ref(false)
   const dialogVisible = ref(false)
   const roleDialogVisible = ref(false)
-  const passwordDialogVisible = ref(false)
   const formRef = ref<FormInstance>()
-  const passwordFormRef = ref<FormInstance>()
   const selectedMember = ref<SaasTenantMemberRecord | null>(null)
   const pager = reactive({ page: 1, limit: 10, total: 0 })
   const form = reactive<CreateSaasTenantMemberParams>({
@@ -192,16 +167,12 @@
     role: 'member'
   })
   const roleForm = reactive<{ role: 'admin' | 'member' }>({ role: 'member' })
-  const passwordForm = reactive({ password: '' })
   const PASSWORD_PATTERN = /^(?=.*[A-Za-z])(?=.*\d).{8,100}$/
   const PASSWORD_MESSAGE = '请输入至少 8 位且包含字母和数字的密码'
   const rules: FormRules = {
     username: [{ required: true, message: '请输入账号', trigger: 'blur' }],
     password: [{ required: true, pattern: PASSWORD_PATTERN, message: PASSWORD_MESSAGE, trigger: 'blur' }],
     role: [{ required: true, message: '请选择角色', trigger: 'change' }]
-  }
-  const passwordRules: FormRules = {
-    password: [{ required: true, pattern: PASSWORD_PATTERN, message: PASSWORD_MESSAGE, trigger: 'blur' }]
   }
 
   function roleLabel(role: string) {
@@ -243,13 +214,6 @@
     selectedMember.value = row
     roleForm.role = row.role === 'admin' ? 'admin' : 'member'
     roleDialogVisible.value = true
-  }
-
-  function openResetPasswordDialog(row: SaasTenantMemberRecord) {
-    selectedMember.value = row
-    passwordForm.password = ''
-    passwordFormRef.value?.clearValidate()
-    passwordDialogVisible.value = true
   }
 
   async function loadMembers() {
@@ -354,22 +318,6 @@
       if (error !== 'cancel') {
         console.error('[SaasTenantMemberPage] remove member failed:', error)
       }
-    }
-  }
-
-  async function submitPasswordReset() {
-    if (!selectedMember.value) return
-    await passwordFormRef.value?.validate()
-    saving.value = true
-    try {
-      await resetTenantMemberPassword(selectedMember.value.user_id, passwordForm.password)
-      ElMessage.success('密码已重置')
-      passwordDialogVisible.value = false
-    } catch (error) {
-      console.error('[SaasTenantMemberPage] reset password failed:', error)
-      ElMessage.error('重置密码失败')
-    } finally {
-      saving.value = false
     }
   }
 

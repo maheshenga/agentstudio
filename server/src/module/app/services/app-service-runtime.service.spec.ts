@@ -31,6 +31,7 @@ describe('AppServiceRuntimeService', () => {
   let snapshotService: { verify: jest.Mock };
   let packageService: { verifyInstalledEntry: jest.Mock };
   let dataSource: { transaction: jest.Mock };
+  let configValues: Record<string, unknown>;
   let service: AppServiceRuntimeService;
 
   beforeEach(() => {
@@ -112,22 +113,21 @@ describe('AppServiceRuntimeService', () => {
       },
     };
     dataSource = { transaction: jest.fn(async (callback) => callback(manager)) };
+    configValues = {
+      'app.env': 'development',
+      'appMarketplace.serviceRuntime.enabled': true,
+      'appMarketplace.serviceRuntime.healthSuccessCount': 3,
+      'appMarketplace.serviceRuntime.memoryMb': 256,
+      'appMarketplace.serviceRuntime.portMin': 20000,
+      'appMarketplace.serviceRuntime.portMax': 39999,
+    };
     service = new AppServiceRuntimeService(
       appRepo as any,
       versionRepo as any,
       instanceRepo as any,
       auditRepo as any,
       dataSource as any,
-      {
-        get: jest.fn((key: string, fallback?: unknown) => {
-          if (key === 'appMarketplace.serviceRuntime.enabled') return true;
-          if (key === 'appMarketplace.serviceRuntime.healthSuccessCount') return 3;
-          if (key === 'appMarketplace.serviceRuntime.memoryMb') return 256;
-          if (key === 'appMarketplace.serviceRuntime.portMin') return 20000;
-          if (key === 'appMarketplace.serviceRuntime.portMax') return 39999;
-          return fallback;
-        }),
-      } as any,
+      { get: jest.fn((key: string, fallback?: unknown) => configValues[key] ?? fallback) } as any,
       processManager as any,
       transport as any,
       portAllocator as unknown as AppServicePortAllocator,
@@ -146,6 +146,17 @@ describe('AppServiceRuntimeService', () => {
     expect(snapshotService.verify).not.toHaveBeenCalled();
     expect(packageService.verifyInstalledEntry).not.toHaveBeenCalled();
     expect(version(12).candidateReviewedBy).toBeUndefined();
+  });
+
+  it('rejects production service lifecycle operations before changing runtime state', async () => {
+    configValues['app.env'] = 'production';
+
+    await expect(service.startCandidate('admin_echo_service', '2.0.0', 99)).rejects.toThrow(
+      'per-app isolation',
+    );
+
+    expect(dataSource.transaction).not.toHaveBeenCalled();
+    expect(processManager.start).not.toHaveBeenCalled();
   });
 
   it('starts a restricted candidate only for a live certification and independent candidate reviewer', async () => {

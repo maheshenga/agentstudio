@@ -1,4 +1,5 @@
 import * as bcrypt from 'bcryptjs';
+import { IsNull } from 'typeorm';
 
 jest.mock('uuid', () => ({
   v4: jest.fn(() => 'login-uuid'),
@@ -467,16 +468,20 @@ describe('UserService tenant lookup before login', () => {
 });
 
 describe('UserService refresh token tenant context', () => {
-  function createRefreshService(redisService: any) {
+  function createRefreshService(
+    redisService: any,
+    userTenantRepo: any = { findOne: jest.fn().mockResolvedValue({ id: 1, status: 1 }) },
+    tenantRepo: any = { findOne: jest.fn().mockResolvedValue({ id: 12, status: 1 }) },
+  ) {
     return new UserService(
       {} as any,
-      { findOne: jest.fn() } as any,
       {} as any,
       {} as any,
       {} as any,
       {} as any,
-      { findOne: jest.fn() } as any,
       {} as any,
+      userTenantRepo as any,
+      tenantRepo as any,
       {} as any,
       {} as any,
       {} as any,
@@ -551,6 +556,30 @@ describe('UserService refresh token tenant context', () => {
         permissions: ['tenant:12:billing:view'],
       }),
     );
+  });
+
+  it('rejects refresh token rotation after tenant membership is removed', async () => {
+    const redisService = {
+      get: jest.fn(async (key: string) => {
+        if (key.startsWith('refresh_tokens:')) {
+          return { userId: 7, tenantId: 12 };
+        }
+        return null;
+      }),
+      del: jest.fn().mockResolvedValue(1),
+      set: jest.fn().mockResolvedValue('OK'),
+    };
+    const userTenantRepo = { findOne: jest.fn().mockResolvedValue(null) };
+    const tenantRepo = { findOne: jest.fn().mockResolvedValue({ id: 12, status: 1 }) };
+    const service = createRefreshService(redisService, userTenantRepo, tenantRepo);
+
+    const result = await service.refreshToken({ refreshToken: 'removed-member-refresh-token' });
+
+    expect(result.code).toBe(403);
+    expect(userTenantRepo.findOne).toHaveBeenCalledWith({
+      where: { userId: 7, tenantId: 12, status: 1, deleteTime: IsNull() },
+    });
+    expect(redisService.set).not.toHaveBeenCalled();
   });
 });
 

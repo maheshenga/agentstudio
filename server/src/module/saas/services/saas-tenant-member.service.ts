@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { DataSource, IsNull } from 'typeorm';
@@ -7,6 +7,7 @@ import { SysRoleEntity } from '../../system/role/entities/role.entity';
 import { UserEntity } from '../../system/user/entities/sys-user.entity';
 import { SysUserRoleEntity } from '../../system/user/entities/user-width-role.entity';
 import { SysUserTenantEntity } from '../../system/user/entities/user-tenant.entity';
+import { TenantSessionService } from '../../system/user/tenant-session.service';
 import { SAAS_QUOTA_USERS } from '../constants';
 import { CreateTenantMemberDto, TENANT_MEMBER_PASSWORD_PATTERN } from '../dto/create-tenant-member.dto';
 import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
@@ -29,7 +30,10 @@ export type SaasTenantMemberRecord = {
 
 @Injectable()
 export class SaasTenantMemberService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly tenantSessionService: TenantSessionService,
+  ) {}
 
   async listMembers(tenantId: number, query: SaasTenantMemberListQuery = {}) {
     const page = Math.max(Number(query.page) || 1, 1);
@@ -44,7 +48,7 @@ export class SaasTenantMemberService {
           \`user\`.\`realname\` AS \`realname\`,
           \`user\`.\`email\` AS \`email\`,
           \`user\`.\`phone\` AS \`phone\`,
-          \`user\`.\`status\` AS \`status\`,
+          \`user_tenant\`.\`status\` AS \`status\`,
           COALESCE(
             MAX(CASE
               WHEN \`role\`.\`code\` REGEXP '^tenant:[0-9]+:(owner|admin|member)$'
@@ -72,7 +76,7 @@ export class SaasTenantMemberService {
           \`user\`.\`realname\`,
           \`user\`.\`email\`,
           \`user\`.\`phone\`,
-          \`user\`.\`status\`
+          \`user_tenant\`.\`status\`
         ORDER BY \`member_sort\` ASC
         LIMIT ? OFFSET ?
       `,
@@ -137,6 +141,7 @@ export class SaasTenantMemberService {
           tenantId,
           isDefault: 0,
           isSuper: 0,
+          status: 1,
         }),
       );
       await manager.save(
@@ -186,6 +191,7 @@ export class SaasTenantMemberService {
           status: 1,
         }),
       );
+      await this.tenantSessionService.revokeTenantSessions(userId, tenantId);
     });
   }
 
@@ -195,8 +201,16 @@ export class SaasTenantMemberService {
     }
 
     return this.dataSource.transaction(async (manager) => {
-      await this.assertManageableMember(tenantId, userId, manager);
-      await manager.update(UserEntity, { id: userId }, { status: Number(status) });
+      const member = await this.assertManageableMember(tenantId, userId, manager);
+      if (Number(status) === 1 && Number(member.status) !== 1) {
+        await this.assertUserQuotaAvailable(tenantId, manager);
+      }
+      await manager.update(
+        SysUserTenantEntity,
+        { id: member.id, tenantId, userId },
+        { status: Number(status) },
+      );
+      await this.tenantSessionService.revokeTenantSessions(userId, tenantId);
     });
   }
 
@@ -212,6 +226,7 @@ export class SaasTenantMemberService {
       if (remainingTenantCount === 0) {
         await manager.softDelete(UserEntity, userId);
       }
+      await this.tenantSessionService.revokeTenantSessions(userId, tenantId);
     });
   }
 
@@ -220,10 +235,7 @@ export class SaasTenantMemberService {
       throw new BadRequestException('新密码至少 8 位且需要包含字母和数字');
     }
 
-    return this.dataSource.transaction(async (manager) => {
-      await this.assertManageableMember(tenantId, userId, manager);
-      await manager.update(UserEntity, { id: userId }, { password: bcrypt.hashSync(password, bcrypt.genSaltSync(10)) });
-    });
+    throw new ForbiddenException('Tenant administrators cannot reset a user global password');
   }
 
   private async assertUserQuotaAvailable(tenantId: number, manager: any): Promise<void> {
@@ -236,7 +248,7 @@ export class SaasTenantMemberService {
     }
 
     const currentUsers = await manager.count(SysUserTenantEntity, {
-      where: { tenantId, deleteTime: IsNull() },
+      where: { tenantId, status: 1, deleteTime: IsNull() },
     });
     if (currentUsers >= totalQuota) {
       throw new BadRequestException('租户用户数额度不足');

@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import * as tenantUtils from '../../common/utils/tenant.util';
@@ -49,6 +49,9 @@ describe('SaasPaymentController', () => {
       return undefined;
     }),
   };
+  const billingUser = { userId: 7, permissions: ['tenant:billing:upgrade'] };
+  const resourcePackUser = { userId: 8, permissions: ['tenant:resource-pack-order:pay'] };
+  const appPurchaseUser = { userId: 9, permissions: ['app:tenant:purchase'] };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -102,9 +105,10 @@ describe('SaasPaymentController', () => {
       paidAt: new Date('2026-07-02T00:00:00.000Z'),
     });
 
-    const result = await controller.devConfirm({
-      order_no: 'SO20260702000000001000001',
-    });
+    const result = await (controller.devConfirm as any)(
+      { order_no: 'SO20260702000000001000001' },
+      billingUser,
+    );
 
     expect(saasOrderService.confirmDevPayment).toHaveBeenCalledWith(12, 'SO20260702000000001000001');
     expect(result.data).toEqual({
@@ -126,10 +130,13 @@ describe('SaasPaymentController', () => {
       status: 'paid',
     });
 
-    const result = await controller.devConfirm({
-      order_no: 'RPO20260703120000001000001',
-      order_type: 'resource_pack',
-    });
+    const result = await (controller.devConfirm as any)(
+      {
+        order_no: 'RPO20260703120000001000001',
+        order_type: 'resource_pack',
+      },
+      resourcePackUser,
+    );
 
     expect(resourcePackOrderService.confirmDevPayment).toHaveBeenCalledWith(88, 'RPO20260703120000001000001');
     expect(result.data).toEqual({
@@ -148,10 +155,13 @@ describe('SaasPaymentController', () => {
       status: 'paid',
     });
 
-    const result = await controller.devConfirm({
-      order_no: 'AO20260713000000001000001',
-      order_type: 'app',
-    });
+    const result = await (controller.devConfirm as any)(
+      {
+        order_no: 'AO20260713000000001000001',
+        order_type: 'app',
+      },
+      appPurchaseUser,
+    );
 
     expect(appOrderService.confirmDevPayment).toHaveBeenCalledWith(
       88,
@@ -173,9 +183,10 @@ describe('SaasPaymentController', () => {
     jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(12);
 
     await expect(
-      controller.devConfirm({
-        order_no: 'SO20260702000000001000001',
-      }),
+      (controller.devConfirm as any)(
+        { order_no: 'SO20260702000000001000001' },
+        billingUser,
+      ),
     ).rejects.toThrow(NotFoundException);
 
     expect(saasOrderService.confirmDevPayment).not.toHaveBeenCalled();
@@ -247,9 +258,10 @@ describe('SaasPaymentController', () => {
       message: 'Alipay sandbox config is missing.',
     });
 
-    const result = await controller.createAlipayPayment({
-      order_no: 'SO20260702000000001000001',
-    });
+    const result = await (controller.createAlipayPayment as any)(
+      { order_no: 'SO20260702000000001000001' },
+      billingUser,
+    );
 
     expect(saasPaymentService.createAlipayPayment).toHaveBeenCalledWith(12, 'SO20260702000000001000001', 'plan');
     expect(result.data).toEqual({
@@ -271,10 +283,13 @@ describe('SaasPaymentController', () => {
       message: 'Alipay sandbox config is missing.',
     });
 
-    await controller.createAlipayPayment({
-      order_no: 'AO20260713000000001000001',
-      order_type: 'app',
-    });
+    await (controller.createAlipayPayment as any)(
+      {
+        order_no: 'AO20260713000000001000001',
+        order_type: 'app',
+      },
+      appPurchaseUser,
+    );
 
     expect(saasPaymentService.createAlipayPayment).toHaveBeenCalledWith(
       12,
@@ -289,5 +304,39 @@ describe('SaasPaymentController', () => {
       'tenant:resource-pack-order:pay',
       'app:tenant:purchase',
     ]);
+  });
+
+  it('requires payment permission metadata on development confirmation', () => {
+    expect(Reflect.getMetadata('requirePermission', SaasPaymentController.prototype.devConfirm)).toEqual([
+      'tenant:billing:upgrade',
+      'tenant:resource-pack-order:pay',
+      'app:tenant:purchase',
+    ]);
+  });
+
+  it('denies a resource pack payment when the user only has plan upgrade permission', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(12);
+
+    await expect(
+      (controller.createAlipayPayment as any)(
+        { order_no: 'RPO20260703120000001000001', order_type: 'resource_pack' },
+        billingUser,
+      ),
+    ).rejects.toThrow(ForbiddenException);
+
+    expect(saasPaymentService.createAlipayPayment).not.toHaveBeenCalled();
+  });
+
+  it('denies an app development confirmation when the user only has resource pack payment permission', async () => {
+    jest.spyOn(tenantUtils, 'getTenantId').mockReturnValue(12);
+
+    await expect(
+      (controller.devConfirm as any)(
+        { order_no: 'AO20260713000000001000001', order_type: 'app' },
+        resourcePackUser,
+      ),
+    ).rejects.toThrow(ForbiddenException);
+
+    expect(appOrderService.confirmDevPayment).not.toHaveBeenCalled();
   });
 });

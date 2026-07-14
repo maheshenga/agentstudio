@@ -377,6 +377,9 @@ export class ChatService {
     this.registerStreamAbort(assistantMsg.messageUuid, owned.sessionUuid, abort);
     const startedAt = Date.now();
     let fullContent = '';
+    let estimatedPromptTokens = 0;
+    let quotaReservation: { id: string; reservedTokens: number } | null = null;
+    let quotaSettled = false;
 
     this.semaphore.acquire();
 
@@ -391,6 +394,11 @@ export class ChatService {
         userName: session.userName,
         contextWindow: resolved.model.contextWindow,
         maxOutputTokens: resolved.model.maxOutputTokens,
+      });
+      estimatedPromptTokens = Math.max(Number(built.estimatedPromptTokens) || 0, 0);
+      quotaReservation = await this.saasQuotaService.reserveAiUsage(owned.tenantId, {
+        estimatedTokens: estimatedPromptTokens + Math.max(Number(resolved.model.maxOutputTokens) || 0, 0),
+        sourceId: assistantMsg.messageUuid,
       });
 
       const temperature =
@@ -439,10 +447,9 @@ export class ChatService {
         context_ratio: built.contextRatio,
         estimated_prompt_tokens: built.estimatedPromptTokens,
       };
+      await this.saasQuotaService.finalizeAiUsage(quotaReservation.id, usage.totalTokens);
+      quotaSettled = true;
       await this.messageRepo.save(assistantMsg);
-      await this.saasQuotaService.consumeAiUsage(owned.tenantId, {
-        totalTokens: usage.totalTokens,
-      });
 
       owned.messageCount += 2;
       owned.lastMessageAt = new Date();
@@ -496,6 +503,22 @@ export class ChatService {
       emit('chat.message_done', doneData);
     } catch (err: any) {
       const stopped = abort.signal.aborted || err?.name === 'AbortError';
+      if (quotaReservation && !quotaSettled) {
+        try {
+          if (fullContent) {
+            const estimatedCompletionTokens = Math.max(Math.ceil(fullContent.length / 4), 1);
+            await this.saasQuotaService.finalizeAiUsage(
+              quotaReservation.id,
+              estimatedPromptTokens + estimatedCompletionTokens,
+            );
+          } else {
+            await this.saasQuotaService.releaseAiUsage(quotaReservation.id);
+          }
+          quotaSettled = true;
+        } catch (quotaError: any) {
+          this.logger.error(`quota reservation settlement failed: ${quotaError?.message || quotaError}`);
+        }
+      }
       assistantMsg.content = fullContent;
       assistantMsg.status = stopped ? 'stopped' : 'error';
       assistantMsg.errorMessage = err?.message?.slice(0, 500) ?? '生成失败';

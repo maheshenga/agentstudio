@@ -621,10 +621,6 @@ export function removeTenantMember(userId: number) {
   return request.del({ url: `/api/saas/tenant/members/${userId}` })
 }
 
-export function resetTenantMemberPassword(userId: number, password: string) {
-  return request.post({ url: `/api/saas/tenant/members/${userId}/reset-password`, data: { password } })
-}
-
 export function fetchTenantSubscription() {
   return request.get<TenantSubscriptionSummary>({ url: '/api/saas/tenant/subscription' })
 }

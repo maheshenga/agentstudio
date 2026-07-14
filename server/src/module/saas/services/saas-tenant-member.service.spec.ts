@@ -4,6 +4,7 @@ import { getDataSourceToken } from '@nestjs/typeorm';
 import { IsNull } from 'typeorm';
 
 import { SAAS_QUOTA_USERS } from '../constants';
+import { TenantSessionService } from '../../system/user/tenant-session.service';
 import { SaasTenantMemberService } from './saas-tenant-member.service';
 
 describe('SaasTenantMemberService', () => {
@@ -24,6 +25,9 @@ describe('SaasTenantMemberService', () => {
     transaction: jest.fn((callback) => callback(manager)),
     query: jest.fn(),
   };
+  const tenantSessionService = {
+    revokeTenantSessions: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -32,6 +36,7 @@ describe('SaasTenantMemberService', () => {
       providers: [
         SaasTenantMemberService,
         { provide: getDataSourceToken(), useValue: dataSource },
+        { provide: TenantSessionService, useValue: tenantSessionService },
       ],
     }).compile();
 
@@ -60,6 +65,7 @@ describe('SaasTenantMemberService', () => {
     });
 
     expect(dataSource.query).toHaveBeenCalledWith(expect.stringContaining('sa_system_user_tenant'), [12, 20, 0]);
+    expect(dataSource.query).toHaveBeenCalledWith(expect.stringContaining('`user_tenant`.`status` AS `status`'), [12, 20, 0]);
   });
 
   it('creates a tenant member when user quota allows it', async () => {
@@ -85,13 +91,16 @@ describe('SaasTenantMemberService', () => {
       where: { tenantId: 12, resourceType: SAAS_QUOTA_USERS, status: 1 },
     });
     expect(manager.count).toHaveBeenCalledWith(expect.any(Function), {
-      where: { tenantId: 12, deleteTime: IsNull() },
+      where: { tenantId: 12, status: 1, deleteTime: IsNull() },
     });
     expect(manager.save).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({ username: 'bob', password: expect.not.stringMatching(/^123456$/), status: 1 }),
     );
-    expect(manager.save).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({ userId: 8, tenantId: 12 }));
+    expect(manager.save).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ userId: 8, tenantId: 12, status: 1 }),
+    );
     expect(manager.save).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({ userId: 8, roleId: 22, tenantId: 12 }));
     expect(result).toMatchObject({ user_id: 8, username: 'bob', role: 'member' });
   });
@@ -115,7 +124,7 @@ describe('SaasTenantMemberService', () => {
     });
 
     expect(manager.count).toHaveBeenCalledWith(expect.any(Function), {
-      where: { tenantId: 12, deleteTime: IsNull() },
+      where: { tenantId: 12, status: 1, deleteTime: IsNull() },
     });
   });
 
@@ -156,6 +165,7 @@ describe('SaasTenantMemberService', () => {
 
     expect(manager.delete).toHaveBeenCalledWith(expect.any(Function), { tenantId: 12, userId: 8 });
     expect(manager.save).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({ tenantId: 12, userId: 8, roleId: 22 }));
+    expect(tenantSessionService.revokeTenantSessions).toHaveBeenCalledWith(8, 12);
   });
 
   it('does not change the tenant owner through member role management', async () => {
@@ -175,7 +185,12 @@ describe('SaasTenantMemberService', () => {
 
     await service.updateMemberStatus(12, 8, 0);
 
-    expect(manager.update).toHaveBeenCalledWith(expect.any(Function), { id: 8 }, { status: 0 });
+    expect(manager.update).toHaveBeenCalledWith(
+      expect.any(Function),
+      { id: 70, tenantId: 12, userId: 8 },
+      { status: 0 },
+    );
+    expect(tenantSessionService.revokeTenantSessions).toHaveBeenCalledWith(8, 12);
   });
 
   it('removes a tenant member and soft deletes the user when no tenant remains', async () => {
@@ -188,20 +203,29 @@ describe('SaasTenantMemberService', () => {
     expect(manager.softDelete).toHaveBeenCalledWith(expect.any(Function), 70);
     expect(manager.delete).toHaveBeenCalledWith(expect.any(Function), { tenantId: 12, userId: 8 });
     expect(manager.softDelete).toHaveBeenCalledWith(expect.any(Function), 8);
+    expect(tenantSessionService.revokeTenantSessions).toHaveBeenCalledWith(8, 12);
   });
 
-  it('resets a tenant member password', async () => {
-    manager.findOne.mockResolvedValueOnce({ id: 70, userId: 8, tenantId: 12 });
+  it('rejects re-enabling a member when the active user quota is full', async () => {
+    manager.findOne
+      .mockResolvedValueOnce({ id: 70, userId: 8, tenantId: 12, status: 0 })
+      .mockResolvedValueOnce({ totalQuota: 1 });
     manager.query.mockResolvedValueOnce([{ role_code: 'tenant:12:member' }]);
-    manager.update.mockResolvedValue({ affected: 1 });
+    manager.count.mockResolvedValueOnce(1);
 
-    await service.resetMemberPassword(12, 8, 'NewPass123!');
+    await expect(service.updateMemberStatus(12, 8, 1)).rejects.toThrow(BadRequestException);
 
-    expect(manager.update).toHaveBeenCalledWith(
-      expect.any(Function),
-      { id: 8 },
-      expect.objectContaining({ password: expect.not.stringMatching(/^NewPass123!$/) }),
+    expect(manager.update).not.toHaveBeenCalled();
+    expect(tenantSessionService.revokeTenantSessions).not.toHaveBeenCalled();
+  });
+
+  it('blocks tenant administrators from resetting a global user password', async () => {
+    await expect(service.resetMemberPassword(12, 8, 'NewPass123!')).rejects.toThrow(
+      'Tenant administrators cannot reset a user global password',
     );
+
+    expect(dataSource.transaction).not.toHaveBeenCalled();
+    expect(manager.update).not.toHaveBeenCalled();
   });
 
   it('rejects weak tenant member reset passwords before opening a transaction', async () => {

@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { UserService } from './user.service';
+import { TenantSessionService } from './tenant-session.service';
 import { UserController } from './user.controller';
 import { UserEntity } from './entities/sys-user.entity';
 import { SysUserPostEntity } from './entities/user-width-post.entity';
@@ -33,7 +34,7 @@ import { DeptModule } from '../dept/dept.module';
     }),
   ],
   controllers: [UserController],
-  providers: [UserService],
-  exports: [UserService],
+  providers: [UserService, TenantSessionService],
+  exports: [UserService, TenantSessionService],
 })
 export class UserModule {}

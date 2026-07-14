@@ -32,6 +32,18 @@ export class RedisService implements OnModuleDestroy {
     return this.client.keys(pattern ?? '*');
   }
 
+  /** Incrementally scan matching keys without blocking Redis with KEYS. */
+  async scanKeys(pattern: string, count = 100): Promise<string[]> {
+    const keys: string[] = [];
+    let cursor = '0';
+    do {
+      const [nextCursor, batch] = await this.client.scan(cursor, 'MATCH', pattern, 'COUNT', count);
+      cursor = nextCursor;
+      keys.push(...batch);
+    } while (cursor !== '0');
+    return keys;
+  }
+
   /** 查询 TTL（秒） */
   async ttl(key: string): Promise<number | null> {
     if (!key) return null;

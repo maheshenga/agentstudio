@@ -1,7 +1,7 @@
 import { ApiProperty, PartialType } from '@nestjs/swagger';
 import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
 
-const RESOURCE_PACK_TYPES = ['users', 'storage_mb', 'ai_calls', 'rag_documents', 'tokens'] as const;
+const RESOURCE_PACK_TYPES = ['users', 'ai_calls', 'tokens'] as const;
 
 export class SaveSaasResourcePackDto {
   @ApiProperty({ required: false })

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, NotFoundException, Post } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, NotFoundException, Post } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
@@ -7,6 +7,9 @@ import { RequirePermission } from '../../common/decorators/require-permission.de
 import { ResultData } from '../../common/utils/result';
 import { getTenantId } from '../../common/utils/tenant.util';
 import { AppOrderService } from '../app-commerce/services/app-order.service';
+import { User } from '../system/user/user.decorator';
+import type { UserDto } from '../system/user/user.decorator';
+import { CreateSaasPaymentDto } from './dto/create-saas-payment.dto';
 import { SaasOrderEntity } from './entities/saas-order.entity';
 import { SaasOrderService } from './services/saas-order.service';
 import { SaasPaymentService } from './services/saas-payment.service';
@@ -26,8 +29,9 @@ export class SaasPaymentController {
   ) {}
 
   @Post('dev-confirm')
+  @RequirePermission('tenant:billing:upgrade', 'tenant:resource-pack-order:pay', 'app:tenant:purchase')
   @ApiOperation({ summary: 'Development-only SaaS payment confirmation' })
-  async devConfirm(@Body() body: { order_no: string; order_type?: SaasPaymentOrderType }) {
+  async devConfirm(@Body() body: CreateSaasPaymentDto, @User() user: UserDto) {
     this.assertDevPaymentConfirmationAllowed();
 
     const tenantId = getTenantId();
@@ -35,14 +39,17 @@ export class SaasPaymentController {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
-    if (body.order_type === 'resource_pack') {
+    const orderType = body.order_type || 'plan';
+    this.assertPaymentPermission(user, orderType);
+
+    if (orderType === 'resource_pack') {
       return ResultData.ok(
         this.saasResourcePackOrderService.toResponse(
           await this.saasResourcePackOrderService.confirmDevPayment(tenantId, body.order_no),
         ),
       );
     }
-    if (body.order_type === 'app') {
+    if (orderType === 'app') {
       return ResultData.ok(
         this.appOrderService.toResponse(
           await this.appOrderService.confirmDevPayment(tenantId, body.order_no),
@@ -56,13 +63,15 @@ export class SaasPaymentController {
   @Post('alipay/create')
   @RequirePermission('tenant:billing:upgrade', 'tenant:resource-pack-order:pay', 'app:tenant:purchase')
   @ApiOperation({ summary: 'Create Alipay SaaS payment' })
-  async createAlipayPayment(@Body() body: { order_no: string; order_type?: SaasPaymentOrderType }) {
+  async createAlipayPayment(@Body() body: CreateSaasPaymentDto, @User() user: UserDto) {
     const tenantId = getTenantId();
     if (!tenantId) {
       return ResultData.fail(401, 'Tenant context is required');
     }
 
-    return ResultData.ok(await this.saasPaymentService.createAlipayPayment(tenantId, body.order_no, body.order_type || 'plan'));
+    const orderType = body.order_type || 'plan';
+    this.assertPaymentPermission(user, orderType);
+    return ResultData.ok(await this.saasPaymentService.createAlipayPayment(tenantId, body.order_no, orderType));
   }
 
   @Get('alipay/config-status')
@@ -107,6 +116,21 @@ export class SaasPaymentController {
 
     if (!enabled) {
       throw new NotFoundException('Development payment confirmation is not available');
+    }
+  }
+
+  private assertPaymentPermission(user: UserDto, orderType: SaasPaymentOrderType): void {
+    if (user?.user?.isAdmin || user?.user?.isSuper === 1 || user?.permissions?.includes('*:*:*')) {
+      return;
+    }
+
+    const requiredPermission: Record<SaasPaymentOrderType, string> = {
+      plan: 'tenant:billing:upgrade',
+      resource_pack: 'tenant:resource-pack-order:pay',
+      app: 'app:tenant:purchase',
+    };
+    if (!user?.permissions?.includes(requiredPermission[orderType])) {
+      throw new ForbiddenException('Payment permission does not match order type');
     }
   }
 }

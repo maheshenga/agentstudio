@@ -17,7 +17,7 @@ export interface SaasPlanListQuery {
   keyword?: string;
 }
 
-const SUPPORTED_PLAN_QUOTA_TYPES = ['users', 'storage_mb', 'ai_calls', 'rag_documents', 'tokens'] as const;
+const SUPPORTED_PLAN_QUOTA_TYPES = ['users', 'ai_calls', 'tokens'] as const;
 
 @Injectable()
 export class SaasPlanService {
@@ -82,7 +82,11 @@ export class SaasPlanService {
       order: { sort: 'ASC', id: 'ASC' },
     });
 
-    return this.attachQuotas(plans);
+    const result = await this.attachQuotas(plans);
+    return result.map((plan) => ({
+      ...plan,
+      quotas: plan.quotas.filter((quota) => quota.status === 1),
+    }));
   }
 
   async findPlatformPlan(code: string) {

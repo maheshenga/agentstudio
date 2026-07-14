@@ -65,7 +65,7 @@ const criticalFiles: ReadableCopyExpectation[] = [
   {
     file: 'src/views/saas/tenant/member/index.vue',
     label: 'tenant member page',
-    expectedReadable: ['成员管理', '添加成员', '重置密码']
+    expectedReadable: ['成员管理', '添加成员', '移除成员']
   },
   {
     file: 'src/views/saas/tenant/resource-pack/index.vue',

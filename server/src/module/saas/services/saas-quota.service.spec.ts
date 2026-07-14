@@ -1,7 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, IsNull } from 'typeorm';
 
+import { SAAS_QUOTA_AI_CALLS, SAAS_QUOTA_TOKENS } from '../constants';
 import { SaasPlanQuotaEntity } from '../entities/saas-plan-quota.entity';
 import { SaasQuotaLedgerEntity } from '../entities/saas-quota-ledger.entity';
 import { SaasTenantResourceEntity } from '../entities/saas-tenant-resource.entity';
@@ -35,6 +36,10 @@ describe('SaasQuotaService', () => {
 
   const dataSource = {
     transaction: jest.fn(async (handler) => handler(txManager)),
+    getRepository: jest.fn(),
+  };
+  const userTenantRepo = {
+    count: jest.fn(),
   };
 
   const txPlanQuotaRepo = {
@@ -53,6 +58,11 @@ describe('SaasQuotaService', () => {
     create: jest.fn((value) => value),
     save: jest.fn(),
   };
+  const txQuotaReservationRepo = {
+    create: jest.fn((value) => value),
+    findOne: jest.fn(),
+    save: jest.fn(async (value) => value),
+  };
 
   const txManager = {
     getRepository: jest.fn(),
@@ -60,6 +70,8 @@ describe('SaasQuotaService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    dataSource.getRepository.mockReturnValue(userTenantRepo);
+    userTenantRepo.count.mockResolvedValue(0);
 
     txManager.getRepository.mockImplementation((entity) => {
       if (entity === SaasPlanQuotaEntity) {
@@ -70,6 +82,9 @@ describe('SaasQuotaService', () => {
       }
       if (entity === SaasQuotaLedgerEntity) {
         return txQuotaLedgerRepo;
+      }
+      if (entity?.name === 'SaasQuotaReservationEntity') {
+        return txQuotaReservationRepo;
       }
       return undefined;
     });
@@ -193,9 +208,10 @@ describe('SaasQuotaService', () => {
       { resourceType: 'users', totalQuota: 3, usedQuota: 1 },
       { resourceType: 'tokens', totalQuota: 100, usedQuota: 140 },
     ]);
+    userTenantRepo.count.mockResolvedValue(2);
 
     await expect(service.getTenantUsageSummary(42)).resolves.toEqual([
-      { resource_type: 'users', quota: 3, used: 1, remaining: 2 },
+      { resource_type: 'users', quota: 3, used: 2, remaining: 1 },
       { resource_type: 'tokens', quota: 100, used: 140, remaining: 0 },
     ]);
 
@@ -207,6 +223,9 @@ describe('SaasQuotaService', () => {
       order: {
         id: 'ASC',
       },
+    });
+    expect(userTenantRepo.count).toHaveBeenCalledWith({
+      where: { tenantId: 42, status: 1, deleteTime: IsNull() },
     });
   });
 
@@ -562,6 +581,98 @@ describe('SaasQuotaService', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+  it('atomically reserves one AI call and the estimated maximum tokens', async () => {
+    const consumeSpy = jest.spyOn(service, 'consumeTenantQuota').mockResolvedValue(undefined);
+
+    const reservation = await (service as any).reserveAiUsage(42, {
+      estimatedTokens: 1200,
+      sourceId: 'message-1',
+    });
+
+    expect(consumeSpy).toHaveBeenCalledWith(
+      42,
+      SAAS_QUOTA_AI_CALLS,
+      1,
+      expect.objectContaining({ changeType: 'reserve', sourceId: reservation.id }),
+      txManager,
+    );
+    expect(consumeSpy).toHaveBeenCalledWith(
+      42,
+      SAAS_QUOTA_TOKENS,
+      1200,
+      expect.objectContaining({ changeType: 'reserve', sourceId: reservation.id }),
+      txManager,
+    );
+    expect(txQuotaReservationRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: reservation.id,
+        tenantId: 42,
+        status: 'pending',
+        reservedCalls: 1,
+        reservedTokens: 1200,
+        sourceId: 'message-1',
+      }),
+    );
+  });
+
+  it('finalizes a reservation and releases unused token capacity', async () => {
+    txQuotaReservationRepo.findOne.mockResolvedValue({
+      id: 'reservation-1',
+      tenantId: 42,
+      status: 'pending',
+      reservedCalls: 1,
+      reservedTokens: 1200,
+      actualTokens: 0,
+    });
+    const releaseSpy = jest.spyOn(service as any, 'releaseTenantQuotaUsage').mockResolvedValue(undefined);
+
+    await (service as any).finalizeAiUsage('reservation-1', 300);
+
+    expect(releaseSpy).toHaveBeenCalledWith(
+      42,
+      SAAS_QUOTA_TOKENS,
+      900,
+      expect.objectContaining({ changeType: 'release', sourceId: 'reservation-1' }),
+      txManager,
+    );
+    expect(txQuotaReservationRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'finalized', actualTokens: 300 }),
+    );
+  });
+
+  it('releases both call and token capacity for a failed reservation', async () => {
+    txQuotaReservationRepo.findOne.mockResolvedValue({
+      id: 'reservation-2',
+      tenantId: 42,
+      status: 'pending',
+      reservedCalls: 1,
+      reservedTokens: 500,
+      actualTokens: 0,
+    });
+    const releaseSpy = jest.spyOn(service as any, 'releaseTenantQuotaUsage').mockResolvedValue(undefined);
+
+    await (service as any).releaseAiUsage('reservation-2');
+
+    expect(releaseSpy).toHaveBeenCalledTimes(2);
+    expect(releaseSpy).toHaveBeenCalledWith(
+      42,
+      SAAS_QUOTA_AI_CALLS,
+      1,
+      expect.objectContaining({ sourceId: 'reservation-2' }),
+      txManager,
+    );
+    expect(releaseSpy).toHaveBeenCalledWith(
+      42,
+      SAAS_QUOTA_TOKENS,
+      500,
+      expect.objectContaining({ sourceId: 'reservation-2' }),
+      txManager,
+    );
+    expect(txQuotaReservationRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'released' }),
+    );
   });
 
   it('passes canonical Unicode quota messages into AI quota consumption', async () => {
