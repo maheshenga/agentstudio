@@ -2,37 +2,37 @@
   <div class="art-full-height app-service-runtime-page">
     <header class="app-service-runtime-page__header">
       <div>
-        <h1>Service Runtime</h1>
-        <p>Operate reviewed administrator services and inspect bounded runtime evidence.</p>
+        <h1>服务运行时</h1>
+        <p>管理审核通过的服务应用，并查看受限的运行证据。</p>
       </div>
       <div class="app-service-runtime-page__header-actions">
-        <ElTooltip content="Start candidate" placement="bottom">
+        <ElTooltip content="启动候选版本" placement="bottom">
           <ElButton
             v-permission="'app:runtime:manage'"
             circle
             type="primary"
             :icon="Plus"
-            aria-label="Start candidate"
+            aria-label="启动候选版本"
             @click="openStartDialog"
           />
         </ElTooltip>
-        <ElTooltip content="Reconcile runtime" placement="bottom">
+        <ElTooltip content="校准运行状态" placement="bottom">
           <ElButton
             v-permission="'app:runtime:manage'"
             circle
             :icon="RefreshRight"
             :loading="reconciling"
-            aria-label="Reconcile runtime"
+            aria-label="校准运行状态"
             @click="reconcileRuntime"
           />
         </ElTooltip>
-        <ElTooltip content="Refresh" placement="bottom">
+        <ElTooltip content="刷新" placement="bottom">
           <ElButton
             v-permission="'app:runtime:list'"
             circle
             :icon="Refresh"
             :loading="loading"
-            aria-label="Refresh runtime instances"
+            aria-label="刷新运行实例"
             @click="loadInstances"
           />
         </ElTooltip>
@@ -43,13 +43,13 @@
       <ElInput
         v-model="filters.app_code"
         clearable
-        placeholder="App code"
+        placeholder="应用编码"
         @keyup.enter="loadInstances"
       />
-      <ElSelect v-model="filters.role" clearable placeholder="Role">
+      <ElSelect v-model="filters.role" clearable placeholder="实例角色">
         <ElOption v-for="item in roleOptions" :key="item" :label="labelize(item)" :value="item" />
       </ElSelect>
-      <ElSelect v-model="filters.process_status" clearable placeholder="Process">
+      <ElSelect v-model="filters.process_status" clearable placeholder="进程状态">
         <ElOption
           v-for="item in processOptions"
           :key="item"
@@ -57,18 +57,18 @@
           :value="item"
         />
       </ElSelect>
-      <ElSelect v-model="filters.health_status" clearable placeholder="Health">
+      <ElSelect v-model="filters.health_status" clearable placeholder="健康状态">
         <ElOption v-for="item in healthOptions" :key="item" :label="labelize(item)" :value="item" />
       </ElSelect>
       <ElButton type="primary" :icon="Search" :loading="loading" @click="loadInstances"
-        >Apply</ElButton
+        >查询</ElButton
       >
-      <ElButton :disabled="loading" @click="resetFilters">Reset</ElButton>
+      <ElButton :disabled="loading" @click="resetFilters">重置</ElButton>
     </div>
 
     <div v-if="loadError" class="app-service-runtime-page__error">
       <ElAlert type="error" :title="loadError" show-icon :closable="false" />
-      <ElButton link type="primary" :loading="loading" @click="loadInstances">Retry</ElButton>
+      <ElButton link type="primary" :loading="loading" @click="loadInstances">重试</ElButton>
     </div>
 
     <div v-loading="loading" class="app-service-runtime-page__content">
@@ -78,7 +78,7 @@
         border
         class="app-service-runtime-page__table"
       >
-        <ElTableColumn label="Application" min-width="190" fixed="left">
+        <ElTableColumn label="应用" min-width="190" fixed="left">
           <template #default="{ row }">
             <ElButton
               link
@@ -91,30 +91,30 @@
             <div class="app-service-runtime-page__muted">{{ row.version }}</div>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Role" width="105">
+        <ElTableColumn label="角色" width="105">
           <template #default="{ row }">
             <ElTag :type="roleTagType(row.role)" effect="light">{{ labelize(row.role) }}</ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Process" width="115">
+        <ElTableColumn label="进程状态" width="115">
           <template #default="{ row }">
             <ElTag :type="processTagType(row.process_status)" effect="light">{{
               labelize(row.process_status)
             }}</ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Health" width="115">
+        <ElTableColumn label="健康状态" width="115">
           <template #default="{ row }">
             <ElTag :type="healthTagType(row.health_status)" effect="light">{{
               labelize(row.health_status)
             }}</ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn prop="restart_count" label="Restarts" width="90" align="right" />
-        <ElTableColumn label="Last health" width="180">
+        <ElTableColumn prop="restart_count" label="重启次数" width="90" align="right" />
+        <ElTableColumn label="最近检查" width="180">
           <template #default="{ row }">{{ formatDateTime(row.last_health_at) }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Diagnostic" min-width="230" show-overflow-tooltip>
+        <ElTableColumn label="诊断信息" min-width="230" show-overflow-tooltip>
           <template #default="{ row }">
             <div>{{ row.diagnostic_code || '-' }}</div>
             <div v-if="row.diagnostic_message" class="app-service-runtime-page__muted">{{
@@ -122,10 +122,10 @@
             }}</div>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Actions" width="255" fixed="right">
+        <ElTableColumn label="操作" width="255" fixed="right">
           <template #default="{ row }">
             <div class="app-service-runtime-page__row-actions">
-              <ElTooltip content="Start candidate" placement="top">
+              <ElTooltip content="启动候选版本" placement="top">
                 <ElButton
                   v-permission="'app:runtime:manage'"
                   circle
@@ -134,11 +134,11 @@
                   :icon="VideoPlay"
                   :loading="isActionLoading(row, 'start')"
                   :disabled="!canStartCandidate(row)"
-                  aria-label="Start candidate"
+                  aria-label="启动候选版本"
                   @click="startCandidate(row.app_code, row.version)"
                 />
               </ElTooltip>
-              <ElTooltip content="Publish candidate" placement="top">
+              <ElTooltip content="发布候选版本" placement="top">
                 <ElButton
                   v-permission="'app:runtime:manage'"
                   circle
@@ -147,11 +147,11 @@
                   :icon="Promotion"
                   :loading="isActionLoading(row, 'publish')"
                   :disabled="!canPublishCandidate(row)"
-                  aria-label="Publish candidate"
+                  aria-label="发布候选版本"
                   @click="publishCandidate(row)"
                 />
               </ElTooltip>
-              <ElTooltip content="Stop candidate" placement="top">
+              <ElTooltip content="停止候选版本" placement="top">
                 <ElButton
                   v-permission="'app:runtime:manage'"
                   circle
@@ -159,11 +159,11 @@
                   type="warning"
                   :icon="VideoPause"
                   :disabled="!canStopCandidate(row)"
-                  aria-label="Stop candidate"
+                  aria-label="停止候选版本"
                   @click="openReasonDialog('stop', row)"
                 />
               </ElTooltip>
-              <ElTooltip content="Rollback to standby" placement="top">
+              <ElTooltip content="回滚到备用版本" placement="top">
                 <ElButton
                   v-permission="'app:runtime:manage'"
                   circle
@@ -171,29 +171,29 @@
                   type="danger"
                   :icon="RefreshLeft"
                   :disabled="!canRollbackInstance(row)"
-                  aria-label="Rollback to standby"
+                  aria-label="回滚到备用版本"
                   @click="openReasonDialog('rollback', row)"
                 />
               </ElTooltip>
-              <ElTooltip content="Probe active service" placement="top">
+              <ElTooltip content="探测当前服务" placement="top">
                 <ElButton
                   v-permission="'app:runtime:probe'"
                   circle
                   size="small"
                   :icon="Connection"
                   :disabled="!canProbeInstance(row)"
-                  aria-label="Probe active service"
+                  aria-label="探测当前服务"
                   @click="openProbeDialog(row.app_code)"
                 />
               </ElTooltip>
-              <ElTooltip content="View redacted logs" placement="top">
+              <ElTooltip content="查看脱敏日志" placement="top">
                 <ElButton
                   v-permission="'app:runtime:logs'"
                   circle
                   size="small"
                   :icon="Document"
                   :disabled="row.role === 'retired'"
-                  aria-label="View redacted logs"
+                  aria-label="查看脱敏日志"
                   @click="openLogs(row.app_code)"
                 />
               </ElTooltip>
@@ -221,7 +221,7 @@
               labelize(row.health_status)
             }}</ElTag>
           </div>
-          <p>{{ row.diagnostic_message || row.diagnostic_code || 'No diagnostic' }}</p>
+          <p>{{ row.diagnostic_message || row.diagnostic_code || '暂无诊断信息' }}</p>
           <div class="app-service-runtime-page__row-actions">
             <ElButton
               v-permission="'app:runtime:manage'"
@@ -229,7 +229,7 @@
               :icon="VideoPlay"
               :disabled="!canStartCandidate(row)"
               @click="startCandidate(row.app_code, row.version)"
-              >Start</ElButton
+              >启动</ElButton
             >
             <ElButton
               v-permission="'app:runtime:manage'"
@@ -238,7 +238,7 @@
               :icon="Promotion"
               :disabled="!canPublishCandidate(row)"
               @click="publishCandidate(row)"
-              >Publish</ElButton
+              >发布</ElButton
             >
             <ElButton
               v-permission="'app:runtime:manage'"
@@ -247,7 +247,7 @@
               :icon="VideoPause"
               :disabled="!canStopCandidate(row)"
               @click="openReasonDialog('stop', row)"
-              >Stop</ElButton
+              >停止</ElButton
             >
             <ElButton
               v-permission="'app:runtime:manage'"
@@ -256,7 +256,7 @@
               :icon="RefreshLeft"
               :disabled="!canRollbackInstance(row)"
               @click="openReasonDialog('rollback', row)"
-              >Rollback</ElButton
+              >回滚</ElButton
             >
             <ElButton
               v-permission="'app:runtime:probe'"
@@ -264,7 +264,7 @@
               :icon="Connection"
               :disabled="!canProbeInstance(row)"
               @click="openProbeDialog(row.app_code)"
-              >Probe</ElButton
+              >探测</ElButton
             >
             <ElButton
               v-permission="'app:runtime:logs'"
@@ -272,42 +272,39 @@
               :icon="Document"
               :disabled="row.role === 'retired'"
               @click="openLogs(row.app_code)"
-              >Logs</ElButton
+              >日志</ElButton
             >
           </div>
         </article>
       </div>
 
-      <ElEmpty
-        v-if="!loading && !loadError && !instances.length"
-        description="No service runtime instances"
-      />
+      <ElEmpty v-if="!loading && !loadError && !instances.length" description="暂无服务运行实例" />
     </div>
 
-    <ElDialog v-model="startDialogVisible" title="Start service candidate" width="min(520px, 94vw)">
+    <ElDialog v-model="startDialogVisible" title="启动服务候选版本" width="min(520px, 94vw)">
       <ElForm label-width="100px">
-        <ElFormItem label="App code" required>
+        <ElFormItem label="应用编码" required>
           <ElInput v-model="startForm.app_code" maxlength="80" placeholder="service_app" />
         </ElFormItem>
-        <ElFormItem label="Version" required>
+        <ElFormItem label="版本" required>
           <ElInput v-model="startForm.version" maxlength="40" placeholder="1.0.0" />
         </ElFormItem>
       </ElForm>
       <template #footer>
-        <ElButton @click="startDialogVisible = false">Cancel</ElButton>
+        <ElButton @click="startDialogVisible = false">取消</ElButton>
         <ElButton
           type="primary"
           :loading="startSubmitting"
           :disabled="!isStartFormValid"
           @click="submitStartCandidate"
-          >Start candidate</ElButton
+          >启动候选版本</ElButton
         >
       </template>
     </ElDialog>
 
     <ElDialog
       v-model="reasonDialogVisible"
-      :title="reasonAction === 'stop' ? 'Stop candidate' : 'Rollback service'"
+      :title="reasonAction === 'stop' ? '停止候选版本' : '回滚服务版本'"
       width="min(520px, 94vw)"
     >
       <p class="app-service-runtime-page__dialog-note">
@@ -321,7 +318,7 @@
         minlength="3"
         maxlength="500"
         show-word-limit
-        placeholder="Reason for stopping this candidate"
+        placeholder="请输入停止候选版本的原因"
       />
       <ElInput
         v-else
@@ -331,21 +328,21 @@
         minlength="3"
         maxlength="500"
         show-word-limit
-        placeholder="Reason for restoring this standby version"
+        placeholder="请输入恢复备用版本的原因"
       />
       <template #footer>
-        <ElButton @click="reasonDialogVisible = false">Cancel</ElButton>
+        <ElButton @click="reasonDialogVisible = false">取消</ElButton>
         <ElButton
           :type="reasonAction === 'stop' ? 'warning' : 'danger'"
           :loading="reasonSubmitting"
           :disabled="activeReason.trim().length < 3"
           @click="submitReasonAction"
-          >Confirm</ElButton
+          >确认</ElButton
         >
       </template>
     </ElDialog>
 
-    <ElDialog v-model="probeDialogVisible" title="Probe active service" width="min(680px, 94vw)">
+    <ElDialog v-model="probeDialogVisible" title="探测当前服务" width="min(680px, 94vw)">
       <p class="app-service-runtime-page__dialog-note">{{ probeCode }}</p>
       <ElInput
         v-model="probeInput"
@@ -357,42 +354,42 @@
       <ElAlert v-if="probeError" type="error" :title="probeError" show-icon :closable="false" />
       <pre v-if="probeOutput" class="app-service-runtime-page__output">{{ probeOutput }}</pre>
       <template #footer>
-        <ElButton @click="probeDialogVisible = false">Close</ElButton>
+        <ElButton @click="probeDialogVisible = false">关闭</ElButton>
         <ElButton
           type="primary"
           :loading="probeLoading"
           :disabled="probeInputBytes > 64 * 1024"
           @click="submitProbe"
-          >Run probe</ElButton
+          >执行探测</ElButton
         >
       </template>
     </ElDialog>
 
-    <ElDrawer v-model="logsDrawerVisible" title="Redacted runtime logs" size="min(820px, 96vw)">
+    <ElDrawer v-model="logsDrawerVisible" title="运行时脱敏日志" size="min(820px, 96vw)">
       <div class="app-service-runtime-page__drawer-tools">
         <span>{{ logsCode }}</span>
         <ElInputNumber v-model="logLines" :min="1" :max="200" controls-position="right" />
-        <ElButton :icon="Refresh" :loading="logsLoading" @click="loadLogs">Refresh</ElButton>
+        <ElButton :icon="Refresh" :loading="logsLoading" @click="loadLogs">刷新</ElButton>
       </div>
       <div v-if="logsError" class="app-service-runtime-page__error">
         <ElAlert type="error" :title="logsError" show-icon :closable="false" />
       </div>
       <div v-loading="logsLoading" class="app-service-runtime-page__logs">
         <section>
-          <h2>Standard output</h2>
-          <pre>{{ logs?.stdout || 'No output' }}</pre>
+          <h2>标准输出</h2>
+          <pre>{{ logs?.stdout || '暂无输出' }}</pre>
         </section>
         <section>
-          <h2>Standard error</h2>
-          <pre>{{ logs?.stderr || 'No errors' }}</pre>
+          <h2>标准错误</h2>
+          <pre>{{ logs?.stderr || '暂无错误' }}</pre>
         </section>
       </div>
     </ElDrawer>
 
-    <ElDrawer v-model="detailDrawerVisible" title="Runtime detail" size="min(720px, 96vw)">
+    <ElDrawer v-model="detailDrawerVisible" title="运行时详情" size="min(720px, 96vw)">
       <div v-if="detailError" class="app-service-runtime-page__error">
         <ElAlert type="error" :title="detailError" show-icon :closable="false" />
-        <ElButton link type="primary" :loading="detailLoading" @click="loadDetail">Retry</ElButton>
+        <ElButton link type="primary" :loading="detailLoading" @click="loadDetail">重试</ElButton>
       </div>
       <div v-loading="detailLoading" class="app-service-runtime-page__detail">
         <template v-if="detail">
@@ -407,30 +404,30 @@
           </div>
           <dl class="app-service-runtime-page__versions">
             <div
-              ><dt>Active</dt><dd>{{ detail.active_version || '-' }}</dd></div
+              ><dt>当前版本</dt><dd>{{ detail.active_version || '-' }}</dd></div
             >
             <div
-              ><dt>Candidate</dt><dd>{{ detail.candidate_version || '-' }}</dd></div
+              ><dt>候选版本</dt><dd>{{ detail.candidate_version || '-' }}</dd></div
             >
             <div
-              ><dt>Standby</dt><dd>{{ detail.standby_version || '-' }}</dd></div
+              ><dt>备用版本</dt><dd>{{ detail.standby_version || '-' }}</dd></div
             >
           </dl>
           <ElTable :data="detail.instances" border>
-            <ElTableColumn prop="version" label="Version" min-width="120" />
-            <ElTableColumn label="Role" width="105">
+            <ElTableColumn prop="version" label="版本" min-width="120" />
+            <ElTableColumn label="角色" width="105">
               <template #default="{ row }">{{ labelize(row.role) }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Process" width="115">
+            <ElTableColumn label="进程状态" width="115">
               <template #default="{ row }">{{ labelize(row.process_status) }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Health" width="115">
+            <ElTableColumn label="健康状态" width="115">
               <template #default="{ row }">{{ labelize(row.health_status) }}</template>
             </ElTableColumn>
-            <template #empty><ElEmpty description="No instances for this service" /></template>
+            <template #empty><ElEmpty description="该服务暂无运行实例" /></template>
           </ElTable>
         </template>
-        <ElEmpty v-else-if="!detailLoading && !detailError" description="No runtime detail" />
+        <ElEmpty v-else-if="!detailLoading && !detailError" description="暂无运行时详情" />
       </div>
     </ElDrawer>
   </div>
@@ -467,6 +464,13 @@
     type AppServiceProcessStatus,
     type AppServiceRuntimeDetail
   } from '@/api/app-service-runtime'
+  import {
+    formatDateTime,
+    healthTagType,
+    labelize,
+    processTagType,
+    roleTagType
+  } from './runtime-display'
 
   defineOptions({ name: 'AppServiceRuntimePage' })
 
@@ -514,16 +518,6 @@
   const detailLoading = ref(false)
   const detailError = ref('')
   const encoder = new TextEncoder()
-  const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  })
-
   const activeReason = computed(() =>
     reasonAction.value === 'stop' ? stopReason.value : rollbackReason.value
   )
@@ -533,41 +527,6 @@
       /^[0-9A-Za-z][0-9A-Za-z._-]{0,39}$/.test(startForm.version.trim())
   )
   const probeInputBytes = computed(() => encoder.encode(probeInput.value).byteLength)
-
-  function labelize(value?: string) {
-    if (!value) return '-'
-    return value
-      .split('_')
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(' ')
-  }
-
-  function formatDateTime(value: string | null) {
-    if (!value) return '-'
-    const date = new Date(value)
-    return Number.isNaN(date.getTime()) ? value : dateFormatter.format(date)
-  }
-
-  function roleTagType(role: AppServiceInstanceRole) {
-    if (role === 'active') return 'success'
-    if (role === 'candidate') return 'warning'
-    if (role === 'retired') return 'info'
-    return 'primary'
-  }
-
-  function processTagType(status: AppServiceProcessStatus) {
-    if (status === 'online') return 'success'
-    if (status === 'failed') return 'danger'
-    if (status === 'starting') return 'warning'
-    return 'info'
-  }
-
-  function healthTagType(status: AppServiceHealthStatus) {
-    if (status === 'healthy') return 'success'
-    if (status === 'unhealthy') return 'danger'
-    if (status === 'checking') return 'warning'
-    return 'info'
-  }
 
   function canStartCandidate(row: AppServiceInstanceRecord) {
     return (
@@ -620,7 +579,7 @@
       })
     } catch (error) {
       console.error('[AppServiceRuntimePage] load failed:', error)
-      loadError.value = 'Runtime instances failed to load.'
+      loadError.value = '运行实例加载失败。'
     } finally {
       loading.value = false
     }
@@ -645,7 +604,7 @@
     startSubmitting.value = true
     try {
       await startAppServiceCandidate(startForm.app_code.trim(), startForm.version.trim())
-      ElMessage.success('Candidate started and passed health checks.')
+      ElMessage.success('候选版本已启动并通过健康检查。')
       startDialogVisible.value = false
       await loadInstances()
     } finally {
@@ -659,7 +618,7 @@
     actionLoading.value = actionKey(row, 'start')
     try {
       await startAppServiceCandidate(code, version)
-      ElMessage.success('Candidate started and passed health checks.')
+      ElMessage.success('候选版本已启动并通过健康检查。')
       await loadInstances()
     } finally {
       actionLoading.value = ''
@@ -669,18 +628,18 @@
   async function publishCandidate(row: AppServiceInstanceRecord) {
     if (!canPublishCandidate(row)) return
     await ElMessageBox.confirm(
-      `Publish ${row.app_code} ${row.version} as active?`,
-      'Publish candidate',
+      `确认将 ${row.app_code} ${row.version} 发布为当前版本吗？`,
+      '发布候选版本',
       {
         type: 'warning',
-        confirmButtonText: 'Publish',
-        cancelButtonText: 'Cancel'
+        confirmButtonText: '发布',
+        cancelButtonText: '取消'
       }
     )
     actionLoading.value = actionKey(row, 'publish')
     try {
       await publishAppServiceCandidate(row.app_code, row.version)
-      ElMessage.success('Candidate published.')
+      ElMessage.success('候选版本已发布。')
       await loadInstances()
     } finally {
       actionLoading.value = ''
@@ -703,10 +662,10 @@
     try {
       if (reasonAction.value === 'stop') {
         await stopAppServiceCandidate(row.app_code, row.version, reason)
-        ElMessage.success('Candidate stopped.')
+        ElMessage.success('候选版本已停止。')
       } else {
         await rollbackAppServiceVersion(row.app_code, row.version, reason)
-        ElMessage.success('Rollback completed.')
+        ElMessage.success('版本回滚已完成。')
       }
       reasonDialogVisible.value = false
       await loadInstances()
@@ -730,15 +689,15 @@
     try {
       const parsed = JSON.parse(probeInput.value)
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        throw new Error('Probe input must be a JSON object.')
+        throw new Error('探测输入必须是 JSON 对象。')
       }
       payload = parsed
     } catch (error) {
-      probeError.value = error instanceof Error ? error.message : 'Probe input is invalid JSON.'
+      probeError.value = error instanceof Error ? error.message : '探测输入不是有效的 JSON。'
       return
     }
     if (probeInputBytes.value > 64 * 1024) {
-      probeError.value = 'Probe input exceeds 64 KB.'
+      probeError.value = '探测输入不能超过 64 KB。'
       return
     }
     probeLoading.value = true
@@ -747,7 +706,7 @@
       probeOutput.value = JSON.stringify(response, null, 2)
     } catch (error) {
       console.error('[AppServiceRuntimePage] probe failed:', error)
-      probeError.value = 'Probe failed. Review service health and try again.'
+      probeError.value = '服务探测失败，请检查健康状态后重试。'
     } finally {
       probeLoading.value = false
     }
@@ -768,7 +727,7 @@
       logs.value = await fetchAppServiceLogs(logsCode.value, logLines.value)
     } catch (error) {
       console.error('[AppServiceRuntimePage] logs failed:', error)
-      logsError.value = 'Redacted logs failed to load.'
+      logsError.value = '脱敏日志加载失败。'
     } finally {
       logsLoading.value = false
     }
@@ -789,27 +748,23 @@
       detail.value = await fetchAppServiceRuntimeDetail(detailCode.value)
     } catch (error) {
       console.error('[AppServiceRuntimePage] detail failed:', error)
-      detailError.value = 'Runtime detail failed to load.'
+      detailError.value = '运行时详情加载失败。'
     } finally {
       detailLoading.value = false
     }
   }
 
   async function reconcileRuntime() {
-    await ElMessageBox.confirm(
-      'Reconcile expected runtime state without publishing a version?',
-      'Reconcile runtime',
-      {
-        type: 'info',
-        confirmButtonText: 'Reconcile',
-        cancelButtonText: 'Cancel'
-      }
-    )
+    await ElMessageBox.confirm('确认在不发布版本的情况下校准预期运行状态吗？', '校准运行状态', {
+      type: 'info',
+      confirmButtonText: '校准',
+      cancelButtonText: '取消'
+    })
     reconciling.value = true
     try {
       const result = await reconcileAppServiceRuntime()
       ElMessage.success(
-        `Reconcile completed. Restarted ${result.restarted ?? 0}, failed ${result.failed ?? 0}.`
+        `运行状态校准完成：已重启 ${result.restarted ?? 0} 个，失败 ${result.failed ?? 0} 个。`
       )
       await loadInstances()
     } finally {

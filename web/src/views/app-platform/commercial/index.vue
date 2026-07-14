@@ -4,17 +4,17 @@
       <template #header>
         <div class="commercial-page__header">
           <div>
-            <h1 class="commercial-page__title">Commercial Operations</h1>
+            <h1 class="commercial-page__title">商业运营</h1>
             <p class="commercial-page__subtitle">
-              Manage application pricing, purchases, licenses, revenue, and developer settlements.
+              管理应用定价、购买订单、使用授权、收入和开发者结算。
             </p>
           </div>
-          <ElTooltip content="Refresh current view" placement="bottom">
+          <ElTooltip content="刷新当前视图" placement="bottom">
             <ElButton
               circle
               :icon="Refresh"
               :loading="currentTabLoading"
-              aria-label="Refresh commercial operations"
+              aria-label="刷新商业运营数据"
               @click="refreshCurrentTab"
             />
           </ElTooltip>
@@ -22,12 +22,12 @@
       </template>
 
       <ElTabs v-model="activeTab" class="commercial-page__tabs" @tab-change="handleTabChange">
-        <ElTabPane label="Price Plans" name="prices">
+        <ElTabPane label="价格方案" name="prices">
           <div class="commercial-page__toolbar">
             <ElSelect
               v-model="selectedAppCode"
               filterable
-              placeholder="Select application"
+              placeholder="选择应用"
               class="commercial-page__app-select"
               :loading="referenceLoading"
               @change="loadPricePlans"
@@ -45,7 +45,7 @@
               :disabled="!selectedAppCode"
               @click="openPlanDialog()"
             >
-              New plan
+              新建方案
             </ElButton>
           </div>
 
@@ -57,114 +57,108 @@
           />
 
           <ElTable v-loading="priceLoading" :data="pricePlans" border>
-            <ElTableColumn label="Plan" min-width="210">
+            <ElTableColumn label="方案" min-width="210">
               <template #default="{ row }">
                 <div class="commercial-page__primary">{{ row.name }}</div>
                 <div class="commercial-page__muted">{{ row.code }}</div>
               </template>
             </ElTableColumn>
-            <ElTableColumn label="Pricing" width="150">
+            <ElTableColumn label="计价模式" width="150">
               <template #default="{ row }">
                 <ElTag effect="light" type="info">{{ pricingModelText(row.pricing_model) }}</ElTag>
               </template>
             </ElTableColumn>
-            <ElTableColumn label="Billing" width="130">
+            <ElTableColumn label="计费周期" width="130">
               <template #default="{ row }">{{ billingPeriodText(row.billing_period) }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Amount" width="140" align="right">
+            <ElTableColumn label="金额" width="140" align="right">
               <template #default="{ row }">{{ formatMoney(row.amount_cents) }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Trial" width="100" align="right">
-              <template #default="{ row }">{{ row.trial_days || 0 }} days</template>
+            <ElTableColumn label="试用期" width="100" align="right">
+              <template #default="{ row }">{{ row.trial_days || 0 }} 天</template>
             </ElTableColumn>
-            <ElTableColumn label="Developer share" width="150" align="right">
+            <ElTableColumn label="开发者分成" width="150" align="right">
               <template #default="{ row }">{{
                 formatBasisPoints(row.developer_share_bps)
               }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Availability" min-width="190">
+            <ElTableColumn label="销售范围" min-width="190">
               <template #default="{ row }">
                 <div>{{ saleScopeText(row.sale_scope) }}</div>
                 <div v-if="row.pricing_model === 'included'" class="commercial-page__muted">
-                  {{ row.included_plan_codes?.join(', ') || 'No SaaS plans selected' }}
+                  {{ row.included_plan_codes?.join(', ') || '未选择 SaaS 套餐' }}
                 </div>
                 <div
                   v-else-if="row.sale_scope === 'selected_tenants'"
                   class="commercial-page__muted"
                 >
-                  {{ row.tenant_ids?.length || 0 }} tenants
+                  {{ row.tenant_ids?.length || 0 }} 个租户
                 </div>
               </template>
             </ElTableColumn>
-            <ElTableColumn label="Status" width="110">
+            <ElTableColumn label="状态" width="110">
               <template #default="{ row }">
                 <ElTag :type="row.status === 0 ? 'info' : 'success'" effect="light">
-                  {{ row.status === 0 ? 'Disabled' : 'Enabled' }}
+                  {{ row.status === 0 ? '已禁用' : '已启用' }}
                 </ElTag>
               </template>
             </ElTableColumn>
-            <ElTableColumn label="Actions" width="190" fixed="right">
+            <ElTableColumn label="操作" width="190" fixed="right">
               <template #default="{ row }">
-                <ElButton link type="primary" @click="openPlanDialog(row)">Edit</ElButton>
+                <ElButton link type="primary" @click="openPlanDialog(row)">编辑</ElButton>
                 <ElButton
                   link
                   :type="row.status === 0 ? 'success' : 'warning'"
                   :loading="actionLoading === `plan:${row.code}`"
                   @click="togglePlanStatus(row)"
                 >
-                  {{ row.status === 0 ? 'Enable' : 'Disable' }}
+                  {{ row.status === 0 ? '启用' : '禁用' }}
                 </ElButton>
               </template>
             </ElTableColumn>
             <template #empty>
-              <ElEmpty
-                :description="
-                  selectedAppCode ? 'No price plans for this app' : 'Select an application'
-                "
-              />
+              <ElEmpty :description="selectedAppCode ? '该应用暂无价格方案' : '请先选择应用'" />
             </template>
           </ElTable>
         </ElTabPane>
 
-        <ElTabPane label="Orders" name="orders">
+        <ElTabPane label="订单" name="orders">
           <div class="commercial-page__toolbar commercial-page__toolbar--wrap">
             <ElInput
               v-model="orderFilters.order_no"
               clearable
-              placeholder="Order number"
+              placeholder="订单号"
               class="commercial-page__input"
               @keyup.enter="refreshOrders"
             />
             <ElInput
               v-model="orderFilters.app_code"
               clearable
-              placeholder="App code"
+              placeholder="应用编码"
               class="commercial-page__input"
               @keyup.enter="refreshOrders"
             />
             <ElInput
               v-model="orderFilters.tenant_id"
               clearable
-              placeholder="Tenant ID"
+              placeholder="租户 ID"
               class="commercial-page__small-input"
               @keyup.enter="refreshOrders"
             />
             <ElSelect
               v-model="orderFilters.status"
               clearable
-              placeholder="Status"
+              placeholder="订单状态"
               class="commercial-page__select"
               @change="refreshOrders"
             >
-              <ElOption label="Pending" value="pending" />
-              <ElOption label="Paid" value="paid" />
-              <ElOption label="Refunded" value="refunded" />
-              <ElOption label="Closed" value="closed" />
+              <ElOption label="待支付" value="pending" />
+              <ElOption label="已支付" value="paid" />
+              <ElOption label="已退款" value="refunded" />
+              <ElOption label="已关闭" value="closed" />
             </ElSelect>
-            <ElButton type="primary" :loading="orderLoading" @click="refreshOrders"
-              >Search</ElButton
-            >
-            <ElButton :disabled="orderLoading" @click="resetOrderFilters">Reset</ElButton>
+            <ElButton type="primary" :loading="orderLoading" @click="refreshOrders">查询</ElButton>
+            <ElButton :disabled="orderLoading" @click="resetOrderFilters">重置</ElButton>
           </div>
 
           <StateError
@@ -175,34 +169,34 @@
           />
 
           <ElTable v-loading="orderLoading" :data="orders" border>
-            <ElTableColumn prop="order_no" label="Order" min-width="210" show-overflow-tooltip />
-            <ElTableColumn prop="tenant_id" label="Tenant" width="100" />
-            <ElTableColumn label="Application" min-width="190">
+            <ElTableColumn prop="order_no" label="订单号" min-width="210" show-overflow-tooltip />
+            <ElTableColumn prop="tenant_id" label="租户" width="100" />
+            <ElTableColumn label="应用" min-width="190">
               <template #default="{ row }">
                 <div class="commercial-page__primary">{{ row.app_name || row.app_code }}</div>
                 <div class="commercial-page__muted">{{ row.app_code }}</div>
               </template>
             </ElTableColumn>
-            <ElTableColumn label="Plan" min-width="160">
+            <ElTableColumn label="价格方案" min-width="160">
               <template #default="{ row }">{{ row.price_plan_code }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Amount" width="130" align="right">
+            <ElTableColumn label="金额" width="130" align="right">
               <template #default="{ row }">{{ formatMoney(row.amount_cents) }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Status" width="120">
+            <ElTableColumn label="状态" width="120">
               <template #default="{ row }">
                 <ElTag :type="orderStatusTagType(row.status)" effect="light">
                   {{ orderStatusText(row.status) }}
                 </ElTag>
               </template>
             </ElTableColumn>
-            <ElTableColumn label="Paid" width="180">
+            <ElTableColumn label="支付时间" width="180">
               <template #default="{ row }">{{ formatDateTime(row.paid_at) }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Created" width="180">
+            <ElTableColumn label="创建时间" width="180">
               <template #default="{ row }">{{ formatDateTime(row.create_time) }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Actions" width="110" fixed="right">
+            <ElTableColumn label="操作" width="110" fixed="right">
               <template #default="{ row }">
                 <ElButton
                   v-if="row.status === 'paid'"
@@ -210,12 +204,12 @@
                   type="danger"
                   @click="openRefundDialog(row)"
                 >
-                  Refund
+                  退款
                 </ElButton>
                 <span v-else class="commercial-page__muted">-</span>
               </template>
             </ElTableColumn>
-            <template #empty><ElEmpty description="No application orders" /></template>
+            <template #empty><ElEmpty description="暂无应用订单" /></template>
           </ElTable>
 
           <ElPagination
@@ -230,12 +224,12 @@
           />
         </ElTabPane>
 
-        <ElTabPane label="Licenses" name="licenses">
+        <ElTabPane label="使用授权" name="licenses">
           <div class="commercial-page__toolbar commercial-page__toolbar--wrap">
             <ElInput
               v-model="licenseFilters.tenant_id"
               clearable
-              placeholder="Tenant ID"
+              placeholder="租户 ID"
               class="commercial-page__small-input"
               @keyup.enter="refreshLicenses"
             />
@@ -243,7 +237,7 @@
               v-model="licenseFilters.app_id"
               clearable
               filterable
-              placeholder="Application"
+              placeholder="应用"
               class="commercial-page__app-select"
               @change="refreshLicenses"
             >
@@ -257,20 +251,20 @@
             <ElSelect
               v-model="licenseFilters.status"
               clearable
-              placeholder="Status"
+              placeholder="授权状态"
               class="commercial-page__select"
               @change="refreshLicenses"
             >
-              <ElOption label="Active" value="active" />
-              <ElOption label="Trialing" value="trialing" />
-              <ElOption label="Expired" value="expired" />
-              <ElOption label="Revoked" value="revoked" />
-              <ElOption label="Refunded" value="refunded" />
+              <ElOption label="生效中" value="active" />
+              <ElOption label="试用中" value="trialing" />
+              <ElOption label="已到期" value="expired" />
+              <ElOption label="已撤销" value="revoked" />
+              <ElOption label="已退款" value="refunded" />
             </ElSelect>
             <ElButton type="primary" :loading="licenseLoading" @click="refreshLicenses">
-              Search
+              查询
             </ElButton>
-            <ElButton :disabled="licenseLoading" @click="resetLicenseFilters">Reset</ElButton>
+            <ElButton :disabled="licenseLoading" @click="resetLicenseFilters">重置</ElButton>
           </div>
 
           <StateError
@@ -281,32 +275,32 @@
           />
 
           <ElTable v-loading="licenseLoading" :data="licenses" border>
-            <ElTableColumn prop="id" label="License" width="100" />
-            <ElTableColumn prop="tenant_id" label="Tenant" width="100" />
-            <ElTableColumn label="Application" min-width="210">
+            <ElTableColumn prop="id" label="授权 ID" width="100" />
+            <ElTableColumn prop="tenant_id" label="租户" width="100" />
+            <ElTableColumn label="应用" min-width="210">
               <template #default="{ row }">
                 <div class="commercial-page__primary">{{ appName(row.app_id) }}</div>
                 <div class="commercial-page__muted">{{ appCode(row.app_id) }}</div>
               </template>
             </ElTableColumn>
-            <ElTableColumn prop="price_plan_id" label="Plan ID" width="100" />
-            <ElTableColumn label="Source" width="110">
+            <ElTableColumn prop="price_plan_id" label="方案 ID" width="100" />
+            <ElTableColumn label="来源" width="110">
               <template #default="{ row }">{{ sourceText(row.source) }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Status" width="120">
+            <ElTableColumn label="状态" width="120">
               <template #default="{ row }">
                 <ElTag :type="licenseStatusTagType(row.status)" effect="light">
                   {{ licenseStatusText(row.status) }}
                 </ElTag>
               </template>
             </ElTableColumn>
-            <ElTableColumn label="Effective" width="180">
+            <ElTableColumn label="生效时间" width="180">
               <template #default="{ row }">{{ formatDateTime(row.effective_at) }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Expires" width="180">
+            <ElTableColumn label="到期时间" width="180">
               <template #default="{ row }">{{ formatDateTime(row.expires_at) }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Actions" width="110" fixed="right">
+            <ElTableColumn label="操作" width="110" fixed="right">
               <template #default="{ row }">
                 <ElButton
                   v-if="row.status === 'active' || row.status === 'trialing'"
@@ -314,12 +308,12 @@
                   type="danger"
                   @click="openRevokeDialog(row)"
                 >
-                  Revoke
+                  撤销
                 </ElButton>
                 <span v-else class="commercial-page__muted">-</span>
               </template>
             </ElTableColumn>
-            <template #empty><ElEmpty description="No application licenses" /></template>
+            <template #empty><ElEmpty description="暂无应用授权" /></template>
           </ElTable>
 
           <ElPagination
@@ -334,28 +328,28 @@
           />
         </ElTabPane>
 
-        <ElTabPane label="Revenue" name="revenue">
+        <ElTabPane label="收入" name="revenue">
           <div class="commercial-page__toolbar commercial-page__toolbar--wrap">
             <ElDatePicker
               v-model="revenueDateRange"
               type="daterange"
               value-format="YYYY-MM-DD"
-              range-separator="to"
-              start-placeholder="Start date"
-              end-placeholder="End date"
+              range-separator="至"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
               class="commercial-page__date"
             />
             <ElInput
               v-model="revenueAppCode"
               clearable
-              placeholder="App code"
+              placeholder="应用编码"
               class="commercial-page__input"
               @keyup.enter="loadRevenue"
             />
             <ElButton type="primary" :loading="revenueLoading" @click="loadRevenue">
-              Apply
+              查询
             </ElButton>
-            <ElButton :disabled="revenueLoading" @click="resetRevenueFilters">Reset</ElButton>
+            <ElButton :disabled="revenueLoading" @click="resetRevenueFilters">重置</ElButton>
           </div>
 
           <StateError
@@ -375,44 +369,44 @@
             </div>
 
             <ElTable :data="revenue?.apps || []" border class="commercial-page__revenue-table">
-              <ElTableColumn label="Application" min-width="210">
+              <ElTableColumn label="应用" min-width="210">
                 <template #default="{ row }">
                   <div class="commercial-page__primary">{{ row.app_name }}</div>
                   <div class="commercial-page__muted">{{ row.app_code }}</div>
                 </template>
               </ElTableColumn>
-              <ElTableColumn label="Gross" width="140" align="right">
+              <ElTableColumn label="总收入" width="140" align="right">
                 <template #default="{ row }">{{ formatMoney(row.gross_amount_cents) }}</template>
               </ElTableColumn>
-              <ElTableColumn label="Refunds" width="140" align="right">
+              <ElTableColumn label="退款" width="140" align="right">
                 <template #default="{ row }">{{ formatMoney(row.refund_amount_cents) }}</template>
               </ElTableColumn>
-              <ElTableColumn label="Developer" width="150" align="right">
+              <ElTableColumn label="开发者分成" width="150" align="right">
                 <template #default="{ row }">{{
                   formatMoney(row.developer_amount_cents)
                 }}</template>
               </ElTableColumn>
-              <ElTableColumn label="Platform" width="150" align="right">
+              <ElTableColumn label="平台分成" width="150" align="right">
                 <template #default="{ row }">{{ formatMoney(row.platform_amount_cents) }}</template>
               </ElTableColumn>
-              <ElTableColumn label="Unsettled" width="150" align="right">
+              <ElTableColumn label="待结算" width="150" align="right">
                 <template #default="{ row }">
                   {{ formatMoney(row.unsettled_developer_amount_cents) }}
                 </template>
               </ElTableColumn>
-              <ElTableColumn prop="order_count" label="Orders" width="100" align="right" />
-              <template #empty><ElEmpty description="No application revenue" /></template>
+              <ElTableColumn prop="order_count" label="订单数" width="100" align="right" />
+              <template #empty><ElEmpty description="暂无应用收入" /></template>
             </ElTable>
           </div>
         </ElTabPane>
 
-        <ElTabPane label="Settlements" name="settlements">
+        <ElTabPane label="开发者结算" name="settlements">
           <div class="commercial-page__toolbar commercial-page__toolbar--wrap">
             <ElSelect
               v-model="settlementFilters.developer_id"
               clearable
               filterable
-              placeholder="Developer"
+              placeholder="开发者"
               class="commercial-page__developer-select"
               @change="refreshSettlements"
             >
@@ -427,24 +421,24 @@
               v-model="settlementFilters.period"
               type="month"
               value-format="YYYY-MM"
-              placeholder="Period"
+              placeholder="结算月份"
               class="commercial-page__month"
               @change="refreshSettlements"
             />
             <ElSelect
               v-model="settlementFilters.status"
               clearable
-              placeholder="Status"
+              placeholder="结算状态"
               class="commercial-page__select"
               @change="refreshSettlements"
             >
-              <ElOption label="Draft" value="draft" />
-              <ElOption label="Approved" value="approved" />
-              <ElOption label="Paid" value="paid" />
-              <ElOption label="Cancelled" value="cancelled" />
+              <ElOption label="草稿" value="draft" />
+              <ElOption label="已审核" value="approved" />
+              <ElOption label="已打款" value="paid" />
+              <ElOption label="已取消" value="cancelled" />
             </ElSelect>
             <ElButton type="primary" :icon="Plus" @click="openCreateSettlement">
-              New settlement
+              新建结算
             </ElButton>
           </div>
 
@@ -456,30 +450,30 @@
           />
 
           <ElTable v-loading="settlementLoading" :data="settlements" border>
-            <ElTableColumn prop="batch_no" label="Batch" min-width="210" show-overflow-tooltip />
-            <ElTableColumn label="Developer" min-width="170">
+            <ElTableColumn prop="batch_no" label="结算批次" min-width="210" show-overflow-tooltip />
+            <ElTableColumn label="开发者" min-width="170">
               <template #default="{ row }">{{ developerName(row.developer_id) }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Period" width="210">
-              <template #default="{ row }">{{ row.period_start }} to {{ row.period_end }}</template>
+            <ElTableColumn label="结算周期" width="210">
+              <template #default="{ row }">{{ row.period_start }} 至 {{ row.period_end }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Gross" width="130" align="right">
+            <ElTableColumn label="总收入" width="130" align="right">
               <template #default="{ row }">{{ formatMoney(row.gross_amount_cents) }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Refunds" width="130" align="right">
+            <ElTableColumn label="退款" width="130" align="right">
               <template #default="{ row }">{{ formatMoney(row.refund_amount_cents) }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Developer" width="150" align="right">
+            <ElTableColumn label="开发者分成" width="150" align="right">
               <template #default="{ row }">{{ formatMoney(row.developer_amount_cents) }}</template>
             </ElTableColumn>
-            <ElTableColumn label="Status" width="120">
+            <ElTableColumn label="状态" width="120">
               <template #default="{ row }">
                 <ElTag :type="settlementStatusTagType(row.status)" effect="light">
                   {{ settlementStatusText(row.status) }}
                 </ElTag>
               </template>
             </ElTableColumn>
-            <ElTableColumn label="Actions" width="230" fixed="right">
+            <ElTableColumn label="操作" width="230" fixed="right">
               <template #default="{ row }">
                 <ElButton
                   v-if="row.status === 'draft'"
@@ -487,7 +481,7 @@
                   type="success"
                   @click="openSettlementAction(row, 'approve')"
                 >
-                  Approve
+                  审核通过
                 </ElButton>
                 <ElButton
                   v-if="row.status === 'approved'"
@@ -495,7 +489,7 @@
                   type="primary"
                   @click="openSettlementAction(row, 'paid')"
                 >
-                  Mark paid
+                  标记已打款
                 </ElButton>
                 <ElButton
                   v-if="row.status === 'draft'"
@@ -503,17 +497,17 @@
                   type="danger"
                   @click="openSettlementAction(row, 'cancel')"
                 >
-                  Cancel
+                  取消结算
                 </ElButton>
                 <span
                   v-if="row.status === 'paid' || row.status === 'cancelled'"
                   class="commercial-page__muted"
                 >
-                  Finalized
+                  已完结
                 </span>
               </template>
             </ElTableColumn>
-            <template #empty><ElEmpty description="No settlement batches" /></template>
+            <template #empty><ElEmpty description="暂无结算批次" /></template>
           </ElTable>
 
           <ElPagination
@@ -532,37 +526,37 @@
 
     <ElDialog
       v-model="planDialogVisible"
-      :title="editingPlanCode ? 'Edit price plan' : 'Create price plan'"
+      :title="editingPlanCode ? '编辑价格方案' : '创建价格方案'"
       width="min(720px, 94vw)"
       destroy-on-close
     >
       <ElForm label-position="top">
         <div class="commercial-page__form-grid">
-          <ElFormItem label="Code" required>
+          <ElFormItem label="方案编码" required>
             <ElInput v-model="planForm.code" :disabled="Boolean(editingPlanCode)" maxlength="50" />
           </ElFormItem>
-          <ElFormItem label="Name" required>
+          <ElFormItem label="方案名称" required>
             <ElInput v-model="planForm.name" maxlength="100" />
           </ElFormItem>
-          <ElFormItem label="Pricing model" required>
+          <ElFormItem label="计价模式" required>
             <ElSelect v-model="planForm.pricing_model" @change="normalizePlanForm">
-              <ElOption label="Free" value="free" />
-              <ElOption label="Included in SaaS plan" value="included" />
-              <ElOption label="Subscription" value="subscription" />
-              <ElOption label="One-time" value="one_time" />
+              <ElOption label="免费" value="free" />
+              <ElOption label="SaaS 套餐包含" value="included" />
+              <ElOption label="订阅" value="subscription" />
+              <ElOption label="一次性购买" value="one_time" />
             </ElSelect>
           </ElFormItem>
-          <ElFormItem label="Billing period" required>
+          <ElFormItem label="计费周期" required>
             <ElSelect
               v-model="planForm.billing_period"
               :disabled="planForm.pricing_model !== 'subscription'"
             >
-              <ElOption label="None" value="none" />
-              <ElOption label="Monthly" value="monthly" />
-              <ElOption label="Yearly" value="yearly" />
+              <ElOption label="无" value="none" />
+              <ElOption label="按月" value="monthly" />
+              <ElOption label="按年" value="yearly" />
             </ElSelect>
           </ElFormItem>
-          <ElFormItem label="Amount (CNY cents)" required>
+          <ElFormItem label="金额（人民币分）" required>
             <ElInputNumber
               v-model="planForm.amount_cents"
               :min="0"
@@ -572,7 +566,7 @@
               :disabled="planForm.pricing_model === 'free' || planForm.pricing_model === 'included'"
             />
           </ElFormItem>
-          <ElFormItem label="Trial days">
+          <ElFormItem label="试用天数">
             <ElInputNumber
               v-model="planForm.trial_days"
               :min="0"
@@ -580,7 +574,7 @@
               controls-position="right"
             />
           </ElFormItem>
-          <ElFormItem label="Developer share (basis points)">
+          <ElFormItem label="开发者分成（基点）">
             <ElInputNumber
               v-model="planForm.developer_share_bps"
               :min="0"
@@ -589,88 +583,88 @@
               controls-position="right"
             />
           </ElFormItem>
-          <ElFormItem label="Sort order">
+          <ElFormItem label="排序">
             <ElInputNumber v-model="planForm.sort" :min="0" controls-position="right" />
           </ElFormItem>
-          <ElFormItem label="Sale scope">
+          <ElFormItem label="销售范围">
             <ElSelect v-model="planForm.sale_scope">
-              <ElOption label="All tenants" value="all" />
-              <ElOption label="Selected tenants" value="selected_tenants" />
+              <ElOption label="全部租户" value="all" />
+              <ElOption label="指定租户" value="selected_tenants" />
             </ElSelect>
           </ElFormItem>
-          <ElFormItem label="Initial status">
-            <ElSwitch v-model="planForm.enabled" active-text="Enabled" inactive-text="Disabled" />
+          <ElFormItem label="初始状态">
+            <ElSwitch v-model="planForm.enabled" active-text="启用" inactive-text="禁用" />
           </ElFormItem>
         </div>
         <ElFormItem
           v-if="planForm.pricing_model === 'included'"
-          label="Included SaaS plan codes"
+          label="包含该应用的 SaaS 套餐编码"
           required
         >
           <ElInput v-model="includedPlanCodes" placeholder="starter, pro, enterprise" />
         </ElFormItem>
-        <ElFormItem v-if="planForm.sale_scope === 'selected_tenants'" label="Tenant IDs" required>
+        <ElFormItem v-if="planForm.sale_scope === 'selected_tenants'" label="租户 ID" required>
           <ElInput v-model="selectedTenantIds" placeholder="12, 18, 26" />
         </ElFormItem>
       </ElForm>
       <template #footer>
-        <ElButton :disabled="planSaving" @click="planDialogVisible = false">Cancel</ElButton>
-        <ElButton type="primary" :loading="planSaving" @click="savePlan">Save plan</ElButton>
+        <ElButton :disabled="planSaving" @click="planDialogVisible = false">取消</ElButton>
+        <ElButton type="primary" :loading="planSaving" @click="savePlan">保存方案</ElButton>
       </template>
     </ElDialog>
 
-    <ElDialog v-model="refundDialogVisible" title="Record full refund" width="520px">
+    <ElDialog v-model="refundDialogVisible" title="登记全额退款" width="520px">
       <ElAlert
         type="warning"
-        title="This records a provider-confirmed full refund and revokes application access."
+        title="仅登记支付渠道已确认的全额退款；登记后将撤销应用访问权限。"
         show-icon
         :closable="false"
       />
       <ElForm label-position="top" class="commercial-page__dialog-form">
-        <ElFormItem label="Order">
+        <ElFormItem label="订单">
           <ElInput :model-value="refundOrder?.order_no" disabled />
         </ElFormItem>
-        <ElFormItem label="Reason" required>
+        <ElFormItem label="退款原因" required>
           <ElInput v-model="refundReason" type="textarea" :rows="3" maxlength="255" />
         </ElFormItem>
-        <ElFormItem label="Provider refund reference" required>
+        <ElFormItem label="支付渠道退款凭证" required>
           <ElInput v-model="refundReference" maxlength="100" />
         </ElFormItem>
       </ElForm>
       <template #footer>
-        <ElButton :disabled="mutationLoading" @click="refundDialogVisible = false">Cancel</ElButton>
+        <ElButton :disabled="mutationLoading" @click="refundDialogVisible = false">取消</ElButton>
         <ElButton type="danger" :loading="mutationLoading" @click="confirmRefund"
-          >Confirm refund</ElButton
+          >确认登记退款</ElButton
         >
       </template>
     </ElDialog>
 
-    <ElDialog v-model="revokeDialogVisible" title="Revoke application license" width="520px">
+    <ElDialog v-model="revokeDialogVisible" title="撤销应用授权" width="520px">
       <ElAlert
         type="warning"
-        title="Revocation immediately blocks opening and runtime access for this license."
+        title="撤销后将立即阻止该授权打开应用或访问运行时。"
         show-icon
         :closable="false"
       />
       <ElForm label-position="top" class="commercial-page__dialog-form">
-        <ElFormItem label="License">
+        <ElFormItem label="授权">
           <ElInput :model-value="revokeLicense ? `#${revokeLicense.id}` : ''" disabled />
         </ElFormItem>
-        <ElFormItem label="Reason" required>
+        <ElFormItem label="撤销原因" required>
           <ElInput v-model="revokeReason" type="textarea" :rows="3" maxlength="255" />
         </ElFormItem>
       </ElForm>
       <template #footer>
-        <ElButton :disabled="mutationLoading" @click="revokeDialogVisible = false">Cancel</ElButton>
+        <ElButton :disabled="mutationLoading" @click="revokeDialogVisible = false">取消</ElButton>
         <ElButton type="danger" :loading="mutationLoading" @click="confirmRevoke"
-          >Confirm revoke</ElButton
+          >确认撤销</ElButton
         >
       </template>
     </ElDialog>
 
-    <ElDialog v-model="createSettlementVisible" title="Create settlement batch" width="520px">
+    <ElDialog v-model="createSettlementVisible" title="创建结算批次" width="520px">
       <ElForm label-position="top">
-        <ElFormItem label="Developer" required>
+        <ElFormItem label="开发者" required>
           <ElSelect v-model="createSettlementForm.developer_id" filterable>
             <ElOption
               v-for="developer in developers"
@@ -680,21 +674,21 @@
             />
           </ElSelect>
         </ElFormItem>
-        <ElFormItem label="Period" required>
+        <ElFormItem label="结算月份" required>
           <ElDatePicker
             v-model="createSettlementForm.period"
             type="month"
             value-format="YYYY-MM"
-            placeholder="Select month"
+            placeholder="选择月份"
           />
         </ElFormItem>
       </ElForm>
       <template #footer>
         <ElButton :disabled="mutationLoading" @click="createSettlementVisible = false"
-          >Cancel</ElButton
+          >取消</ElButton
         >
         <ElButton type="primary" :loading="mutationLoading" @click="confirmCreateSettlement">
-          Create batch
+          创建批次
         </ElButton>
       </template>
     </ElDialog>
@@ -707,10 +701,10 @@
         :closable="false"
       />
       <ElForm label-position="top" class="commercial-page__dialog-form">
-        <ElFormItem label="Batch">
+        <ElFormItem label="结算批次">
           <ElInput :model-value="selectedSettlement?.batch_no" disabled />
         </ElFormItem>
-        <ElFormItem :label="settlementAction === 'paid' ? 'Payment reference' : 'Note'" required>
+        <ElFormItem :label="settlementAction === 'paid' ? '打款凭证' : '处理说明'" required>
           <ElInput
             v-model="settlementActionValue"
             :type="settlementAction === 'paid' ? 'text' : 'textarea'"
@@ -721,14 +715,14 @@
       </ElForm>
       <template #footer>
         <ElButton :disabled="mutationLoading" @click="settlementActionVisible = false"
-          >Cancel</ElButton
+          >取消</ElButton
         >
         <ElButton
           :type="settlementAction === 'cancel' ? 'danger' : 'primary'"
           :loading="mutationLoading"
           @click="confirmSettlementAction"
         >
-          Confirm
+          确认
         </ElButton>
       </template>
     </ElDialog>
@@ -769,6 +763,21 @@
     type SaveAppPricePlanParams,
     type TenantAppLicenseRecord
   } from '@/api/app-commerce'
+  import {
+    billingPeriodText,
+    formatBasisPoints,
+    formatDateTime,
+    formatMoney,
+    licenseStatusTagType,
+    licenseStatusText,
+    orderStatusTagType,
+    orderStatusText,
+    pricingModelText,
+    saleScopeText,
+    settlementStatusTagType,
+    settlementStatusText,
+    sourceText
+  } from './commercial-display'
 
   defineOptions({ name: 'AppPlatformCommercialPage' })
 
@@ -791,7 +800,7 @@
               loading: props.loading,
               onClick: () => emit('retry')
             },
-            () => 'Retry'
+            () => '重试'
           )
         ])
     }
@@ -878,15 +887,6 @@
   const settlementAction = ref<SettlementAction>('approve')
   const selectedSettlement = ref<AppSettlementRecord | null>(null)
   const settlementActionValue = ref('')
-  const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  })
-
   const currentTabLoading = computed(() => {
     const states: Record<string, boolean> = {
       prices: priceLoading.value,
@@ -903,47 +903,47 @@
     if (!totals) return []
     return [
       {
-        label: 'Gross revenue',
+        label: '总收入',
         value: formatMoney(totals.gross_amount_cents),
-        note: `${totals.order_count} paid orders`
+        note: `${totals.order_count} 个已支付订单`
       },
       {
-        label: 'Refunds',
+        label: '退款金额',
         value: formatMoney(totals.refund_amount_cents),
-        note: 'Confirmed full refunds'
+        note: '已确认的全额退款'
       },
       {
-        label: 'Developer amount',
+        label: '开发者分成',
         value: formatMoney(totals.developer_amount_cents),
-        note: 'Developer share'
+        note: '开发者应得金额'
       },
       {
-        label: 'Platform amount',
+        label: '平台分成',
         value: formatMoney(totals.platform_amount_cents),
-        note: 'Platform share'
+        note: '平台应得金额'
       },
       {
-        label: 'Unsettled developer amount',
+        label: '待结算金额',
         value: formatMoney(totals.unsettled_developer_amount_cents),
-        note: 'Available for settlement'
+        note: '可创建结算批次'
       }
     ]
   })
 
   const settlementActionTitle = computed(() => {
     const labels: Record<SettlementAction, string> = {
-      approve: 'Approve settlement',
-      paid: 'Mark settlement paid',
-      cancel: 'Cancel settlement'
+      approve: '审核通过结算',
+      paid: '标记结算已打款',
+      cancel: '取消结算'
     }
     return labels[settlementAction.value]
   })
 
   const settlementActionDescription = computed(() => {
     const labels: Record<SettlementAction, string> = {
-      approve: 'Approval locks the batch for payment.',
-      paid: 'Only mark paid after the external transfer has been confirmed.',
-      cancel: 'Cancellation is final for this draft batch.'
+      approve: '审核通过后，该批次将锁定并进入待打款状态。',
+      paid: '仅在外部转账确认成功后标记为已打款。',
+      cancel: '取消草稿批次后不可恢复。'
     }
     return labels[settlementAction.value]
   })
@@ -974,114 +974,8 @@
     ]
   }
 
-  function formatMoney(amountCents?: number) {
-    return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(
-      (Number(amountCents) || 0) / 100
-    )
-  }
-
-  function formatBasisPoints(value?: number) {
-    return `${((Number(value) || 0) / 100).toFixed(2).replace(/\.00$/, '')}%`
-  }
-
-  function formatDateTime(value: unknown) {
-    if (!value) return '-'
-    const date = value instanceof Date ? value : new Date(String(value))
-    return Number.isNaN(date.getTime()) ? String(value) : dateFormatter.format(date)
-  }
-
-  function pricingModelText(model: AppPricingModel) {
-    const labels: Record<AppPricingModel, string> = {
-      free: 'Free',
-      included: 'Included',
-      subscription: 'Subscription',
-      one_time: 'One-time'
-    }
-    return labels[model]
-  }
-
-  function billingPeriodText(period: AppBillingPeriod) {
-    const labels: Record<AppBillingPeriod, string> = {
-      none: 'None',
-      monthly: 'Monthly',
-      yearly: 'Yearly'
-    }
-    return labels[period]
-  }
-
-  function saleScopeText(scope?: 'all' | 'selected_tenants') {
-    return scope === 'selected_tenants' ? 'Selected tenants' : 'All tenants'
-  }
-
-  function orderStatusText(status: AppOrderStatus) {
-    const labels: Record<AppOrderStatus, string> = {
-      pending: 'Pending',
-      paid: 'Paid',
-      refunded: 'Refunded',
-      closed: 'Closed'
-    }
-    return labels[status]
-  }
-
-  function orderStatusTagType(status: AppOrderStatus) {
-    const types: Record<AppOrderStatus, 'success' | 'warning' | 'danger' | 'info'> = {
-      pending: 'warning',
-      paid: 'success',
-      refunded: 'danger',
-      closed: 'info'
-    }
-    return types[status]
-  }
-
-  function sourceText(source: TenantAppLicenseRecord['source']) {
-    const labels: Record<TenantAppLicenseRecord['source'], string> = {
-      trial: 'Trial',
-      order: 'Order',
-      platform: 'Platform'
-    }
-    return labels[source]
-  }
-
-  function licenseStatusText(status: TenantAppLicenseRecord['status']) {
-    const labels: Record<TenantAppLicenseRecord['status'], string> = {
-      active: 'Active',
-      trialing: 'Trialing',
-      expired: 'Expired',
-      revoked: 'Revoked',
-      refunded: 'Refunded'
-    }
-    return labels[status]
-  }
-
-  function licenseStatusTagType(status: TenantAppLicenseRecord['status']) {
-    if (status === 'active' || status === 'trialing') return 'success'
-    if (status === 'expired') return 'warning'
-    return 'danger'
-  }
-
-  function settlementStatusText(status: AppSettlementRecord['status']) {
-    const labels: Record<AppSettlementRecord['status'], string> = {
-      draft: 'Draft',
-      approved: 'Approved',
-      paid: 'Paid',
-      cancelled: 'Cancelled'
-    }
-    return labels[status]
-  }
-
-  function settlementStatusTagType(status: AppSettlementRecord['status']) {
-    const types: Record<AppSettlementRecord['status'], 'success' | 'warning' | 'danger' | 'info'> =
-      {
-        draft: 'info',
-        approved: 'warning',
-        paid: 'success',
-        cancelled: 'danger'
-      }
-    return types[status]
-  }
-
   function appName(id: number) {
-    return apps.value.find((app) => app.id === Number(id))?.name || `App #${id}`
+    return apps.value.find((app) => app.id === Number(id))?.name || `应用 #${id}`
   }
 
   function appCode(id: number) {
@@ -1092,7 +986,7 @@
     if (!id) return '-'
     return (
       developers.value.find((item) => Number(item.user_id) === Number(id))?.display_name ||
-      `Developer #${id}`
+      `开发者 #${id}`
     )
   }
 
@@ -1108,7 +1002,7 @@
       if (!selectedAppCode.value && apps.value.length) selectedAppCode.value = apps.value[0].code
     } catch (error) {
       console.error('[AppPlatformCommercialPage] load reference data failed:', error)
-      ElMessage.error('Applications or developers failed to load')
+      ElMessage.error('应用或开发者数据加载失败')
     } finally {
       referenceLoading.value = false
     }
@@ -1126,7 +1020,7 @@
     } catch (error) {
       console.error('[AppPlatformCommercialPage] load price plans failed:', error)
       pricePlans.value = []
-      loadError.prices = 'Price plans failed to load'
+      loadError.prices = '价格方案加载失败'
     } finally {
       priceLoading.value = false
     }
@@ -1188,17 +1082,17 @@
     const code = planForm.code.trim()
     const name = planForm.name.trim()
     if (!selectedAppCode.value || !/^[a-z][a-z0-9_]{2,49}$/.test(code) || !name) {
-      ElMessage.warning('A valid code and name are required')
+      ElMessage.warning('请输入有效的方案编码和名称')
       return
     }
     const includedCodes = parseCsvStrings(includedPlanCodes.value)
     const tenantIds = parseCsvIds(selectedTenantIds.value)
     if (planForm.pricing_model === 'included' && !includedCodes.length) {
-      ElMessage.warning('Select at least one included SaaS plan code')
+      ElMessage.warning('请至少选择一个包含该应用的 SaaS 套餐编码')
       return
     }
     if (planForm.sale_scope === 'selected_tenants' && !tenantIds.length) {
-      ElMessage.warning('Enter at least one tenant ID')
+      ElMessage.warning('请至少输入一个租户 ID')
       return
     }
     normalizePlanForm()
@@ -1222,10 +1116,10 @@
         const changes: Partial<SaveAppPricePlanParams> = { ...data }
         delete changes.code
         await updatePlatformAppPricePlan(selectedAppCode.value, editingPlanCode.value, changes)
-        ElMessage.success('Price plan updated')
+        ElMessage.success('价格方案已更新')
       } else {
         await createPlatformAppPricePlan(selectedAppCode.value, data)
-        ElMessage.success('Price plan created')
+        ElMessage.success('价格方案已创建')
       }
       planDialogVisible.value = false
       await loadPricePlans()
@@ -1237,14 +1131,14 @@
   async function togglePlanStatus(plan: AppPricePlanRecord) {
     const nextStatus = plan.status === 0 ? 1 : 0
     await ElMessageBox.confirm(
-      `${nextStatus ? 'Enable' : 'Disable'} ${plan.name}?`,
-      `${nextStatus ? 'Enable' : 'Disable'} price plan`,
-      { type: 'warning', confirmButtonText: nextStatus ? 'Enable' : 'Disable' }
+      `确认${nextStatus ? '启用' : '禁用'}价格方案“${plan.name}”吗？`,
+      `${nextStatus ? '启用' : '禁用'}价格方案`,
+      { type: 'warning', confirmButtonText: nextStatus ? '启用' : '禁用' }
     )
     actionLoading.value = `plan:${plan.code}`
     try {
       await updatePlatformAppPricePlanStatus(selectedAppCode.value, plan.code, nextStatus)
-      ElMessage.success(`Price plan ${nextStatus ? 'enabled' : 'disabled'}`)
+      ElMessage.success(`价格方案已${nextStatus ? '启用' : '禁用'}`)
       await loadPricePlans()
     } finally {
       actionLoading.value = ''
@@ -1269,7 +1163,7 @@
       console.error('[AppPlatformCommercialPage] load orders failed:', error)
       orders.value = []
       orderPager.total = 0
-      loadError.orders = 'Application orders failed to load'
+      loadError.orders = '应用订单加载失败'
     } finally {
       orderLoading.value = false
     }
@@ -1301,19 +1195,19 @@
     const reason = refundReason.value.trim()
     const reference = refundReference.value.trim()
     if (!refundOrder.value || reason.length < 3 || !reference) {
-      ElMessage.warning('A refund reason and provider reference are required')
+      ElMessage.warning('请输入退款原因和支付渠道退款凭证')
       return
     }
     await ElMessageBox.confirm(
-      `Record a full refund for ${refundOrder.value.order_no}?`,
-      'Confirm full refund',
-      { type: 'warning', confirmButtonText: 'Record refund' }
+      `确认登记订单 ${refundOrder.value.order_no} 的全额退款吗？`,
+      '确认全额退款',
+      { type: 'warning', confirmButtonText: '登记退款' }
     )
     mutationLoading.value = true
     try {
       await refundPlatformAppOrder(refundOrder.value.order_no, reason, reference)
       refundDialogVisible.value = false
-      ElMessage.success('Full refund recorded')
+      ElMessage.success('全额退款已登记')
       await Promise.all([loadOrders(), loadLicenses(), loadRevenue()])
     } finally {
       mutationLoading.value = false
@@ -1337,7 +1231,7 @@
       console.error('[AppPlatformCommercialPage] load licenses failed:', error)
       licenses.value = []
       licensePager.total = 0
-      loadError.licenses = 'Application licenses failed to load'
+      loadError.licenses = '应用授权加载失败'
     } finally {
       licenseLoading.value = false
     }
@@ -1367,19 +1261,18 @@
   async function confirmRevoke() {
     const reason = revokeReason.value.trim()
     if (!revokeLicense.value || reason.length < 3) {
-      ElMessage.warning('A revocation reason is required')
+      ElMessage.warning('请输入撤销原因')
       return
     }
-    await ElMessageBox.confirm(
-      `Revoke license #${revokeLicense.value.id}?`,
-      'Confirm license revocation',
-      { type: 'warning', confirmButtonText: 'Revoke' }
-    )
+    await ElMessageBox.confirm(`确认撤销应用授权 #${revokeLicense.value.id} 吗？`, '确认撤销授权', {
+      type: 'warning',
+      confirmButtonText: '撤销'
+    })
     mutationLoading.value = true
     try {
       await revokePlatformAppLicense(revokeLicense.value.id, reason)
       revokeDialogVisible.value = false
-      ElMessage.success('Application license revoked')
+      ElMessage.success('应用授权已撤销')
       await loadLicenses()
     } finally {
       mutationLoading.value = false
@@ -1398,7 +1291,7 @@
     } catch (error) {
       console.error('[AppPlatformCommercialPage] load revenue failed:', error)
       revenue.value = null
-      loadError.revenue = 'Application revenue failed to load'
+      loadError.revenue = '应用收入加载失败'
     } finally {
       revenueLoading.value = false
     }
@@ -1427,7 +1320,7 @@
       console.error('[AppPlatformCommercialPage] load settlements failed:', error)
       settlements.value = []
       settlementPager.total = 0
-      loadError.settlements = 'Application settlements failed to load'
+      loadError.settlements = '开发者结算加载失败'
     } finally {
       settlementLoading.value = false
     }
@@ -1454,13 +1347,13 @@
       !createSettlementForm.developer_id ||
       !/^\d{4}-(0[1-9]|1[0-2])$/.test(createSettlementForm.period)
     ) {
-      ElMessage.warning('Developer and settlement month are required')
+      ElMessage.warning('请选择开发者和结算月份')
       return
     }
     await ElMessageBox.confirm(
-      `Create a settlement batch for ${developerName(createSettlementForm.developer_id)} in ${createSettlementForm.period}?`,
-      'Confirm settlement creation',
-      { type: 'warning', confirmButtonText: 'Create batch' }
+      `确认为 ${developerName(createSettlementForm.developer_id)} 创建 ${createSettlementForm.period} 的结算批次吗？`,
+      '确认创建结算',
+      { type: 'warning', confirmButtonText: '创建批次' }
     )
     mutationLoading.value = true
     try {
@@ -1469,7 +1362,7 @@
         createSettlementForm.period
       )
       createSettlementVisible.value = false
-      ElMessage.success('Settlement batch created')
+      ElMessage.success('结算批次已创建')
       await Promise.all([loadSettlements(), loadRevenue()])
     } finally {
       mutationLoading.value = false
@@ -1487,15 +1380,13 @@
     const record = selectedSettlement.value
     const value = settlementActionValue.value.trim()
     if (!record || (settlementAction.value !== 'paid' && value.length < 2) || !value) {
-      ElMessage.warning(
-        settlementAction.value === 'paid' ? 'Payment reference is required' : 'A note is required'
-      )
+      ElMessage.warning(settlementAction.value === 'paid' ? '请输入打款凭证' : '请输入处理说明')
       return
     }
     await ElMessageBox.confirm(
-      `${settlementActionTitle.value} for ${record.batch_no}?`,
+      `确认对结算批次 ${record.batch_no} 执行“${settlementActionTitle.value}”吗？`,
       settlementActionTitle.value,
-      { type: 'warning', confirmButtonText: 'Confirm' }
+      { type: 'warning', confirmButtonText: '确认' }
     )
     mutationLoading.value = true
     try {
@@ -1503,7 +1394,7 @@
       if (settlementAction.value === 'paid') await markPlatformAppSettlementPaid(record.id, value)
       if (settlementAction.value === 'cancel') await cancelPlatformAppSettlement(record.id, value)
       settlementActionVisible.value = false
-      ElMessage.success('Settlement status updated')
+      ElMessage.success('结算状态已更新')
       await Promise.all([loadSettlements(), loadRevenue()])
     } finally {
       mutationLoading.value = false

@@ -4,15 +4,14 @@
       <template #header>
         <div class="app-platform-page__header">
           <div>
-            <h1 class="app-platform-page__title">App Platform</h1>
+            <h1 class="app-platform-page__title">应用平台</h1>
             <p class="app-platform-page__subtitle"
-              >Manage marketplace apps, reviewed packages, service releases, and tenant
-              availability.</p
+              >管理应用市场、审核版本、服务发布和租户可用范围。</p
             >
           </div>
           <div class="app-platform-page__actions">
-            <ElButton :icon="Refresh" :loading="loading" @click="loadApps">Refresh</ElButton>
-            <ElButton type="primary" :icon="Plus" @click="openCreateDialog">Create App</ElButton>
+            <ElButton :icon="Refresh" :loading="loading" @click="loadApps">刷新</ElButton>
+            <ElButton type="primary" :icon="Plus" @click="openCreateDialog">创建应用</ElButton>
           </div>
         </div>
       </template>
@@ -22,25 +21,25 @@
           v-model="filters.keyword"
           clearable
           class="app-platform-page__filter-item"
-          placeholder="Code, name, category"
+          placeholder="编码、名称或分类"
           @keyup.enter="loadApps"
         />
         <ElSelect
           v-model="filters.type"
           clearable
           class="app-platform-page__select"
-          placeholder="Type"
+          placeholder="应用类型"
         >
-          <ElOption label="Internal" value="internal" />
-          <ElOption label="Static" value="static" />
-          <ElOption label="Iframe" value="iframe" />
-          <ElOption label="Service" value="service" />
+          <ElOption label="内置页面" value="internal" />
+          <ElOption label="静态应用" value="static" />
+          <ElOption label="外部应用" value="iframe" />
+          <ElOption label="服务应用" value="service" />
         </ElSelect>
         <ElSelect
           v-model="filters.status"
           clearable
           class="app-platform-page__select"
-          placeholder="Status"
+          placeholder="应用状态"
         >
           <ElOption
             v-for="item in statusOptions"
@@ -49,56 +48,54 @@
             :value="item"
           />
         </ElSelect>
-        <ElButton type="primary" :icon="Search" :loading="loading" @click="loadApps"
-          >Search</ElButton
-        >
-        <ElButton @click="resetFilters">Reset</ElButton>
+        <ElButton type="primary" :icon="Search" :loading="loading" @click="loadApps">查询</ElButton>
+        <ElButton @click="resetFilters">重置</ElButton>
       </div>
 
       <div v-if="loadError" class="app-platform-page__load-error">
         <ElAlert type="error" :title="loadError" show-icon :closable="false" />
         <ElButton size="small" type="primary" link :loading="loading" @click="loadApps"
-          >Retry</ElButton
+          >重试</ElButton
         >
       </div>
 
       <ElTable v-loading="loading" :data="records" border>
-        <ElTableColumn label="App" min-width="220" show-overflow-tooltip>
+        <ElTableColumn label="应用" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
             <div class="app-platform-page__app-name">{{ row.name || '-' }}</div>
             <div class="app-platform-page__app-code">{{ row.code || '-' }}</div>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Type" width="120">
+        <ElTableColumn label="类型" width="120">
           <template #default="{ row }">
             <ElTag :type="typeTagType(row.type)" effect="light">{{ typeText(row.type) }}</ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn prop="category" label="Category" width="140" show-overflow-tooltip>
+        <ElTableColumn prop="category" label="分类" width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ row.category || '-' }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Status" width="140">
+        <ElTableColumn label="状态" width="140">
           <template #default="{ row }">
             <ElTag :type="statusTagType(row.status)" effect="light">{{
               statusText(row.status)
             }}</ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Visibility" width="130">
+        <ElTableColumn label="可见范围" width="130">
           <template #default="{ row }">{{ visibilityText(row.visibility) }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Entry" min-width="240" show-overflow-tooltip>
+        <ElTableColumn label="入口" min-width="240" show-overflow-tooltip>
           <template #default="{ row }">{{
-            row.type === 'service' ? 'Managed runtime' : row.entry_url || '-'
+            row.type === 'service' ? '平台托管运行时' : row.entry_url || '-'
           }}</template>
         </ElTableColumn>
-        <ElTableColumn prop="sort" label="Sort" width="80" />
-        <ElTableColumn label="Updated" width="170">
+        <ElTableColumn prop="sort" label="排序" width="80" />
+        <ElTableColumn label="更新时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.update_time) }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Actions" fixed="right" width="330">
+        <ElTableColumn label="操作" fixed="right" width="330">
           <template #default="{ row }">
-            <ElButton link type="primary" :icon="Edit" @click="openEditDialog(row)">Edit</ElButton>
+            <ElButton link type="primary" :icon="Edit" @click="openEditDialog(row)">编辑</ElButton>
             <ElButton
               link
               type="primary"
@@ -106,7 +103,7 @@
               :loading="detailLoadingCode === row.code"
               @click="openDetail(row)"
             >
-              Versions
+              版本
             </ElButton>
             <ElUpload
               v-if="row.type === 'static' || row.type === 'service'"
@@ -116,7 +113,7 @@
               :on-change="(file) => handlePackageSelected(row, file)"
             >
               <ElButton link type="primary" :icon="Upload" :loading="uploadingCode === row.code"
-                >Upload</ElButton
+                >上传</ElButton
               >
             </ElUpload>
             <ElButton
@@ -126,23 +123,19 @@
               :icon="row.status === 'disabled' ? CircleCheck : CircleClose"
               @click="toggleStatus(row)"
             >
-              {{ row.status === 'disabled' ? 'Enable' : 'Disable' }}
+              {{ row.status === 'disabled' ? '启用' : '禁用' }}
             </ElButton>
           </template>
         </ElTableColumn>
         <template #empty>
-          <ElEmpty description="No marketplace apps yet" />
+          <ElEmpty description="暂无应用" />
         </template>
       </ElTable>
     </ElCard>
 
-    <ElDialog
-      v-model="dialogVisible"
-      :title="editingCode ? 'Edit App' : 'Create App'"
-      width="680px"
-    >
+    <ElDialog v-model="dialogVisible" :title="editingCode ? '编辑应用' : '创建应用'" width="680px">
       <ElForm ref="appFormRef" :model="appForm" :rules="appRules" label-width="124px">
-        <ElFormItem label="Code" prop="code">
+        <ElFormItem label="应用编码" prop="code">
           <ElInput
             v-model="appForm.code"
             :disabled="Boolean(editingCode)"
@@ -150,57 +143,57 @@
             placeholder="job_board"
           />
         </ElFormItem>
-        <ElFormItem label="Name" prop="name">
+        <ElFormItem label="应用名称" prop="name">
           <ElInput v-model="appForm.name" maxlength="120" />
         </ElFormItem>
-        <ElFormItem label="Type" prop="type">
+        <ElFormItem label="应用类型" prop="type">
           <ElSegmented
             v-model="appForm.type"
             :disabled="Boolean(editingCode)"
             :options="[
-              { label: 'Internal', value: 'internal' },
-              { label: 'Static', value: 'static' },
-              { label: 'Iframe', value: 'iframe' },
-              { label: 'Service', value: 'service' }
+              { label: '内置页面', value: 'internal' },
+              { label: '静态应用', value: 'static' },
+              { label: '外部应用', value: 'iframe' },
+              { label: '服务应用', value: 'service' }
             ]"
           />
         </ElFormItem>
-        <ElFormItem v-if="appForm.type !== 'service'" label="Entry URL" prop="entry_url">
+        <ElFormItem v-if="appForm.type !== 'service'" label="入口地址" prop="entry_url">
           <ElInput
             v-model="appForm.entry_url"
             maxlength="500"
             placeholder="/tenant-saas/members or https://example.com"
           />
         </ElFormItem>
-        <ElFormItem v-else label="Runtime trust">
+        <ElFormItem v-else label="运行时可信级别">
           <div class="app-platform-page__trust-copy">
-            <ElTag type="success" effect="light">platform_trusted</ElTag>
-            <span>Reviewed service packages run in the isolated platform runtime.</span>
+            <ElTag type="success" effect="light">平台可信</ElTag>
+            <span>审核通过的服务包将在平台隔离运行时中执行。</span>
           </div>
         </ElFormItem>
-        <ElFormItem label="Visibility">
+        <ElFormItem label="可见范围">
           <ElSelect v-model="appForm.visibility" :disabled="appForm.type === 'service'">
-            <ElOption label="Marketplace" value="marketplace" />
-            <ElOption label="Tenant" value="tenant" />
-            <ElOption label="Platform" value="platform" />
-            <ElOption label="Private" value="private" />
+            <ElOption label="应用市场" value="marketplace" />
+            <ElOption label="租户可见" value="tenant" />
+            <ElOption label="平台可见" value="platform" />
+            <ElOption label="私有" value="private" />
           </ElSelect>
         </ElFormItem>
-        <ElFormItem label="Category">
+        <ElFormItem label="分类">
           <ElInput v-model="appForm.category" maxlength="50" />
         </ElFormItem>
-        <ElFormItem label="Icon">
+        <ElFormItem label="图标">
           <ElInput v-model="appForm.icon" maxlength="100" placeholder="ri:apps-line" />
         </ElFormItem>
-        <ElFormItem label="Developer">
+        <ElFormItem label="开发者">
           <ElInput v-model="appForm.developer_name" maxlength="100" />
         </ElFormItem>
-        <ElFormItem label="SaaS Module">
+        <ElFormItem label="SaaS 套餐模块">
           <ElSelect
             v-model="appForm.saas_module_code"
             clearable
             filterable
-            placeholder="Optional entitlement module"
+            placeholder="可选，用于套餐权益校验"
           >
             <ElOption
               v-for="item in saasModuleOptions"
@@ -210,12 +203,12 @@
             />
           </ElSelect>
         </ElFormItem>
-        <ElFormItem label="System Module">
+        <ElFormItem label="系统模块">
           <ElSelect
             v-model="appForm.system_module_code"
             clearable
             filterable
-            placeholder="Optional runtime guard module"
+            placeholder="可选，用于运行时访问控制"
           >
             <ElOption
               v-for="item in systemModuleOptions"
@@ -225,23 +218,23 @@
             />
           </ElSelect>
         </ElFormItem>
-        <ElFormItem label="Sort">
+        <ElFormItem label="排序">
           <ElInputNumber v-model="appForm.sort" :min="0" :step="10" controls-position="right" />
         </ElFormItem>
-        <ElFormItem label="Summary">
+        <ElFormItem label="摘要">
           <ElInput v-model="appForm.summary" type="textarea" maxlength="255" show-word-limit />
         </ElFormItem>
-        <ElFormItem label="Description">
+        <ElFormItem label="详细描述">
           <ElInput v-model="appForm.description" type="textarea" maxlength="1000" show-word-limit />
         </ElFormItem>
       </ElForm>
       <template #footer>
-        <ElButton @click="dialogVisible = false">Cancel</ElButton>
-        <ElButton type="primary" :icon="Check" :loading="saving" @click="saveApp">Save</ElButton>
+        <ElButton @click="dialogVisible = false">取消</ElButton>
+        <ElButton type="primary" :icon="Check" :loading="saving" @click="saveApp">保存</ElButton>
       </template>
     </ElDialog>
 
-    <ElDrawer v-model="detailVisible" title="App Versions" size="860px">
+    <ElDrawer v-model="detailVisible" title="应用版本" size="860px">
       <div v-if="selectedDetail" class="app-platform-page__detail">
         <div class="app-platform-page__detail-header">
           <div>
@@ -256,76 +249,76 @@
         <ElAlert
           v-if="selectedDetail.type === 'static' && !selectedDetail.versions.length"
           type="info"
-          title="Upload a static app zip package to start the review flow."
+          title="上传静态应用 ZIP 包后即可发起审核。"
           show-icon
           :closable="false"
         />
         <ElAlert
           v-else-if="selectedDetail.type === 'service' && !selectedDetail.versions.length"
           type="info"
-          title="Upload a service zip package to run the parser scan and start review."
+          title="上传服务应用 ZIP 包后将自动扫描并发起审核。"
           show-icon
           :closable="false"
         />
 
         <ElTable :data="selectedDetail.versions" border>
-          <ElTableColumn label="Version" width="140">
+          <ElTableColumn label="版本" width="140">
             <template #default="{ row }">
               <div class="app-platform-page__version">
                 <span>{{ row.version }}</span>
                 <ElTag v-if="row.is_active" size="small" type="success" effect="light"
-                  >Active</ElTag
+                  >当前版本</ElTag
                 >
               </div>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="Review" width="120">
+          <ElTableColumn label="审核状态" width="120">
             <template #default="{ row }">
               <ElTag :type="reviewTagType(row.review_status)" effect="light">{{
-                row.review_status
+                reviewText(row.review_status)
               }}</ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="Publish" width="130">
+          <ElTableColumn label="发布状态" width="130">
             <template #default="{ row }">
               <ElTag :type="publishTagType(row.publish_status)" effect="light">{{
-                row.publish_status
+                publishText(row.publish_status)
               }}</ElTag>
             </template>
           </ElTableColumn>
           <ElTableColumn
             v-if="selectedDetail.type !== 'service'"
             prop="entry_file"
-            label="Entry"
+            label="入口文件"
             min-width="180"
             show-overflow-tooltip
           />
           <ElTableColumn
             v-if="selectedDetail.type !== 'service'"
             prop="entry_url"
-            label="Runtime URL"
+            label="运行地址"
             min-width="220"
             show-overflow-tooltip
           />
-          <ElTableColumn v-else label="Scan" min-width="190">
+          <ElTableColumn v-else label="扫描结果" min-width="190">
             <template #default="{ row }">
               <div class="app-platform-page__scan-status">
                 <ElTag :type="scanTagType(row.scan_result)" effect="light">{{
                   scanStatusText(row.scan_result)
                 }}</ElTag>
-                <span v-if="row.scan_result">{{ row.scan_result.scannedFiles }} files</span>
+                <span v-if="row.scan_result">已扫描 {{ row.scan_result.scannedFiles }} 个文件</span>
               </div>
             </template>
           </ElTableColumn>
           <ElTableColumn
             prop="review_message"
-            label="Message"
+            label="审核说明"
             min-width="160"
             show-overflow-tooltip
           >
             <template #default="{ row }">{{ row.review_message || '-' }}</template>
           </ElTableColumn>
-          <ElTableColumn label="Actions" fixed="right" width="260">
+          <ElTableColumn label="操作" fixed="right" width="260">
             <template #default="{ row }">
               <ElButton
                 v-if="selectedDetail.type !== 'service'"
@@ -335,7 +328,7 @@
                 :disabled="row.review_status !== 'approved' || row.publish_status === 'published'"
                 @click="publishVersion(row.version)"
               >
-                Publish
+                发布
               </ElButton>
               <ElButton
                 v-if="selectedDetail.type !== 'service'"
@@ -345,7 +338,7 @@
                 :disabled="row.review_status !== 'approved' || !row.publish_path || row.is_active"
                 @click="versionGovernance(row.version, 'rollback')"
               >
-                Rollback
+                回滚
               </ElButton>
               <ElButton
                 v-if="selectedDetail.type !== 'service'"
@@ -355,12 +348,12 @@
                 :disabled="row.publish_status !== 'published'"
                 @click="versionGovernance(row.version, 'unpublish')"
               >
-                Unpublish
+                下线
               </ElButton>
             </template>
           </ElTableColumn>
           <template #empty>
-            <ElEmpty description="No versions" />
+            <ElEmpty description="暂无版本" />
           </template>
         </ElTable>
       </div>
@@ -403,6 +396,21 @@
   } from '@/api/app-marketplace'
   import { fetchPlatformModules, type SaasModuleRecord } from '@/api/saas'
   import { fetchSystemModules, type SystemModuleRecord } from '@/api/system-module'
+  import {
+    appStatusTagType as statusTagType,
+    appStatusText as statusText,
+    appTypeTagType as typeTagType,
+    appTypeText as typeText,
+    appVisibilityText as visibilityText,
+    cleanOptionalText as cleanText,
+    formatAppDateTime as formatDateTime,
+    publishStatusTagType as publishTagType,
+    publishStatusText as publishText,
+    reviewStatusTagType as reviewTagType,
+    reviewStatusText as reviewText,
+    scanStatusTagType as scanTagType,
+    scanStatusText
+  } from '../shared/app-display'
 
   defineOptions({ name: 'AppPlatformAppsPage' })
 
@@ -456,114 +464,16 @@
   })
   const appRules: FormRules = {
     code: [
-      { required: true, message: 'Code is required', trigger: 'blur' },
+      { required: true, message: '请输入应用编码', trigger: 'blur' },
       {
         pattern: /^[a-z][a-z0-9_]{2,79}$/,
-        message: 'Use lowercase snake_case, 3-80 chars',
+        message: '请输入 3-80 位小写 snake_case 编码',
         trigger: 'blur'
       }
     ],
-    name: [{ required: true, message: 'Name is required', trigger: 'blur' }],
-    type: [{ required: true, message: 'Type is required', trigger: 'change' }]
+    name: [{ required: true, message: '请输入应用名称', trigger: 'blur' }],
+    type: [{ required: true, message: '请选择应用类型', trigger: 'change' }]
   }
-  const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  })
-
-  function cleanText(value: string) {
-    return value.trim() || undefined
-  }
-
-  function typeText(type?: string) {
-    const map: Record<string, string> = {
-      internal: 'Internal',
-      static: 'Static',
-      iframe: 'Iframe',
-      service: 'Service'
-    }
-    return type ? map[type] || type : '-'
-  }
-
-  function typeTagType(type?: string) {
-    const map: Record<string, 'success' | 'info' | 'warning'> = {
-      internal: 'success',
-      static: 'warning',
-      iframe: 'info',
-      service: 'success'
-    }
-    return type ? map[type] || 'info' : 'info'
-  }
-
-  function statusText(status?: string) {
-    const map: Record<string, string> = {
-      draft: 'Draft',
-      pending_review: 'Pending Review',
-      approved: 'Approved',
-      published: 'Published',
-      rejected: 'Rejected',
-      disabled: 'Disabled',
-      archived: 'Archived'
-    }
-    return status ? map[status] || status : '-'
-  }
-
-  function statusTagType(status?: string) {
-    const map: Record<string, 'success' | 'info' | 'warning' | 'danger'> = {
-      draft: 'info',
-      pending_review: 'warning',
-      approved: 'success',
-      published: 'success',
-      rejected: 'danger',
-      disabled: 'info',
-      archived: 'info'
-    }
-    return status ? map[status] || 'info' : 'info'
-  }
-
-  function visibilityText(value?: string) {
-    const map: Record<string, string> = {
-      marketplace: 'Marketplace',
-      tenant: 'Tenant',
-      platform: 'Platform',
-      private: 'Private'
-    }
-    return value ? map[value] || value : '-'
-  }
-
-  function reviewTagType(status?: string) {
-    if (status === 'approved') return 'success'
-    if (status === 'rejected') return 'danger'
-    return 'warning'
-  }
-
-  function publishTagType(status?: string) {
-    if (status === 'published') return 'success'
-    if (status === 'failed') return 'danger'
-    return 'info'
-  }
-
-  function scanStatusText(scanResult?: AppPackageDetailRecord['versions'][number]['scan_result']) {
-    if (!scanResult) return 'Not scanned'
-    return scanResult.passed ? 'Passed' : 'Blocked'
-  }
-
-  function scanTagType(scanResult?: AppPackageDetailRecord['versions'][number]['scan_result']) {
-    if (!scanResult) return 'info'
-    return scanResult.passed ? 'success' : 'danger'
-  }
-
-  function formatDateTime(value: unknown) {
-    if (!value) return '-'
-    const date = value instanceof Date ? value : new Date(String(value))
-    return Number.isNaN(date.getTime()) ? String(value) : dateFormatter.format(date)
-  }
-
   function resetForm() {
     Object.assign(appForm, {
       code: '',
@@ -595,7 +505,7 @@
       })
     } catch (error) {
       console.error('[AppPlatformAppsPage] load apps failed:', error)
-      loadError.value = 'App list failed to load'
+      loadError.value = '应用列表加载失败'
       ElMessage.error(loadError.value)
     } finally {
       loading.value = false
@@ -690,7 +600,7 @@
       } else {
         await createPlatformApp(payload)
       }
-      ElMessage.success('App saved')
+      ElMessage.success('应用已保存')
       dialogVisible.value = false
       await loadApps()
     } finally {
@@ -724,10 +634,10 @@
       if (row.type === 'service') {
         const scannedFiles = version.scan_result?.scannedFiles ?? 0
         ElMessage.success(
-          `Service package uploaded. Scan: ${scanStatusText(version.scan_result)}, ${scannedFiles} files.`
+          `服务包已上传，扫描结果：${scanStatusText(version.scan_result)}，共 ${scannedFiles} 个文件。`
         )
       } else {
-        ElMessage.success('Package uploaded for review')
+        ElMessage.success('安装包已上传并提交审核')
       }
       await loadApps()
       if (selectedDetail.value?.code === row.code) await refreshSelectedDetail()
@@ -739,22 +649,21 @@
   async function publishVersion(version: string) {
     if (!selectedDetail.value) return
     await publishPlatformAppVersion(selectedDetail.value.code, version)
-    ElMessage.success('Version published')
+    ElMessage.success('版本已发布')
     await refreshSelectedDetail()
     await loadApps()
   }
 
   async function versionGovernance(version: string, action: 'rollback' | 'unpublish') {
     if (!selectedDetail.value) return
-    const actionText = action === 'rollback' ? 'Rollback' : 'Unpublish'
+    const actionText = action === 'rollback' ? '回滚' : '下线'
     const { value } = await ElMessageBox.prompt(
-      `Reason for ${actionText.toLowerCase()} ${version}`,
+      `请输入${actionText}版本 ${version} 的原因`,
       actionText,
       {
         confirmButtonText: actionText,
-        cancelButtonText: 'Cancel',
-        inputPlaceholder:
-          action === 'rollback' ? 'Restore stable version' : 'Retire unsafe or obsolete version',
+        cancelButtonText: '取消',
+        inputPlaceholder: action === 'rollback' ? '恢复稳定版本' : '下线不安全或已过时版本',
         inputValue: action === 'rollback' ? 'Restore stable version' : 'Retire version'
       }
     )
@@ -765,7 +674,7 @@
       } else {
         await unpublishPlatformAppVersion(selectedDetail.value.code, version, String(value || ''))
       }
-      ElMessage.success(`${actionText} completed`)
+      ElMessage.success(`${actionText}操作已完成`)
       await refreshSelectedDetail()
       await loadApps()
     } finally {
@@ -776,16 +685,16 @@
   async function toggleStatus(row: AppPackageRecord) {
     const nextStatus: AppPackageStatus = row.status === 'disabled' ? 'published' : 'disabled'
     await ElMessageBox.confirm(
-      `Change ${row.name} to ${statusText(nextStatus)}?`,
-      'Update status',
+      `确认将 ${row.name} 设为“${statusText(nextStatus)}”吗？`,
+      '更新应用状态',
       {
         type: nextStatus === 'disabled' ? 'warning' : 'info',
-        confirmButtonText: 'Confirm',
-        cancelButtonText: 'Cancel'
+        confirmButtonText: '确认',
+        cancelButtonText: '取消'
       }
     )
     await updatePlatformAppStatus(row.code, nextStatus)
-    ElMessage.success(`App ${statusText(nextStatus).toLowerCase()}`)
+    ElMessage.success(`应用已设为“${statusText(nextStatus)}”`)
     await loadApps()
   }
 

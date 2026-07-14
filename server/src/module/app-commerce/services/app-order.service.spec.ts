@@ -30,7 +30,7 @@ describe('AppOrderService', () => {
   const dataSource = { transaction: jest.fn() };
   const revenueLedgerService = { recordCharge: jest.fn(), recordRefund: jest.fn() };
   const manager = { getRepository: jest.fn() };
-  const txOrderRepo = { findOne: jest.fn(), save: jest.fn() };
+  const txOrderRepo = { create: jest.fn(), findOne: jest.fn(), save: jest.fn() };
   const txLicenseRepo = { create: jest.fn(), findOne: jest.fn(), save: jest.fn() };
 
   const app = {
@@ -54,6 +54,8 @@ describe('AppOrderService', () => {
     orderRepo.save.mockImplementation(async (value) => ({ id: 31, ...value }));
     orderRepo.findOne.mockResolvedValue(null);
     licenseRepo.findOne.mockResolvedValue(null);
+    txOrderRepo.create.mockImplementation((value) => value);
+    txOrderRepo.findOne.mockResolvedValue(null);
     txOrderRepo.save.mockImplementation(async (value) => value);
     txLicenseRepo.create.mockImplementation((value) => value);
     txLicenseRepo.save.mockImplementation(async (value) => ({ id: value.id || 41, ...value }));
@@ -97,7 +99,7 @@ describe('AppOrderService', () => {
       } as any,
     );
 
-    expect(orderRepo.create).toHaveBeenCalledWith(
+    expect(txOrderRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
         tenantId: 23,
         appId: 7,
@@ -117,6 +119,37 @@ describe('AppOrderService', () => {
     );
     expect(order.orderNo).toMatch(/^AO\d{17}\d{6}$/);
     expect(order).not.toHaveProperty('license_expires_at');
+  });
+
+  it('reuses the matching pending order instead of creating a duplicate', async () => {
+    const pendingOrder = createOrder({
+      tenantId: 23,
+      appId: 7,
+      pricePlanId: 5,
+      paymentMethod: 'alipay',
+      status: 'pending',
+    });
+    txOrderRepo.findOne.mockResolvedValue(pendingOrder);
+
+    await expect(
+      service.createTenantOrder(23, 9, 'workflow', {
+        price_plan_code: 'pro_monthly',
+        payment_method: 'alipay',
+      }),
+    ).resolves.toBe(pendingOrder);
+
+    expect(txOrderRepo.findOne).toHaveBeenCalledWith({
+      where: {
+        tenantId: 23,
+        appId: 7,
+        pricePlanId: 5,
+        paymentMethod: 'alipay',
+        status: 'pending',
+      },
+      order: { id: 'DESC' },
+      lock: { mode: 'pessimistic_write' },
+    });
+    expect(txOrderRepo.save).not.toHaveBeenCalled();
   });
 
   it('rejects free, included, disabled, foreign-tenant, unpublished, or unavailable price plans', async () => {

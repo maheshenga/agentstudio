@@ -4,12 +4,10 @@
       <template #header>
         <div class="app-review-page__header">
           <div>
-            <h1 class="app-review-page__title">Review Center</h1>
-            <p class="app-review-page__subtitle"
-              >Review, publish, unpublish, and rollback app versions from one operations queue.</p
-            >
+            <h1 class="app-review-page__title">应用审核中心</h1>
+            <p class="app-review-page__subtitle">统一处理应用版本审核、发布、下线和回滚。</p>
           </div>
-          <ElButton :icon="Refresh" :loading="loading" @click="loadReviews">Refresh</ElButton>
+          <ElButton :icon="Refresh" :loading="loading" @click="loadReviews">刷新</ElButton>
         </div>
       </template>
 
@@ -18,94 +16,96 @@
           v-model="filters.keyword"
           clearable
           class="app-review-page__filter-item"
-          placeholder="App, version, developer"
+          placeholder="应用、版本或开发者"
           @keyup.enter="loadReviews"
         />
         <ElSelect
           v-model="filters.type"
           clearable
           class="app-review-page__select"
-          placeholder="Type"
+          placeholder="应用类型"
         >
-          <ElOption label="Internal" value="internal" />
-          <ElOption label="Static" value="static" />
-          <ElOption label="Iframe" value="iframe" />
-          <ElOption label="Service" value="service" />
+          <ElOption label="内置页面" value="internal" />
+          <ElOption label="静态应用" value="static" />
+          <ElOption label="外部应用" value="iframe" />
+          <ElOption label="服务应用" value="service" />
         </ElSelect>
         <ElSelect
           v-model="filters.review_status"
           clearable
           class="app-review-page__select"
-          placeholder="Review"
+          placeholder="审核状态"
         >
-          <ElOption label="Pending" value="pending" />
-          <ElOption label="Approved" value="approved" />
-          <ElOption label="Rejected" value="rejected" />
+          <ElOption label="待审核" value="pending" />
+          <ElOption label="已通过" value="approved" />
+          <ElOption label="已驳回" value="rejected" />
         </ElSelect>
         <ElSelect
           v-model="filters.publish_status"
           clearable
           class="app-review-page__select"
-          placeholder="Publish"
+          placeholder="发布状态"
         >
-          <ElOption label="Unpublished" value="unpublished" />
-          <ElOption label="Published" value="published" />
-          <ElOption label="Failed" value="failed" />
-          <ElOption label="Retired" value="unpublished_retired" />
+          <ElOption label="未发布" value="unpublished" />
+          <ElOption label="已发布" value="published" />
+          <ElOption label="发布失败" value="failed" />
+          <ElOption label="已下线" value="unpublished_retired" />
         </ElSelect>
         <ElButton type="primary" :icon="Search" :loading="loading" @click="loadReviews"
-          >Search</ElButton
+          >查询</ElButton
         >
-        <ElButton @click="resetFilters">Reset</ElButton>
+        <ElButton @click="resetFilters">重置</ElButton>
       </div>
 
       <div v-if="loadError" class="app-review-page__load-error">
         <ElAlert type="error" :title="loadError" show-icon :closable="false" />
         <ElButton size="small" type="primary" link :loading="loading" @click="loadReviews"
-          >Retry</ElButton
+          >重试</ElButton
         >
       </div>
 
       <ElTable v-loading="loading" :data="records" border>
-        <ElTableColumn label="App" min-width="220" show-overflow-tooltip>
+        <ElTableColumn label="应用" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
             <div class="app-review-page__app-name">{{ row.app_name || '-' }}</div>
             <div class="app-review-page__muted">{{ row.app_code || '-' }}</div>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Version" width="140">
+        <ElTableColumn label="版本" width="140">
           <template #default="{ row }">
             <div class="app-review-page__version">
               <span>{{ row.version }}</span>
-              <ElTag v-if="row.is_active" size="small" type="success" effect="light">Active</ElTag>
+              <ElTag v-if="row.is_active" size="small" type="success" effect="light"
+                >当前版本</ElTag
+              >
             </div>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Type" width="110">
+        <ElTableColumn label="类型" width="110">
           <template #default="{ row }">
             <ElTag :type="typeTagType(row.app_type)" effect="light">{{
               typeText(row.app_type)
             }}</ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Review" width="120">
+        <ElTableColumn label="审核状态" width="120">
           <template #default="{ row }">
             <ElTag :type="reviewTagType(row.review_status)" effect="light">{{
-              row.review_status
+              reviewText(row.review_status)
             }}</ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Publish" width="140">
+        <ElTableColumn label="发布状态" width="140">
           <template #default="{ row }">
             <ElTag :type="publishTagType(row.publish_status)" effect="light">{{
-              row.publish_status
+              publishText(row.publish_status)
             }}</ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Developer" width="150" show-overflow-tooltip>
+        <ElTableColumn label="开发者" width="150" show-overflow-tooltip>
           <template #default="{ row }">{{ row.developer_name || '-' }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Capabilities" min-width="180">
+        <ElTableColumn label="申请能力" min-width="180">
           <template #default="{ row }">
             <div v-if="row.requested_capabilities?.length" class="app-review-page__capabilities">
               <ElTag
@@ -117,18 +117,18 @@
                 {{ capabilityLabel(capability) }}
               </ElTag>
             </div>
-            <span v-else class="app-review-page__muted">None</span>
+            <span v-else class="app-review-page__muted">无</span>
           </template>
         </ElTableColumn>
-        <ElTableColumn prop="entry_url" label="Runtime URL" min-width="240" show-overflow-tooltip />
-        <ElTableColumn label="Updated" width="170">
+        <ElTableColumn prop="entry_url" label="运行地址" min-width="240" show-overflow-tooltip />
+        <ElTableColumn label="更新时间" width="170">
           <template #default="{ row }">{{
             formatDateTime(row.update_time || row.create_time)
           }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Actions" fixed="right" width="500">
+        <ElTableColumn label="操作" fixed="right" width="500">
           <template #default="{ row }">
-            <ElButton link :icon="View" @click="openEvidence(row)">Evidence</ElButton>
+            <ElButton link :icon="View" @click="openEvidence(row)">审核证据</ElButton>
             <ElButton
               link
               type="success"
@@ -136,7 +136,7 @@
               :disabled="row.review_status !== 'pending'"
               @click="reviewVersion(row, 'approve')"
             >
-              Approve
+              通过
             </ElButton>
             <ElButton
               link
@@ -145,7 +145,7 @@
               :disabled="row.review_status !== 'pending'"
               @click="reviewVersion(row, 'reject')"
             >
-              Reject
+              驳回
             </ElButton>
             <ElButton
               link
@@ -158,7 +158,7 @@
               "
               @click="publishVersion(row)"
             >
-              Publish
+              发布
             </ElButton>
             <ElButton
               link
@@ -167,7 +167,7 @@
               :disabled="row.review_status !== 'approved' || !row.publish_path || row.is_active"
               @click="versionGovernance(row, 'rollback')"
             >
-              Rollback
+              回滚
             </ElButton>
             <ElButton
               link
@@ -176,20 +176,20 @@
               :disabled="row.publish_status !== 'published'"
               @click="versionGovernance(row, 'unpublish')"
             >
-              Unpublish
+              下线
             </ElButton>
           </template>
         </ElTableColumn>
         <template #empty>
-          <ElEmpty description="No app versions in the review queue" />
+          <ElEmpty description="暂无待处理的应用版本" />
         </template>
       </ElTable>
     </ElCard>
 
-    <ElDialog v-model="approvalDialogVisible" title="Approve capabilities" width="520px">
+    <ElDialog v-model="approvalDialogVisible" title="确认授权能力" width="520px">
       <ElAlert
         type="info"
-        title="Only selected capabilities will be available for tenant consent."
+        title="只有勾选的能力才会进入租户授权范围。"
         :closable="false"
         show-icon
       />
@@ -210,12 +210,12 @@
         show-word-limit
       />
       <template #footer>
-        <ElButton @click="approvalDialogVisible = false">Cancel</ElButton>
+        <ElButton @click="approvalDialogVisible = false">取消</ElButton>
         <ElButton
           type="primary"
           :loading="Boolean(actionLoading)"
           @click="confirmCapabilityApproval"
-          >Approve</ElButton
+          >确认通过</ElButton
         >
       </template>
     </ElDialog>
@@ -229,72 +229,72 @@
       <ElAlert
         v-if="!evidenceSnapshot"
         type="warning"
-        title="Frozen review evidence is unavailable"
+        title="冻结的审核证据不可用"
         :closable="false"
         show-icon
       />
       <template v-else>
         <section class="app-review-page__evidence-section">
-          <h2>Review integrity</h2>
+          <h2>审核完整性</h2>
           <ElDescriptions :column="2" border>
-            <ElDescriptionsItem label="Trust">
-              <ElTag type="warning" effect="light">{{ evidenceRow?.trust_level }}</ElTag>
+            <ElDescriptionsItem label="可信级别">
+              <ElTag type="warning" effect="light">{{
+                trustLevelText(evidenceRow?.trust_level)
+              }}</ElTag>
             </ElDescriptionsItem>
-            <ElDescriptionsItem label="Submission">{{
+            <ElDescriptionsItem label="提交时间">{{
               formatDateTime(evidenceSnapshot.submitted_at)
             }}</ElDescriptionsItem>
-            <ElDescriptionsItem label="Snapshot SHA-256" :span="2">
+            <ElDescriptionsItem label="快照 SHA-256" :span="2">
               <code>{{ evidenceRow?.review_snapshot_hash || '-' }}</code>
             </ElDescriptionsItem>
-            <ElDescriptionsItem label="Package SHA-256" :span="2">
+            <ElDescriptionsItem label="安装包 SHA-256" :span="2">
               <code>{{ evidenceSnapshot.version.package_sha256 }}</code>
             </ElDescriptionsItem>
-            <ElDescriptionsItem label="Entry SHA-256" :span="2">
+            <ElDescriptionsItem label="入口文件 SHA-256" :span="2">
               <code>{{ evidenceSnapshot.version.entry_sha256 }}</code>
             </ElDescriptionsItem>
-            <ElDescriptionsItem label="Manual review">
+            <ElDescriptionsItem label="人工审核">
               <ElTag :type="manualReviewTagType">{{ manualReviewStatus }}</ElTag>
             </ElDescriptionsItem>
-            <ElDescriptionsItem label="Candidate review">
+            <ElDescriptionsItem label="候选版本审核">
               <ElTag :type="candidateReviewTagType">{{ candidateReviewStatus }}</ElTag>
             </ElDescriptionsItem>
           </ElDescriptions>
         </section>
 
         <section class="app-review-page__evidence-section">
-          <h2>Submission snapshot</h2>
+          <h2>提交快照</h2>
           <ElDescriptions :column="2" border>
-            <ElDescriptionsItem label="Application">{{
-              evidenceSnapshot.app.name
-            }}</ElDescriptionsItem>
-            <ElDescriptionsItem label="Code"
+            <ElDescriptionsItem label="应用">{{ evidenceSnapshot.app.name }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="应用编码"
               ><code>{{ evidenceSnapshot.app.code }}</code></ElDescriptionsItem
             >
-            <ElDescriptionsItem label="Developer">{{
+            <ElDescriptionsItem label="开发者">{{
               evidenceSnapshot.app.developer_name
             }}</ElDescriptionsItem>
-            <ElDescriptionsItem label="Profile"
+            <ElDescriptionsItem label="开发者档案"
               ><code>{{ evidenceSnapshot.developer.profile_id }}</code></ElDescriptionsItem
             >
-            <ElDescriptionsItem label="Risk">{{
-              evidenceSnapshot.developer.risk_level
+            <ElDescriptionsItem label="风险级别">{{
+              riskLevelText(evidenceSnapshot.developer.risk_level)
             }}</ElDescriptionsItem>
-            <ElDescriptionsItem label="Certification expires">
+            <ElDescriptionsItem label="认证到期时间">
               {{ formatDateTime(evidenceSnapshot.developer.certification_expiry) }}
             </ElDescriptionsItem>
-            <ElDescriptionsItem label="File size">{{
+            <ElDescriptionsItem label="文件大小">{{
               formatBytes(evidenceSnapshot.version.file_size)
             }}</ElDescriptionsItem>
-            <ElDescriptionsItem label="Scanned files">{{
+            <ElDescriptionsItem label="扫描文件数">{{
               evidenceSnapshot.version.scan.scanned_files
             }}</ElDescriptionsItem>
           </ElDescriptions>
         </section>
 
         <section class="app-review-page__evidence-section">
-          <h2>Capabilities and targets</h2>
+          <h2>能力与服务目标</h2>
           <div class="app-review-page__evidence-list">
-            <span class="app-review-page__evidence-label">Capabilities</span>
+            <span class="app-review-page__evidence-label">申请能力</span>
             <div class="app-review-page__capabilities">
               <ElTag
                 v-for="capability in evidenceSnapshot.version.requested_capabilities"
@@ -306,12 +306,12 @@
               <span
                 v-if="!evidenceSnapshot.version.requested_capabilities.length"
                 class="app-review-page__muted"
-                >None</span
+                >无</span
               >
             </div>
           </div>
           <div class="app-review-page__evidence-list">
-            <span class="app-review-page__evidence-label">Service targets</span>
+            <span class="app-review-page__evidence-label">服务目标</span>
             <div class="app-review-page__capabilities">
               <ElTag
                 v-for="target in evidenceSnapshot.version.service_targets"
@@ -324,27 +324,27 @@
               <span
                 v-if="!evidenceSnapshot.version.service_targets.length"
                 class="app-review-page__muted"
-                >None</span
+                >无</span
               >
             </div>
           </div>
         </section>
 
         <section class="app-review-page__evidence-section">
-          <h2>Automated findings</h2>
+          <h2>自动扫描结果</h2>
           <ElTable :data="evidenceSnapshot.version.scan.findings" border>
-            <ElTableColumn prop="code" label="Code" min-width="220" />
-            <ElTableColumn label="Severity" width="110">
+            <ElTableColumn prop="code" label="问题编码" min-width="220" />
+            <ElTableColumn label="严重度" width="110">
               <template #default="{ row }">
                 <ElTag :type="row.severity === 'warning' ? 'warning' : 'danger'">{{
-                  row.severity
+                  severityText(row.severity)
                 }}</ElTag>
               </template>
             </ElTableColumn>
-            <ElTableColumn prop="line" label="Line" width="80" />
-            <ElTableColumn prop="column" label="Column" width="90" />
+            <ElTableColumn prop="line" label="行" width="80" />
+            <ElTableColumn prop="column" label="列" width="90" />
             <template #empty>
-              <ElEmpty description="No automated findings" :image-size="72" />
+              <ElEmpty description="未发现自动扫描问题" :image-size="72" />
             </template>
           </ElTable>
         </section>
@@ -368,6 +368,24 @@
     type AppReviewQueueParams,
     type AppReviewQueueRecord
   } from '@/api/app-marketplace'
+  import {
+    appReviewTypeTagType as typeTagType,
+    appTypeText as typeText,
+    candidateSeparationStatus,
+    capabilityLabel,
+    cleanOptionalText as cleanText,
+    formatAppBytes as formatBytes,
+    formatAppDateTime as formatDateTime,
+    publishStatusTagType as publishTagType,
+    publishStatusText as publishText,
+    reviewStatusTagType as reviewTagType,
+    reviewStatusText as reviewText,
+    reviewFindingSeverityText as severityText,
+    reviewRiskLevelText as riskLevelText,
+    reviewTrustLevelText as trustLevelText,
+    reviewerSeparationStatus,
+    separationTagType
+  } from '../shared/app-display'
 
   defineOptions({ name: 'AppPlatformReviewCenterPage' })
 
@@ -380,114 +398,25 @@
   const approvalRow = ref<AppReviewQueueRecord | null>(null)
   const evidenceRow = ref<AppReviewQueueRecord | null>(null)
   const approved_capabilities = ref<string[]>([])
-  const approvalMessage = ref('Approved from review center')
+  const approvalMessage = ref('审核中心已通过')
   const filters = reactive<AppReviewQueueParams>({
     keyword: '',
     type: '',
     review_status: 'pending',
     publish_status: ''
   })
-  const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  })
   const evidenceSnapshot = computed(() => evidenceRow.value?.review_snapshot || null)
   const evidenceTitle = computed(() => {
     const row = evidenceRow.value
-    return row ? `${row.app_name}@${row.version} evidence` : 'Review evidence'
+    return row ? `${row.app_name}@${row.version} 审核证据` : '审核证据'
   })
   const manualReviewStatus = computed(() => reviewerSeparationStatus(evidenceRow.value))
   const manualReviewTagType = computed(() => separationTagType(manualReviewStatus.value))
   const candidateReviewStatus = computed(() => candidateSeparationStatus(evidenceRow.value))
   const candidateReviewTagType = computed(() => separationTagType(candidateReviewStatus.value))
 
-  function cleanText(value?: string) {
-    return String(value || '').trim() || undefined
-  }
-
-  function typeText(type?: string) {
-    const map: Record<string, string> = {
-      internal: 'Internal',
-      static: 'Static',
-      iframe: 'Iframe',
-      service: 'Service'
-    }
-    return type ? map[type] || type : '-'
-  }
-
-  function typeTagType(type?: string) {
-    const map: Record<string, 'success' | 'info' | 'warning' | 'danger'> = {
-      internal: 'success',
-      static: 'warning',
-      iframe: 'info',
-      service: 'danger'
-    }
-    return type ? map[type] || 'info' : 'info'
-  }
-
-  function reviewTagType(status?: string) {
-    if (status === 'approved') return 'success'
-    if (status === 'rejected') return 'danger'
-    return 'warning'
-  }
-
-  function publishTagType(status?: string) {
-    if (status === 'published') return 'success'
-    if (status === 'failed') return 'danger'
-    if (status === 'unpublished_retired') return 'warning'
-    return 'info'
-  }
-
-  function formatDateTime(value: unknown) {
-    if (!value) return '-'
-    const date = value instanceof Date ? value : new Date(String(value))
-    return Number.isNaN(date.getTime()) ? String(value) : dateFormatter.format(date)
-  }
-
   function actionKey(row: AppReviewQueueRecord, action: string) {
     return `${action}:${row.app_code}:${row.version}`
-  }
-
-  function capabilityLabel(capability: string) {
-    return capability === 'context.read' ? 'Read tenant and user context' : capability
-  }
-
-  function formatBytes(value: number) {
-    if (!Number.isFinite(value) || value < 0) return '-'
-    if (value < 1024) return `${value} B`
-    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
-    return `${(value / 1024 / 1024).toFixed(1)} MB`
-  }
-
-  function sameOperator(left?: number | null, right?: number | null) {
-    return left != null && right != null && String(left) === String(right)
-  }
-
-  function reviewerSeparationStatus(row: AppReviewQueueRecord | null) {
-    if (!row?.reviewer_id) return 'Pending'
-    return sameOperator(row.reviewer_id, row.submitted_by) ? 'Conflict' : 'Independent'
-  }
-
-  function candidateSeparationStatus(row: AppReviewQueueRecord | null) {
-    if (!row?.candidate_reviewed_by || !row.candidate_reviewed_time) return 'Pending'
-    if (
-      sameOperator(row.candidate_reviewed_by, row.submitted_by) ||
-      sameOperator(row.candidate_reviewed_by, row.reviewer_id)
-    ) {
-      return 'Conflict'
-    }
-    return 'Independent'
-  }
-
-  function separationTagType(status: string) {
-    if (status === 'Independent') return 'success' as const
-    if (status === 'Conflict') return 'danger' as const
-    return 'info' as const
   }
 
   function openEvidence(row: AppReviewQueueRecord) {
@@ -507,7 +436,7 @@
       })
     } catch (error) {
       console.error('[AppPlatformReviewCenterPage] load reviews failed:', error)
-      loadError.value = 'Review queue failed to load'
+      loadError.value = '审核队列加载失败'
       ElMessage.error(loadError.value)
     } finally {
       loading.value = false
@@ -526,19 +455,18 @@
     if (action === 'approve' && row.requested_capabilities?.length) {
       approvalRow.value = row
       approved_capabilities.value = [...row.requested_capabilities]
-      approvalMessage.value = 'Approved from review center'
+      approvalMessage.value = '审核中心已通过'
       approvalDialogVisible.value = true
       return
     }
-    const actionText = action === 'approve' ? 'Approve' : 'Reject'
+    const actionText = action === 'approve' ? '通过' : '驳回'
     const { value } = await ElMessageBox.prompt(
-      `Reason for ${actionText.toLowerCase()} ${row.app_name}@${row.version}`,
+      `请输入${actionText} ${row.app_name}@${row.version} 的原因`,
       actionText,
       {
         confirmButtonText: actionText,
-        cancelButtonText: 'Cancel',
-        inputValue:
-          action === 'approve' ? 'Approved from review center' : 'Rejected from review center'
+        cancelButtonText: '取消',
+        inputValue: action === 'approve' ? '审核中心已通过' : '审核中心已驳回'
       }
     )
     actionLoading.value = actionKey(row, action)
@@ -548,7 +476,7 @@
       } else {
         await rejectPlatformAppVersion(row.app_code, row.version, String(value || ''))
       }
-      ElMessage.success(`${actionText} completed`)
+      ElMessage.success(`${actionText}操作已完成`)
       await loadReviews()
     } finally {
       actionLoading.value = ''
@@ -566,7 +494,7 @@
         approvalMessage.value,
         approved_capabilities.value
       )
-      ElMessage.success('Approve completed')
+      ElMessage.success('审核通过操作已完成')
       approvalDialogVisible.value = false
       await loadReviews()
     } finally {
@@ -578,7 +506,7 @@
     actionLoading.value = actionKey(row, 'publish')
     try {
       await publishPlatformAppVersion(row.app_code, row.version)
-      ElMessage.success('Publish completed')
+      ElMessage.success('发布操作已完成')
       await loadReviews()
     } finally {
       actionLoading.value = ''
@@ -586,14 +514,14 @@
   }
 
   async function versionGovernance(row: AppReviewQueueRecord, action: 'rollback' | 'unpublish') {
-    const actionText = action === 'rollback' ? 'Rollback' : 'Unpublish'
+    const actionText = action === 'rollback' ? '回滚' : '下线'
     const { value } = await ElMessageBox.prompt(
-      `Reason for ${actionText.toLowerCase()} ${row.app_name}@${row.version}`,
+      `请输入${actionText} ${row.app_name}@${row.version} 的原因`,
       actionText,
       {
         confirmButtonText: actionText,
-        cancelButtonText: 'Cancel',
-        inputValue: action === 'rollback' ? 'Restore stable version' : 'Retire version'
+        cancelButtonText: '取消',
+        inputValue: action === 'rollback' ? '恢复稳定版本' : '下线当前版本'
       }
     )
     actionLoading.value = actionKey(row, action)
@@ -603,7 +531,7 @@
       } else {
         await unpublishPlatformAppVersion(row.app_code, row.version, String(value || ''))
       }
-      ElMessage.success(`${actionText} completed`)
+      ElMessage.success(`${actionText}操作已完成`)
       await loadReviews()
     } finally {
       actionLoading.value = ''

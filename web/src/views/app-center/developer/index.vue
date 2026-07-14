@@ -4,14 +4,12 @@
       <template #header>
         <div class="developer-apps-page__header">
           <div>
-            <h1 class="developer-apps-page__title">Developer Apps</h1>
-            <p class="developer-apps-page__subtitle"
-              >Create static apps, submit versions, and track review results.</p
-            >
+            <h1 class="developer-apps-page__title">开发者应用</h1>
+            <p class="developer-apps-page__subtitle">创建应用、提交版本并跟踪审核结果。</p>
           </div>
           <div class="developer-apps-page__header-actions">
-            <ElButton :icon="Refresh" :loading="loading" @click="loadApps">Refresh</ElButton>
-            <ElButton type="primary" :icon="Plus" @click="openCreateDialog">Create App</ElButton>
+            <ElButton :icon="Refresh" :loading="loading" @click="loadApps">刷新</ElButton>
+            <ElButton type="primary" :icon="Plus" @click="openCreateDialog">创建应用</ElButton>
           </div>
         </div>
       </template>
@@ -19,7 +17,7 @@
       <div class="developer-apps-page__certification">
         <div>
           <div class="developer-apps-page__certification-title">
-            Developer certification
+            开发者认证
             <ElTag :type="certificationTagType" effect="light">{{ certificationLabel }}</ElTag>
           </div>
           <p>{{ certificationDescription }}</p>
@@ -33,12 +31,12 @@
               size="small"
               effect="plain"
             >
-              {{ runtime }}
+              {{ runtimeText(runtime) }}
             </ElTag>
           </div>
         </div>
         <div class="developer-apps-page__certification-actions">
-          <ElButton :icon="DataLine" @click="goObservability">Observability</ElButton>
+          <ElButton :icon="DataLine" @click="goObservability">可观测性</ElButton>
           <ElButton
             v-if="profileError"
             type="primary"
@@ -46,7 +44,7 @@
             :loading="profileLoading"
             @click="loadProfile"
           >
-            Retry status
+            重试
           </ElButton>
           <ElButton
             v-if="canApplyCertification"
@@ -54,7 +52,7 @@
             :loading="profileLoading"
             @click="openCertificationDialog"
           >
-            Apply
+            申请认证
           </ElButton>
         </div>
       </div>
@@ -64,14 +62,14 @@
           v-model="filters.keyword"
           clearable
           class="developer-apps-page__keyword"
-          placeholder="App name or code"
+          placeholder="应用名称或编码"
           :prefix-icon="Search"
         />
         <ElSelect
           v-model="filters.status"
           clearable
           class="developer-apps-page__status-filter"
-          placeholder="Status"
+          placeholder="应用状态"
         >
           <ElOption
             v-for="status in statusOptions"
@@ -80,13 +78,13 @@
             :value="status"
           />
         </ElSelect>
-        <ElButton @click="resetFilters">Reset</ElButton>
+        <ElButton @click="resetFilters">重置</ElButton>
       </div>
 
       <div v-if="loadError" class="developer-apps-page__load-error">
         <ElAlert type="error" :title="loadError" show-icon :closable="false" />
         <ElButton size="small" type="primary" link :loading="loading" @click="loadApps"
-          >Retry</ElButton
+          >重试</ElButton
         >
       </div>
 
@@ -96,22 +94,22 @@
         :data="filteredRecords"
         border
       >
-        <ElTableColumn label="App" min-width="220" show-overflow-tooltip>
+        <ElTableColumn label="应用" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
             <div class="developer-apps-page__app-name">{{ row.name || '-' }}</div>
             <div class="developer-apps-page__muted">{{ row.code || '-' }}</div>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="App Status" width="140">
+        <ElTableColumn label="应用状态" width="140">
           <template #default="{ row }">
             <ElTag :type="appStatusTagType(row.status)" effect="light">{{
               statusText(row.status)
             }}</ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Latest Version" min-width="170">
+        <ElTableColumn label="最新版本" min-width="170">
           <template #default="{ row }">
-            <div>{{ row.latest_version || 'No package' }}</div>
+            <div>{{ row.latest_version || '未上传版本' }}</div>
             <ElTag
               v-if="row.latest_review_status"
               class="developer-apps-page__inline-tag"
@@ -123,7 +121,7 @@
             </ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Review Result" min-width="240" show-overflow-tooltip>
+        <ElTableColumn label="审核结果" min-width="240" show-overflow-tooltip>
           <template #default="{ row }">
             <span
               :class="{ 'developer-apps-page__rejection': row.latest_review_status === 'rejected' }"
@@ -132,19 +130,17 @@
             </span>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Category" width="140" show-overflow-tooltip>
+        <ElTableColumn label="分类" width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ row.category || '-' }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Updated" width="170">
+        <ElTableColumn label="更新时间" width="170">
           <template #default="{ row }">{{
             formatDateTime(row.update_time || row.create_time)
           }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Actions" width="250">
+        <ElTableColumn label="操作" width="250">
           <template #default="{ row }">
-            <ElButton link type="primary" :icon="View" @click="openVersions(row)"
-              >Versions</ElButton
-            >
+            <ElButton link type="primary" :icon="View" @click="openVersions(row)">版本</ElButton>
             <ElButton
               link
               type="primary"
@@ -152,7 +148,7 @@
               :disabled="!canEdit(row)"
               @click="openEditDialog(row)"
             >
-              Edit
+              编辑
             </ElButton>
             <ElButton
               link
@@ -161,12 +157,12 @@
               :disabled="!canUpload(row)"
               @click="openUploadDialog(row)"
             >
-              Upload
+              上传版本
             </ElButton>
           </template>
         </ElTableColumn>
         <template #empty>
-          <ElEmpty description="No developer apps" />
+          <ElEmpty description="暂无开发者应用" />
         </template>
       </ElTable>
 
@@ -187,8 +183,8 @@
           </div>
           <div class="developer-apps-page__mobile-meta">
             <div>
-              <span class="developer-apps-page__mobile-label">Latest</span>
-              <strong>{{ row.latest_version || 'No package' }}</strong>
+              <span class="developer-apps-page__mobile-label">最新版本</span>
+              <strong>{{ row.latest_version || '未上传版本' }}</strong>
             </div>
             <ElTag
               v-if="row.latest_review_status"
@@ -206,9 +202,7 @@
             {{ row.latest_review_message || reviewSummary(row) }}
           </div>
           <div class="developer-apps-page__mobile-actions">
-            <ElButton link type="primary" :icon="View" @click="openVersions(row)"
-              >Versions</ElButton
-            >
+            <ElButton link type="primary" :icon="View" @click="openVersions(row)">版本</ElButton>
             <ElButton
               link
               type="primary"
@@ -216,7 +210,7 @@
               :disabled="!canEdit(row)"
               @click="openEditDialog(row)"
             >
-              Edit
+              编辑
             </ElButton>
             <ElButton
               link
@@ -225,33 +219,33 @@
               :disabled="!canUpload(row)"
               @click="openUploadDialog(row)"
             >
-              Upload
+              上传版本
             </ElButton>
           </div>
         </div>
-        <ElEmpty v-if="!loading && !filteredRecords.length" description="No developer apps" />
+        <ElEmpty v-if="!loading && !filteredRecords.length" description="暂无开发者应用" />
       </div>
     </ElCard>
 
     <ElDialog
       v-model="formDialogVisible"
-      :title="editingCode ? 'Edit App' : 'Create App'"
+      :title="editingCode ? '编辑应用' : '创建应用'"
       width="720px"
     >
       <ElForm ref="formRef" :model="form" :rules="formRules" label-width="112px">
-        <ElFormItem v-if="!editingCode" label="Runtime" prop="runtime_type">
+        <ElFormItem v-if="!editingCode" label="运行类型" prop="runtime_type">
           <ElSegmented v-model="form.runtime_type" :options="runtimeOptions" />
         </ElFormItem>
         <ElAlert
           v-if="!editingCode && form.runtime_type === 'service'"
           type="info"
-          title="Service packages require active service certification and restricted review."
+          title="服务应用需要有效的服务开发认证，并经过受限审核。"
           :closable="false"
           show-icon
           class="developer-apps-page__runtime-alert"
         />
         <div class="developer-apps-page__form-grid">
-          <ElFormItem label="Code" prop="code">
+          <ElFormItem label="应用编码" prop="code">
             <ElInput
               v-model="form.code"
               :disabled="Boolean(editingCode)"
@@ -259,17 +253,17 @@
               placeholder="creator_portal"
             />
           </ElFormItem>
-          <ElFormItem label="Name" prop="name">
-            <ElInput v-model="form.name" maxlength="120" placeholder="Creator Portal" />
+          <ElFormItem label="应用名称" prop="name">
+            <ElInput v-model="form.name" maxlength="120" placeholder="创作者中心" />
           </ElFormItem>
-          <ElFormItem label="Category">
-            <ElInput v-model="form.category" maxlength="50" placeholder="Tools" />
+          <ElFormItem label="分类">
+            <ElInput v-model="form.category" maxlength="50" placeholder="工具" />
           </ElFormItem>
-          <ElFormItem label="Icon">
+          <ElFormItem label="图标">
             <ElInput v-model="form.icon" maxlength="100" placeholder="ri:code-box-line" />
           </ElFormItem>
         </div>
-        <ElFormItem label="Summary">
+        <ElFormItem label="摘要">
           <ElInput
             v-model="form.summary"
             type="textarea"
@@ -278,7 +272,7 @@
             show-word-limit
           />
         </ElFormItem>
-        <ElFormItem label="Description">
+        <ElFormItem label="详细描述">
           <ElInput
             v-model="form.description"
             type="textarea"
@@ -289,8 +283,8 @@
         </ElFormItem>
       </ElForm>
       <template #footer>
-        <ElButton @click="formDialogVisible = false">Cancel</ElButton>
-        <ElButton type="primary" :icon="Check" :loading="saving" @click="saveApp">Save</ElButton>
+        <ElButton @click="formDialogVisible = false">取消</ElButton>
+        <ElButton type="primary" :icon="Check" :loading="saving" @click="saveApp">保存</ElButton>
       </template>
     </ElDialog>
 
@@ -311,13 +305,12 @@
       >
         <ElIcon class="el-icon--upload"><UploadFilled /></ElIcon>
         <div class="el-upload__text">
-          Drop {{ uploadRuntimeType === 'service' ? 'built service' : 'static' }} ZIP package here
-          or
-          <em>select file</em>
+          将{{ uploadRuntimeType === 'service' ? '已构建的服务应用' : '静态应用' }} ZIP
+          包拖到此处，或<em>选择文件</em>
         </div>
       </ElUpload>
       <template #footer>
-        <ElButton @click="uploadDialogVisible = false">Cancel</ElButton>
+        <ElButton @click="uploadDialogVisible = false">取消</ElButton>
         <ElButton
           type="primary"
           :icon="UploadFilled"
@@ -325,12 +318,12 @@
           :disabled="!selectedFile"
           @click="uploadVersion"
         >
-          Upload
+          上传并提交审核
         </ElButton>
       </template>
     </ElDialog>
 
-    <ElDrawer v-model="versionsDrawerVisible" title="Version History" :size="versionsDrawerSize">
+    <ElDrawer v-model="versionsDrawerVisible" title="版本历史" :size="versionsDrawerSize">
       <div
         v-if="detailLoading"
         v-loading="detailLoading"
@@ -357,54 +350,54 @@
         />
 
         <ElTable v-if="selectedApp" :data="selectedApp.versions" border>
-          <ElTableColumn label="Version" width="110">
+          <ElTableColumn label="版本" width="110">
             <template #default="{ row }">{{ row.version }}</template>
           </ElTableColumn>
-          <ElTableColumn label="Review" width="120">
+          <ElTableColumn label="审核状态" width="120">
             <template #default="{ row }">
               <ElTag :type="reviewStatusTagType(row.review_status)" effect="light">
                 {{ reviewStatusText(row.review_status) }}
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="Publish" width="130">
+          <ElTableColumn label="发布状态" width="130">
             <template #default="{ row }">
               <ElTag :type="publishStatusTagType(row.publish_status)" effect="plain">
                 {{ publishStatusText(row.publish_status) }}
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="Review Message" min-width="220" show-overflow-tooltip>
+          <ElTableColumn label="审核说明" min-width="220" show-overflow-tooltip>
             <template #default="{ row }">
               <span :class="{ 'developer-apps-page__rejection': row.review_status === 'rejected' }">
                 {{ row.review_message || '-' }}
               </span>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="Automated Review" min-width="180">
+          <ElTableColumn label="自动审核" min-width="180">
             <template #default="{ row }">
               <ElTag
                 v-if="row.scan_result"
                 :type="row.scan_result.passed ? 'success' : 'danger'"
                 effect="light"
               >
-                {{ row.scan_result.passed ? 'Passed' : 'Blocked' }}
+                {{ row.scan_result.passed ? '已通过' : '已阻止' }}
               </ElTag>
               <div v-if="row.scan_result?.findings?.length" class="developer-apps-page__muted">
-                {{ row.scan_result.findings.length }} finding(s)
+                发现 {{ row.scan_result.findings.length }} 个问题
               </div>
               <span v-else-if="!row.scan_result" class="developer-apps-page__muted">-</span>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="Frozen Snapshot" min-width="180">
+          <ElTableColumn label="冻结快照" min-width="180">
             <template #default="{ row }">
-              <ElTag v-if="row.review_snapshot_hash" type="info" effect="plain">Frozen</ElTag>
+              <ElTag v-if="row.review_snapshot_hash" type="info" effect="plain">已冻结</ElTag>
               <div class="developer-apps-page__hash" :title="row.review_snapshot_hash || ''">
                 {{ shortHash(row.review_snapshot_hash) }}
               </div>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="Package" min-width="180">
+          <ElTableColumn label="安装包" min-width="180">
             <template #default="{ row }">
               <div>{{ formatFileSize(row.file_size) }}</div>
               <div class="developer-apps-page__hash" :title="row.file_hash || ''">{{
@@ -412,10 +405,10 @@
               }}</div>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="Created" width="170">
+          <ElTableColumn label="创建时间" width="170">
             <template #default="{ row }">{{ formatDateTime(row.create_time) }}</template>
           </ElTableColumn>
-          <ElTableColumn label="Actions" width="110">
+          <ElTableColumn label="操作" width="110">
             <template #default="{ row }">
               <ElButton
                 v-if="row.review_status === 'rejected'"
@@ -425,42 +418,42 @@
                 :loading="resubmittingVersion === row.version"
                 @click="resubmitVersion(row)"
               >
-                Resubmit
+                重新提交
               </ElButton>
               <span v-else class="developer-apps-page__muted">-</span>
             </template>
           </ElTableColumn>
           <template #empty>
-            <ElEmpty description="No versions uploaded" />
+            <ElEmpty description="暂无已上传版本" />
           </template>
         </ElTable>
       </template>
     </ElDrawer>
 
-    <ElDialog v-model="certificationDialogVisible" title="Developer Certification" width="640px">
+    <ElDialog v-model="certificationDialogVisible" title="开发者认证" width="640px">
       <ElForm label-width="150px">
-        <ElFormItem label="Display name" required>
+        <ElFormItem label="显示名称" required>
           <ElInput v-model="certificationForm.display_name" maxlength="100" />
         </ElFormItem>
-        <ElFormItem label="HTTPS website">
+        <ElFormItem label="HTTPS 网站">
           <ElInput
             v-model="certificationForm.website"
             maxlength="255"
             placeholder="https://example.com"
           />
         </ElFormItem>
-        <ElFormItem label="Requested runtimes" required>
+        <ElFormItem label="申请运行类型" required>
           <ElCheckboxGroup v-model="certificationForm.requested_runtime_types">
             <ElCheckbox
               v-for="runtime in certificationRuntimeTypes"
               :key="runtime"
               :value="runtime"
             >
-              {{ runtime }}
+              {{ runtimeText(runtime) }}
             </ElCheckbox>
           </ElCheckboxGroup>
         </ElFormItem>
-        <ElFormItem label="Application statement" required>
+        <ElFormItem label="申请说明" required>
           <ElInput
             v-model="certificationForm.statement"
             type="textarea"
@@ -472,9 +465,9 @@
         </ElFormItem>
       </ElForm>
       <template #footer>
-        <ElButton @click="certificationDialogVisible = false">Cancel</ElButton>
+        <ElButton @click="certificationDialogVisible = false">取消</ElButton>
         <ElButton type="primary" :loading="applyingCertification" @click="submitCertification">
-          Submit application
+          提交申请
         </ElButton>
       </template>
     </ElDialog>
@@ -523,6 +516,19 @@
     AppPackageStatus,
     AppPackageVersionRecord
   } from '@/api/app-marketplace'
+  import {
+    appStatusTagType,
+    appStatusText as statusText,
+    appTypeText as runtimeText,
+    cleanOptionalText as cleanText,
+    developerReviewSummary as reviewSummary,
+    formatAppBytes as formatFileSize,
+    formatAppDateTime as formatDateTime,
+    publishStatusTagType,
+    publishStatusText,
+    reviewStatusTagType,
+    reviewStatusText
+  } from '@/views/app-platform/shared/app-display'
 
   defineOptions({ name: 'AppCenterDeveloperPage' })
 
@@ -583,24 +589,15 @@
   })
   const formRules: FormRules = {
     code: [
-      { required: true, message: 'Code is required', trigger: 'blur' },
+      { required: true, message: '请输入应用编码', trigger: 'blur' },
       {
         pattern: /^[a-z][a-z0-9_]{2,79}$/,
-        message: 'Use lowercase snake_case, 3-80 chars',
+        message: '请输入 3-80 位小写 snake_case 编码',
         trigger: 'blur'
       }
     ],
-    name: [{ required: true, message: 'Name is required', trigger: 'blur' }]
+    name: [{ required: true, message: '请输入应用名称', trigger: 'blur' }]
   }
-  const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  })
   const { width: viewportWidth } = useWindowSize()
   const versionsDrawerSize = computed(() => (viewportWidth.value <= 800 ? '100%' : '920px'))
   const serviceRuntimeApproved = computed(
@@ -611,11 +608,11 @@
       profile.value.approved_runtime_types.includes('service')
   )
   const runtimeOptions = computed(() => [
-    { label: 'Static app', value: 'static' },
-    { label: 'Service plugin', value: 'service', disabled: !serviceRuntimeApproved.value }
+    { label: '静态应用', value: 'static' },
+    { label: '服务应用', value: 'service', disabled: !serviceRuntimeApproved.value }
   ])
   const uploadDialogTitle = computed(() =>
-    uploadRuntimeType.value === 'service' ? 'Upload Service Version' : 'Upload Static Version'
+    uploadRuntimeType.value === 'service' ? '上传服务应用版本' : '上传静态应用版本'
   )
   const canApplyCertification = computed(
     () =>
@@ -626,23 +623,28 @@
         profile.value.certification_status === 'expired')
   )
   const certificationLabel = computed(() => {
-    if (profileLoading.value) return 'Loading'
-    if (profileError.value) return 'Unavailable'
-    if (!profile.value) return 'Not applied'
-    return profile.value.disabled ? 'Disabled' : profile.value.certification_status
+    if (profileLoading.value) return '加载中'
+    if (profileError.value) return '暂不可用'
+    if (!profile.value) return '未申请'
+    if (profile.value.disabled) return '已禁用'
+    const labels: Record<string, string> = {
+      pending: '待审核',
+      certified: '已认证',
+      rejected: '已驳回',
+      expired: '已过期'
+    }
+    return labels[profile.value.certification_status] || profile.value.certification_status
   })
   const certificationDescription = computed(() => {
-    if (profileLoading.value) return 'Loading certification status.'
+    if (profileLoading.value) return '正在加载认证状态。'
     if (profileError.value) return profileError.value
-    if (!profile.value)
-      return 'Static apps are available now. Apply to submit restricted service plugins.'
-    if (profile.value.disabled) return profile.value.review_message || 'Certification is disabled.'
-    if (profile.value.certification_status === 'pending')
-      return 'Application is awaiting platform review.'
+    if (!profile.value) return '当前可提交静态应用；申请认证后可提交受限的服务应用。'
+    if (profile.value.disabled) return profile.value.review_message || '开发者认证已禁用。'
+    if (profile.value.certification_status === 'pending') return '认证申请正在等待平台审核。'
     if (profile.value.certification_status === 'certified') {
-      return `Approved runtimes: ${profile.value.approved_runtime_types.join(', ') || '-'}`
+      return `已批准运行类型：${profile.value.approved_runtime_types.map(runtimeText).join('、') || '-'}`
     }
-    return profile.value.review_message || 'Submit an updated application to continue.'
+    return profile.value.review_message || '请更新申请信息后重新提交。'
   })
   const certificationTagType = computed(() => {
     if (profileError.value) return 'danger'
@@ -666,99 +668,8 @@
     })
   })
 
-  function statusText(status?: string) {
-    const map: Record<string, string> = {
-      draft: 'Draft',
-      pending_review: 'Pending Review',
-      approved: 'Approved',
-      published: 'Published',
-      rejected: 'Rejected',
-      disabled: 'Disabled',
-      archived: 'Archived'
-    }
-    return status ? map[status] || status : '-'
-  }
-
-  function reviewStatusText(status?: string) {
-    const map: Record<string, string> = {
-      pending: 'Pending',
-      approved: 'Approved',
-      rejected: 'Rejected'
-    }
-    return status ? map[status] || status : '-'
-  }
-
-  function publishStatusText(status?: string) {
-    const map: Record<string, string> = {
-      unpublished: 'Unpublished',
-      published: 'Published',
-      failed: 'Failed',
-      unpublished_retired: 'Retired'
-    }
-    return status ? map[status] || status : '-'
-  }
-
-  function appStatusTagType(status?: string) {
-    const map: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'primary'> = {
-      draft: 'info',
-      pending_review: 'warning',
-      approved: 'primary',
-      published: 'success',
-      rejected: 'danger',
-      disabled: 'warning',
-      archived: 'info'
-    }
-    return status ? map[status] || 'info' : 'info'
-  }
-
-  function reviewStatusTagType(status?: string) {
-    const map: Record<string, 'success' | 'warning' | 'danger' | 'info'> = {
-      pending: 'warning',
-      approved: 'success',
-      rejected: 'danger'
-    }
-    return status ? map[status] || 'info' : 'info'
-  }
-
-  function publishStatusTagType(status?: string) {
-    const map: Record<string, 'success' | 'warning' | 'danger' | 'info'> = {
-      unpublished: 'info',
-      published: 'success',
-      failed: 'danger',
-      unpublished_retired: 'warning'
-    }
-    return status ? map[status] || 'info' : 'info'
-  }
-
-  function reviewSummary(row: DeveloperAppRecord) {
-    if (!row.latest_version) return 'Upload the first version'
-    if (row.latest_review_status === 'pending') return 'Waiting for review'
-    if (row.latest_review_status === 'approved' && row.latest_publish_status !== 'published')
-      return 'Approved, awaiting publish'
-    if (row.latest_publish_status === 'published') return 'Published'
-    return '-'
-  }
-
-  function formatDateTime(value: unknown) {
-    if (!value) return '-'
-    const date = value instanceof Date ? value : new Date(String(value))
-    return Number.isNaN(date.getTime()) ? String(value) : dateFormatter.format(date)
-  }
-
-  function formatFileSize(value?: number) {
-    const bytes = Number(value || 0)
-    if (!bytes) return '-'
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-
   function shortHash(value?: string) {
     return value ? `${value.slice(0, 12)}...` : '-'
-  }
-
-  function cleanText(value: string) {
-    return value.trim() || undefined
   }
 
   function canEdit(row: DeveloperAppRecord) {
@@ -795,7 +706,7 @@
       records.value = await fetchDeveloperApps()
     } catch (error) {
       console.error('[AppCenterDeveloperPage] load apps failed:', error)
-      loadError.value = 'Developer apps failed to load'
+      loadError.value = '开发者应用加载失败'
       ElMessage.error(loadError.value)
     } finally {
       loading.value = false
@@ -809,7 +720,7 @@
     try {
       profile.value = await fetchOwnDeveloperProfile()
     } catch {
-      profileError.value = 'Certification status failed to load. Retry before applying.'
+      profileError.value = '开发者认证状态加载失败，请重试后再申请。'
     } finally {
       profileLoading.value = false
     }
@@ -848,14 +759,14 @@
     try {
       if (editingCode.value) {
         await updateDeveloperApp(editingCode.value, params)
-        ElMessage.success('App updated')
+        ElMessage.success('应用已更新')
       } else {
         const runtimeParams =
           form.runtime_type === 'service'
             ? { runtime_type: 'service' as const }
             : { runtime_type: 'static' as const }
         await createDeveloperApp({ ...params, ...runtimeParams, code: form.code.trim() })
-        ElMessage.success('App created')
+        ElMessage.success('应用已创建')
       }
       formDialogVisible.value = false
       await loadApps()
@@ -873,7 +784,7 @@
       selectedApp.value = await fetchDeveloperApp(row.code)
     } catch (error) {
       console.error('[AppCenterDeveloperPage] load versions failed:', error)
-      detailError.value = 'Version history failed to load'
+      detailError.value = '版本历史加载失败'
       ElMessage.error(detailError.value)
     } finally {
       detailLoading.value = false
@@ -905,7 +816,7 @@
     const appCode = uploadAppCode.value
     try {
       await uploadDeveloperAppVersion(appCode, selectedFile.value)
-      ElMessage.success('Version submitted for review')
+      ElMessage.success('版本已提交审核')
       uploadDialogVisible.value = false
       await loadApps()
       const row = records.value.find((item) => item.code === appCode)
@@ -918,18 +829,18 @@
   async function resubmitVersion(version: AppPackageVersionRecord) {
     if (!selectedApp.value || version.review_status !== 'rejected') return
     await ElMessageBox.confirm(
-      `Resubmit ${selectedApp.value.name} ${version.version} for review?`,
-      'Resubmit version',
+      `确认重新提交 ${selectedApp.value.name} ${version.version} 进行审核吗？`,
+      '重新提交版本',
       {
         type: 'warning',
-        confirmButtonText: 'Resubmit',
-        cancelButtonText: 'Cancel'
+        confirmButtonText: '重新提交',
+        cancelButtonText: '取消'
       }
     )
     resubmittingVersion.value = version.version
     try {
       await submitDeveloperAppVersion(selectedApp.value.code, version.version)
-      ElMessage.success('Version resubmitted')
+      ElMessage.success('版本已重新提交')
       const code = selectedApp.value.code
       selectedApp.value = await fetchDeveloperApp(code)
       await loadApps()
@@ -959,11 +870,11 @@
     const displayName = certificationForm.display_name.trim()
     const statement = certificationForm.statement.trim()
     if (displayName.length < 2 || statement.length < 20) {
-      ElMessage.warning('Display name and a 20 character statement are required')
+      ElMessage.warning('请输入显示名称和至少 20 个字符的申请说明')
       return
     }
     if (!certificationForm.requested_runtime_types.length) {
-      ElMessage.warning('Select at least one runtime')
+      ElMessage.warning('请至少选择一种运行类型')
       return
     }
     applyingCertification.value = true
@@ -975,7 +886,7 @@
         requested_runtime_types: certificationForm.requested_runtime_types
       })
       certificationDialogVisible.value = false
-      ElMessage.success('Certification application submitted')
+      ElMessage.success('开发者认证申请已提交')
     } finally {
       applyingCertification.value = false
     }

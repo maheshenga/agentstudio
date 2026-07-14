@@ -4,6 +4,7 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 
 @Index('idx_app_open_log_app', ['appId', 'versionId'])
 @Index('idx_app_open_log_outcome', ['outcome', 'createTime'])
 @Index('idx_app_open_log_reason', ['reasonCode', 'createTime'])
+@Index('idx_app_open_log_code_time', ['appCode', 'createTime'])
 @Entity('app_open_log')
 export class AppOpenLogEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'id' })

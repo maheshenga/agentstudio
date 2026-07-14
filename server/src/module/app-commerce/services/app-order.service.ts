@@ -50,32 +50,48 @@ export class AppOrderService {
     if (paymentMethod !== 'alipay') {
       throw new BadRequestException('Only Alipay application orders are supported');
     }
-    const order = this.orderRepo.create({
-      orderNo: this.generateOrderNo(),
-      tenantId: Number(tenantId),
-      appId: Number(app.id),
-      pricePlanId: Number(plan.id),
-      appCode: app.code,
-      appName: app.name,
-      pricePlanCode: plan.code,
-      pricingModel: plan.pricingModel as AppOrderEntity['pricingModel'],
-      billingPeriod: plan.billingPeriod,
-      amountCents: Number(plan.amountCents),
-      currency: 'CNY',
-      developerId: app.developerId ?? null,
-      developerShareBps: Number(plan.developerShareBps),
-      paymentMethod,
-      status: 'pending',
-      alipayTradeNo: null,
-      paidAt: null,
-      paymentRequestedAt: null,
-      createdBy: Number(userId),
-      refundReason: '',
-      refundReference: '',
-      closeReason: '',
-      remark: `Purchase application ${app.code} plan ${plan.code}`,
+    return this.dataSource.transaction(async (manager) => {
+      const orderRepo = manager.getRepository(AppOrderEntity);
+      const existingOrder = await orderRepo.findOne({
+        where: {
+          tenantId: Number(tenantId),
+          appId: Number(app.id),
+          pricePlanId: Number(plan.id),
+          paymentMethod,
+          status: 'pending',
+        },
+        order: { id: 'DESC' },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (existingOrder) return existingOrder;
+
+      const order = orderRepo.create({
+        orderNo: this.generateOrderNo(),
+        tenantId: Number(tenantId),
+        appId: Number(app.id),
+        pricePlanId: Number(plan.id),
+        appCode: app.code,
+        appName: app.name,
+        pricePlanCode: plan.code,
+        pricingModel: plan.pricingModel as AppOrderEntity['pricingModel'],
+        billingPeriod: plan.billingPeriod,
+        amountCents: Number(plan.amountCents),
+        currency: 'CNY',
+        developerId: app.developerId ?? null,
+        developerShareBps: Number(plan.developerShareBps),
+        paymentMethod,
+        status: 'pending',
+        alipayTradeNo: null,
+        paidAt: null,
+        paymentRequestedAt: null,
+        createdBy: Number(userId),
+        refundReason: '',
+        refundReference: '',
+        closeReason: '',
+        remark: `Purchase application ${app.code} plan ${plan.code}`,
+      });
+      return orderRepo.save(order);
     });
-    return this.orderRepo.save(order);
   }
 
   async startTrial(

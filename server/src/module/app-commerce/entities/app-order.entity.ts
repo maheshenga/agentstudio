@@ -17,6 +17,13 @@ export type AppOrderStatus = 'pending' | 'paid' | 'refunded' | 'closed';
 @Index('uk_app_order_trade_no', ['alipayTradeNo'], { unique: true })
 @Index('idx_app_order_tenant_status', ['tenantId', 'status'])
 @Index('idx_app_order_app_status', ['appId', 'status'])
+@Index('idx_app_order_pending_lookup', [
+  'tenantId',
+  'appId',
+  'pricePlanId',
+  'paymentMethod',
+  'status',
+])
 @Entity('app_order')
 export class AppOrderEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'id' })
