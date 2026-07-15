@@ -107,6 +107,11 @@ for (const token of [
   assert(!pageSource.includes(token), `app factory page must not include legacy English copy: ${token}`)
 }
 
+assert(
+  !/\bconsole\.(?:error|log|warn)\b/.test(pageSource),
+  'app factory page must not write request failures to the browser console'
+)
+
 const menuMigration = readFile('server/src/migrations/1760000000031-SeedAppFactoryMenus.ts')
 for (const token of [
   'AppFactory',

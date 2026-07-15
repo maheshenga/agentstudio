@@ -585,8 +585,7 @@
         keyword: cleanText(filters.keyword),
         status: filters.status || undefined
       })
-    } catch (error) {
-      console.error('[AppPlatformFactoryPage] load modules failed:', error)
+    } catch {
       loadError.value = '工厂模块列表加载失败'
       ElMessage.error(loadError.value)
     } finally {
@@ -602,8 +601,7 @@
       ])
       saasModuleOptions.value = Array.isArray(saasModules) ? saasModules : []
       systemModuleOptions.value = Array.isArray(systemModules) ? systemModules : []
-    } catch (error) {
-      console.error('[AppPlatformFactoryPage] load module options failed:', error)
+    } catch {
       saasModuleOptions.value = []
       systemModuleOptions.value = []
     }
@@ -616,8 +614,7 @@
         keyword: cleanText(templateKeyword.value),
         status: 1
       })
-    } catch (error) {
-      console.error('[AppPlatformFactoryPage] load templates failed:', error)
+    } catch {
       templates.value = []
       ElMessage.error('工厂模板加载失败')
     } finally {
