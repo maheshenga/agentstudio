@@ -2,33 +2,43 @@
   <div class="developer-certification-page">
     <header class="developer-certification-page__header">
       <div>
-        <h1>Developer Certification</h1>
-        <p>Review runtime scope, risk, expiry, and account availability.</p>
+        <h1>开发者认证</h1>
+        <p>审核运行时范围、风险等级、有效期和账号状态。</p>
       </div>
-      <ElButton :icon="Refresh" :loading="loading" @click="loadProfiles">Refresh</ElButton>
+      <ElButton :icon="Refresh" :loading="loading" @click="loadProfiles">刷新</ElButton>
     </header>
 
     <section class="developer-certification-page__filters">
-      <ElSelect v-model="filters.certification_status" clearable placeholder="Status">
-        <ElOption v-for="status in statuses" :key="status" :label="status" :value="status" />
+      <ElSelect v-model="filters.certification_status" clearable placeholder="认证状态">
+        <ElOption
+          v-for="status in statuses"
+          :key="status"
+          :label="formatCertificationStatus(status)"
+          :value="status"
+        />
       </ElSelect>
-      <ElSelect v-model="filters.risk_level" clearable placeholder="Risk">
-        <ElOption v-for="risk in risks" :key="risk" :label="risk" :value="risk" />
+      <ElSelect v-model="filters.risk_level" clearable placeholder="风险等级">
+        <ElOption
+          v-for="risk in risks"
+          :key="risk"
+          :label="formatRiskLevel(risk)"
+          :value="risk"
+        />
       </ElSelect>
-      <ElSelect v-model="filters.runtime_type" clearable placeholder="Runtime">
+      <ElSelect v-model="filters.runtime_type" clearable placeholder="运行环境">
         <ElOption
           v-for="runtime in runtimeTypes"
           :key="runtime"
-          :label="runtime"
+          :label="formatRuntimeType(runtime)"
           :value="runtime"
         />
       </ElSelect>
-      <ElSelect v-model="filters.disabled" clearable placeholder="Availability">
-        <ElOption label="Enabled" :value="false" />
-        <ElOption label="Disabled" :value="true" />
+      <ElSelect v-model="filters.disabled" clearable placeholder="账号状态">
+        <ElOption label="可用" :value="false" />
+        <ElOption label="已停用" :value="true" />
       </ElSelect>
-      <ElButton type="primary" :icon="Search" @click="loadProfiles">Apply</ElButton>
-      <ElButton @click="resetFilters">Reset</ElButton>
+      <ElButton type="primary" :icon="Search" @click="loadProfiles">筛选</ElButton>
+      <ElButton @click="resetFilters">重置</ElButton>
     </section>
 
     <ElAlert
@@ -40,24 +50,24 @@
       class="developer-certification-page__alert"
     >
       <template #default>
-        <ElButton link type="primary" :loading="loading" @click="loadProfiles">Retry</ElButton>
+        <ElButton link type="primary" :loading="loading" @click="loadProfiles">重试</ElButton>
       </template>
     </ElAlert>
 
     <ElTable v-loading="loading" :data="profiles" border>
-      <ElTableColumn label="Applicant" min-width="220">
+      <ElTableColumn label="申请人" min-width="220">
         <template #default="{ row }">
           <strong>{{ row.display_name }}</strong>
-          <div class="developer-certification-page__muted">User {{ row.user_id }}</div>
+          <div class="developer-certification-page__muted">用户 {{ row.user_id }}</div>
           <a v-if="row.website" :href="row.website" target="_blank" rel="noopener noreferrer">
-            Website
+            网站
           </a>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="Application" min-width="260" show-overflow-tooltip>
+      <ElTableColumn label="申请说明" min-width="260" show-overflow-tooltip>
         <template #default="{ row }">{{ row.statement }}</template>
       </ElTableColumn>
-      <ElTableColumn label="Requested runtimes" min-width="190">
+      <ElTableColumn label="申请运行环境" min-width="190">
         <template #default="{ row }">
           <ElTag
             v-for="runtime in row.requested_runtime_types"
@@ -65,81 +75,88 @@
             class="tag"
             effect="plain"
           >
-            {{ runtime }}
+            {{ formatRuntimeType(runtime) }}
           </ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="Status" width="130">
+      <ElTableColumn label="认证状态" width="130">
         <template #default="{ row }">
           <ElTag :type="statusTag(row.certification_status)" effect="light">
-            {{ row.certification_status }}
+            {{ formatCertificationStatus(row.certification_status) }}
           </ElTag>
-          <div v-if="row.disabled" class="developer-certification-page__disabled">Disabled</div>
+          <div v-if="row.disabled" class="developer-certification-page__disabled">已停用</div>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="Risk" width="100" prop="risk_level" />
-      <ElTableColumn label="Expiry" width="170">
+      <ElTableColumn label="风险等级" width="100">
+        <template #default="{ row }">{{ formatRiskLevel(row.risk_level) }}</template>
+      </ElTableColumn>
+      <ElTableColumn label="有效期" width="170">
         <template #default="{ row }">{{ formatDateTime(row.certification_expiry) }}</template>
       </ElTableColumn>
-      <ElTableColumn label="Review result" min-width="240">
+      <ElTableColumn label="审核结果" min-width="240">
         <template #default="{ row }">
           <div>{{ row.review_message || '-' }}</div>
           <div class="developer-certification-page__muted">
-            Reviewer {{ row.reviewer_id || '-' }} / {{ formatDateTime(row.update_time) }}
+            审核人 {{ row.reviewer_id || '-' }} / {{ formatDateTime(row.update_time) }}
           </div>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="Actions" width="220" fixed="right">
+      <ElTableColumn label="操作" width="220" fixed="right">
         <template #default="{ row }">
           <template v-if="row.certification_status === 'pending'">
-            <ElButton link type="success" @click="openDecision(row, 'certified')">Approve</ElButton>
-            <ElButton link type="danger" @click="openDecision(row, 'rejected')">Reject</ElButton>
+            <ElButton link type="success" @click="openDecision(row, 'certified')">通过</ElButton>
+            <ElButton link type="danger" @click="openDecision(row, 'rejected')">驳回</ElButton>
           </template>
           <ElButton link type="primary" @click="openDisabled(row)">
-            {{ row.disabled ? 'Enable' : 'Disable' }}
+            {{ row.disabled ? '启用' : '停用' }}
           </ElButton>
         </template>
       </ElTableColumn>
       <template #empty>
-        <ElEmpty description="No certification applications" />
+        <ElEmpty description="暂无开发者认证申请" />
       </template>
     </ElTable>
 
     <ElDialog
       v-model="decisionVisible"
       :title="
-        decisionForm.decision === 'certified' ? 'Approve certification' : 'Reject certification'
+        decisionForm.decision === 'certified' ? '通过认证' : '驳回认证'
       "
       width="620px"
     >
       <ElForm label-width="150px">
-        <ElFormItem label="Applicant">
+        <ElFormItem label="申请人">
           <strong>{{ selected?.display_name }}</strong>
         </ElFormItem>
-        <ElFormItem v-if="decisionForm.decision === 'certified'" label="Approved runtimes" required>
+        <ElFormItem v-if="decisionForm.decision === 'certified'" label="通过的运行环境" required>
           <ElCheckboxGroup v-model="decisionForm.approved_runtime_types">
             <ElCheckbox
               v-for="runtime in selected?.requested_runtime_types || []"
               :key="runtime"
               :value="runtime"
             >
-              {{ runtime }}
+              {{ formatRuntimeType(runtime) }}
             </ElCheckbox>
           </ElCheckboxGroup>
         </ElFormItem>
-        <ElFormItem label="Risk level" required>
+        <ElFormItem label="风险等级" required>
           <ElSelect v-model="decisionForm.risk_level">
-            <ElOption v-for="risk in risks" :key="risk" :label="risk" :value="risk" />
+            <ElOption
+              v-for="risk in risks"
+              :key="risk"
+              :label="formatRiskLevel(risk)"
+              :value="risk"
+            />
           </ElSelect>
         </ElFormItem>
         <ElFormItem
           v-if="decisionForm.decision === 'certified'"
-          label="Certification expiry"
+          label="认证有效期"
           required
         >
           <ElDatePicker v-model="decisionForm.certification_expiry" type="datetime" />
         </ElFormItem>
-        <ElFormItem label="Review reason" required>
+        <ElFormItem label="审核说明" required>
           <ElInput
             v-model="decisionForm.message"
             type="textarea"
@@ -150,14 +167,14 @@
         </ElFormItem>
       </ElForm>
       <template #footer>
-        <ElButton @click="decisionVisible = false">Cancel</ElButton>
-        <ElButton type="primary" :loading="submitting" @click="submitDecision">Confirm</ElButton>
+        <ElButton @click="decisionVisible = false">取消</ElButton>
+        <ElButton type="primary" :loading="submitting" @click="submitDecision">确认</ElButton>
       </template>
     </ElDialog>
 
     <ElDialog
       v-model="disabledVisible"
-      :title="selected?.disabled ? 'Enable developer' : 'Disable developer'"
+      :title="selected?.disabled ? '启用开发者' : '停用开发者'"
       width="520px"
     >
       <ElInput
@@ -166,11 +183,11 @@
         :rows="4"
         maxlength="500"
         show-word-limit
-        placeholder="Reason"
+        placeholder="请填写原因"
       />
       <template #footer>
-        <ElButton @click="disabledVisible = false">Cancel</ElButton>
-        <ElButton type="primary" :loading="submitting" @click="submitDisabled">Confirm</ElButton>
+        <ElButton @click="disabledVisible = false">取消</ElButton>
+        <ElButton type="primary" :loading="submitting" @click="submitDisabled">确认</ElButton>
       </template>
     </ElDialog>
   </div>
@@ -220,6 +237,34 @@
     hour12: false
   })
 
+  function formatCertificationStatus(status: DeveloperCertificationStatus) {
+    const labels: Record<DeveloperCertificationStatus, string> = {
+      pending: '待审核',
+      certified: '已认证',
+      rejected: '已驳回',
+      expired: '已过期'
+    }
+    return labels[status]
+  }
+
+  function formatRiskLevel(risk: DeveloperRiskLevel) {
+    const labels: Record<DeveloperRiskLevel, string> = {
+      low: '低',
+      medium: '中',
+      high: '高'
+    }
+    return labels[risk]
+  }
+
+  function formatRuntimeType(runtime: DeveloperRuntimeType) {
+    const labels: Record<DeveloperRuntimeType, string> = {
+      static: '静态应用',
+      iframe: '嵌入式页面',
+      service: '服务应用'
+    }
+    return labels[runtime]
+  }
+
   function statusTag(status: DeveloperCertificationStatus) {
     if (status === 'certified') return 'success'
     if (status === 'pending') return 'warning'
@@ -239,7 +284,7 @@
     try {
       profiles.value = await fetchDeveloperCertifications(filters)
     } catch {
-      loadError.value = 'Certification applications failed to load'
+      loadError.value = '开发者认证申请加载失败'
     } finally {
       loading.value = false
     }
@@ -272,11 +317,11 @@
 
   async function submitDecision() {
     if (!selected.value || decisionForm.message.trim().length < 3) {
-      ElMessage.warning('Review reason must contain at least 3 characters')
+      ElMessage.warning('审核说明至少需要 3 个字符')
       return
     }
     if (decisionForm.decision === 'certified' && !decisionForm.approved_runtime_types.length) {
-      ElMessage.warning('Select at least one approved runtime')
+      ElMessage.warning('至少选择一个通过的运行环境')
       return
     }
     submitting.value = true
@@ -290,7 +335,7 @@
           : {}),
         message: decisionForm.message.trim()
       })
-      ElMessage.success('Certification decision saved')
+      ElMessage.success('认证审核结果已保存')
       decisionVisible.value = false
       await loadProfiles()
     } finally {
@@ -306,7 +351,7 @@
 
   async function submitDisabled() {
     if (!selected.value || disabledReason.value.trim().length < 3) {
-      ElMessage.warning('Reason must contain at least 3 characters')
+      ElMessage.warning('停用原因至少需要 3 个字符')
       return
     }
     submitting.value = true
@@ -316,7 +361,7 @@
         !selected.value.disabled,
         disabledReason.value.trim()
       )
-      ElMessage.success(selected.value.disabled ? 'Developer enabled' : 'Developer disabled')
+      ElMessage.success(selected.value.disabled ? '开发者已启用' : '开发者已停用')
       disabledVisible.value = false
       await loadProfiles()
     } finally {

@@ -103,6 +103,47 @@ for (const token of [
   assertIncludes(governancePage, token, 'developer certification governance page')
 }
 
+for (const token of [
+  '开发者认证',
+  '审核运行时范围、风险等级、有效期和账号状态。',
+  '认证状态',
+  '风险等级',
+  '运行环境',
+  '账号状态',
+  '通过认证',
+  '驳回认证',
+  '开发者认证申请加载失败',
+  '至少选择一个通过的运行环境',
+  '认证审核结果已保存',
+  '停用原因至少需要 3 个字符',
+  'formatCertificationStatus',
+  'formatRiskLevel',
+  'formatRuntimeType'
+]) {
+  assertIncludes(governancePage, token, 'developer certification governance localization')
+}
+
+for (const token of [
+  'Developer Certification',
+  'Review runtime scope, risk, expiry, and account availability.',
+  'placeholder="Status"',
+  'placeholder="Risk"',
+  'placeholder="Runtime"',
+  'placeholder="Availability"',
+  'No certification applications',
+  'Certification applications failed to load',
+  'Review reason must contain at least 3 characters',
+  'Reason must contain at least 3 characters',
+  'Select at least one approved runtime',
+  'Certification decision saved',
+  'Developer enabled',
+  'Developer disabled'
+]) {
+  if (governancePage.includes(token)) {
+    failures.push(`developer certification governance page must not include legacy English copy: ${token}`)
+  }
+}
+
 const developerController = readProjectFile('server/src/module/app/app-developer.controller.ts')
 for (const token of [
   "@Get('service-overview')",
