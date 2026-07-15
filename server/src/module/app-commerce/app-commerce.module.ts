@@ -2,7 +2,9 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AppPackageEntity } from '../app/entities/app-package.entity';
+import { SaasModuleEntity } from '../saas/entities/saas-module.entity';
 import { SaasPlanEntity } from '../saas/entities/saas-plan.entity';
+import { SaasPlanFeatureEntity } from '../saas/entities/saas-plan-feature.entity';
 import { SaasSubscriptionEntity } from '../saas/entities/saas-subscription.entity';
 import { AppCommercePlatformController } from './app-commerce-platform.controller';
 import { AppCommerceDeveloperController } from './app-commerce-developer.controller';
@@ -29,6 +31,8 @@ import { AppSettlementService } from './services/app-settlement.service';
       AppPackageEntity,
       SaasSubscriptionEntity,
       SaasPlanEntity,
+      SaasModuleEntity,
+      SaasPlanFeatureEntity,
     ]),
   ],
   controllers: [

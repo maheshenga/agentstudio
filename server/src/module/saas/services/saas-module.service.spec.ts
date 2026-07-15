@@ -1,12 +1,13 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { DataSource, IsNull, MoreThan } from 'typeorm';
+import { DataSource, IsNull, LessThanOrEqual, MoreThan } from 'typeorm';
 
 import { SaasModuleEntity } from '../entities/saas-module.entity';
 import { SaasPlanFeatureEntity } from '../entities/saas-plan-feature.entity';
 import { SaasPlanEntity } from '../entities/saas-plan.entity';
 import { SaasSubscriptionEntity } from '../entities/saas-subscription.entity';
+import { SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_TRIALING } from '../constants';
 import { SaasModuleService } from './saas-module.service';
 
 describe('SaasModuleService', () => {
@@ -160,8 +161,15 @@ describe('SaasModuleService', () => {
 
     expect(subscriptionRepo.findOne).toHaveBeenCalledWith({
       where: [
-        { tenantId: 12, status: 'active', endTime: IsNull(), deleteTime: IsNull() },
-        { tenantId: 12, status: 'active', endTime: MoreThan(now), deleteTime: IsNull() },
+        { tenantId: 12, status: SAAS_SUBSCRIPTION_ACTIVE, endTime: IsNull(), deleteTime: IsNull() },
+        { tenantId: 12, status: SAAS_SUBSCRIPTION_ACTIVE, endTime: MoreThan(now), deleteTime: IsNull() },
+        {
+          tenantId: 12,
+          status: SAAS_SUBSCRIPTION_TRIALING,
+          startTime: LessThanOrEqual(now),
+          endTime: MoreThan(now),
+          deleteTime: IsNull(),
+        },
       ],
       order: { id: 'DESC' },
     });
@@ -180,8 +188,15 @@ describe('SaasModuleService', () => {
 
     expect(subscriptionRepo.findOne).toHaveBeenCalledWith({
       where: [
-        { tenantId: 12, status: 'active', endTime: IsNull(), deleteTime: IsNull() },
-        { tenantId: 12, status: 'active', endTime: MoreThan(now), deleteTime: IsNull() },
+        { tenantId: 12, status: SAAS_SUBSCRIPTION_ACTIVE, endTime: IsNull(), deleteTime: IsNull() },
+        { tenantId: 12, status: SAAS_SUBSCRIPTION_ACTIVE, endTime: MoreThan(now), deleteTime: IsNull() },
+        {
+          tenantId: 12,
+          status: SAAS_SUBSCRIPTION_TRIALING,
+          startTime: LessThanOrEqual(now),
+          endTime: MoreThan(now),
+          deleteTime: IsNull(),
+        },
       ],
       order: { id: 'DESC' },
     });

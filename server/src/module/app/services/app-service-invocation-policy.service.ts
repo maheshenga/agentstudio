@@ -23,6 +23,7 @@ import { AppServiceInvocationEntity } from '../entities/app-service-invocation.e
 import { TenantAppInstallEntity } from '../entities/tenant-app-install.entity';
 import type { AuthorizedAppRuntimeSession } from './app-runtime-session.service';
 import type { AppServiceLoopbackResponse } from './app-service-loopback.transport';
+import { AppCapabilityPolicyService } from './app-capability-policy.service';
 import { AppServiceRuntimeService } from './app-service-runtime.service';
 
 interface ResolvedInvocationTarget {
@@ -57,6 +58,7 @@ export class AppServiceInvocationPolicyService {
     private readonly saasModuleService: SaasModuleService,
     private readonly systemModuleAccessService: SystemModuleAccessService,
     private readonly appLicenseAccessService: AppLicenseAccessService,
+    private readonly capabilityPolicy: AppCapabilityPolicyService,
     private readonly runtimeService: AppServiceRuntimeService,
   ) {}
 
@@ -204,6 +206,13 @@ export class AppServiceInvocationPolicyService {
     }
     if (!(await this.hasCurrentEntitlement(session.tenantId, app))) {
       await this.reject(session, app, version, startedAt, 'service_target_not_entitled', 403);
+    }
+    const targetCapabilities = await this.capabilityPolicy.resolveGrantedCapabilities(
+      session.tenantId,
+      version.id,
+    );
+    if (!targetCapabilities.includes('context.read')) {
+      await this.reject(session, app, version, startedAt, 'service_target_context_denied', 403);
     }
 
     const instance = await this.instanceRepo.findOne({

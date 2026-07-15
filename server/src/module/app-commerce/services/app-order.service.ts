@@ -12,6 +12,7 @@ import type {
 import { AppOrderEntity } from '../entities/app-order.entity';
 import type { AppPricePlanEntity } from '../entities/app-price-plan.entity';
 import { TenantAppLicenseEntity } from '../entities/tenant-app-license.entity';
+import { AppLicenseAccessService } from './app-license-access.service';
 import { AppPricePlanService } from './app-price-plan.service';
 import { AppRevenueLedgerService } from './app-revenue-ledger.service';
 
@@ -20,6 +21,7 @@ export class AppOrderService {
   constructor(
     private readonly configService: ConfigService,
     private readonly pricePlanService: AppPricePlanService,
+    private readonly appLicenseAccessService: AppLicenseAccessService,
     @InjectRepository(AppOrderEntity)
     private readonly orderRepo: Repository<AppOrderEntity>,
     @InjectRepository(TenantAppLicenseEntity)
@@ -38,6 +40,7 @@ export class AppOrderService {
     this.requirePositiveId(tenantId, 'Tenant');
     this.requirePositiveId(userId, 'User');
     const app = await this.pricePlanService.findTenantApp(appCode);
+    await this.appLicenseAccessService.assertAppAcquisitionAvailable(tenantId, app, 'purchase');
     const plan = await this.findPurchasablePlan(tenantId, app, dto.price_plan_code);
     if (plan.pricingModel === 'one_time') {
       await this.assertOneTimePurchaseAvailable(tenantId, app.id);
@@ -104,6 +107,7 @@ export class AppOrderService {
     this.requirePositiveId(tenantId, 'Tenant');
     this.requirePositiveId(userId, 'User');
     const app = await this.pricePlanService.findTenantApp(appCode);
+    await this.appLicenseAccessService.assertAppAcquisitionAvailable(tenantId, app, 'start_trial');
     const plan = await this.findTrialPlan(tenantId, app, planCode);
 
     return this.dataSource.transaction(async (manager) => {

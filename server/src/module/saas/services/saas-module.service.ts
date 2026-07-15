@@ -1,12 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, IsNull, Like, MoreThan, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Like, LessThanOrEqual, MoreThan, Repository } from 'typeorm';
 
 import { SaveSaasModuleDto } from '../dto/save-saas-module.dto';
 import { SaasModuleEntity } from '../entities/saas-module.entity';
 import { SaasPlanFeatureEntity } from '../entities/saas-plan-feature.entity';
 import { SaasPlanEntity } from '../entities/saas-plan.entity';
 import { SaasSubscriptionEntity } from '../entities/saas-subscription.entity';
+import { SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_TRIALING } from '../constants';
 
 export interface SaasModuleListQuery {
   keyword?: string;
@@ -132,8 +133,15 @@ export class SaasModuleService {
     const now = new Date();
     const subscription = await this.subscriptionRepo.findOne({
       where: [
-        { tenantId, status: 'active', endTime: IsNull(), deleteTime: IsNull() },
-        { tenantId, status: 'active', endTime: MoreThan(now), deleteTime: IsNull() },
+        { tenantId, status: SAAS_SUBSCRIPTION_ACTIVE, endTime: IsNull(), deleteTime: IsNull() },
+        { tenantId, status: SAAS_SUBSCRIPTION_ACTIVE, endTime: MoreThan(now), deleteTime: IsNull() },
+        {
+          tenantId,
+          status: SAAS_SUBSCRIPTION_TRIALING,
+          startTime: LessThanOrEqual(now),
+          endTime: MoreThan(now),
+          deleteTime: IsNull(),
+        },
       ],
       order: { id: 'DESC' },
     });

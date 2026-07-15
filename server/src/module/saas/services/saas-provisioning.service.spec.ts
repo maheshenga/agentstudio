@@ -150,7 +150,7 @@ describe('SaasProvisioningService', () => {
     service = module.get(SaasProvisioningService);
   });
 
-  it('signs up a tenant owner with tenant, baseline role menus, free subscription, trial, and quota', async () => {
+  it('signs up a tenant owner with tenant, baseline role menus, pro trial subscription, trial, and quota', async () => {
     const result = await service.signup({
       username: 'founder',
       password: 'Secret123!',
@@ -225,10 +225,10 @@ describe('SaasProvisioningService', () => {
       SaasSubscriptionEntity,
       expect.objectContaining({
         tenantId: 202,
-        planId: 9,
-        status: 'active',
+        planId: 19,
+        status: 'trialing',
         startTime: expect.any(Date),
-        endTime: null,
+        endTime: expect.any(Date),
       }),
     );
 
@@ -335,7 +335,8 @@ describe('SaasProvisioningService', () => {
       ]),
     );
 
-    expect(saasQuotaService.initializeTenantQuota).toHaveBeenCalledWith(202, 9, manager);
+    expect(saasPlanService.getPlanByCode).toHaveBeenCalledWith('pro');
+    expect(saasQuotaService.initializeTenantQuota).toHaveBeenCalledWith(202, 19, manager);
   });
 
   it('grants future tenant roles the application commerce workspace and permissions', async () => {
@@ -390,6 +391,19 @@ describe('SaasProvisioningService', () => {
         tenantCode: 'beta-labs',
         contactName: 'Beta Owner',
       }),
+    );
+    expect(manager.save).toHaveBeenCalledWith(
+      SaasSubscriptionEntity,
+      expect.objectContaining({
+        tenantId: 202,
+        planId: 9,
+        status: 'active',
+        endTime: null,
+      }),
+    );
+    expect(manager.save).not.toHaveBeenCalledWith(
+      SaasTrialEntity,
+      expect.anything(),
     );
   });
 

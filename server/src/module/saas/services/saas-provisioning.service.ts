@@ -13,6 +13,7 @@ import { SysUserTenantEntity } from '../../system/user/entities/user-tenant.enti
 import {
   SAAS_DEFAULT_TRIAL_DAYS,
   SAAS_PLAN_FREE,
+  SAAS_PLAN_PRO,
   SAAS_SUBSCRIPTION_ACTIVE,
   SAAS_SUBSCRIPTION_TRIALING,
 } from '../constants';
@@ -102,7 +103,7 @@ export class SaasProvisioningService {
       email: dto.email,
       tenantRemark: this.buildSignupRemark(dto),
       withTrial: true,
-      planCode: SAAS_PLAN_FREE,
+      planCode: SAAS_PLAN_PRO,
     });
   }
 
@@ -191,32 +192,34 @@ export class SaasProvisioningService {
         }),
       );
 
+      const subscriptionStartTime = new Date();
+      const createsTrialSubscription = input.withTrial && initialPlan.code !== SAAS_PLAN_FREE;
+      const subscriptionEndTime = createsTrialSubscription
+        ? new Date(subscriptionStartTime.getTime() + SAAS_DEFAULT_TRIAL_DAYS * 24 * 60 * 60 * 1000)
+        : null;
       const subscription = await manager.save(
         SaasSubscriptionEntity,
         manager.create(SaasSubscriptionEntity, {
           tenantId: tenant.id,
           planId: initialPlan.id,
           billingCycle: initialPlan.billingCycle || 'monthly',
-          status: SAAS_SUBSCRIPTION_ACTIVE,
-          startTime: new Date(),
-          endTime: null,
+          status: createsTrialSubscription ? SAAS_SUBSCRIPTION_TRIALING : SAAS_SUBSCRIPTION_ACTIVE,
+          startTime: subscriptionStartTime,
+          endTime: subscriptionEndTime,
           cancelAtPeriodEnd: 0,
-          remark: 'Initial free plan subscription',
+          remark: createsTrialSubscription ? 'Initial trial subscription' : 'Initial plan subscription',
         }),
       );
 
-      if (input.withTrial) {
-        const trialStartTime = new Date();
-        const trialEndTime = new Date(trialStartTime.getTime() + SAAS_DEFAULT_TRIAL_DAYS * 24 * 60 * 60 * 1000);
-
+      if (createsTrialSubscription) {
         await manager.save(
           SaasTrialEntity,
           manager.create(SaasTrialEntity, {
             tenantId: tenant.id,
             subscriptionId: subscription.id,
             status: SAAS_SUBSCRIPTION_TRIALING,
-            startTime: trialStartTime,
-            endTime: trialEndTime,
+            startTime: subscriptionStartTime,
+            endTime: subscriptionEndTime,
             remark: 'Initial tenant trial',
           }),
         );

@@ -1,10 +1,16 @@
+import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { IsNull } from 'typeorm';
 
 import { AppPackageEntity } from '../../app/entities/app-package.entity';
+import { SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_TRIALING } from '../../saas/constants';
 import { SaasPlanEntity } from '../../saas/entities/saas-plan.entity';
+import { SaasModuleEntity } from '../../saas/entities/saas-module.entity';
+import { SaasPlanFeatureEntity } from '../../saas/entities/saas-plan-feature.entity';
 import { SaasSubscriptionEntity } from '../../saas/entities/saas-subscription.entity';
+import { SystemModuleAccessService } from '../../system-module/services/system-module-access.service';
 import { AppPricePlanEntity } from '../entities/app-price-plan.entity';
 import { TenantAppLicenseEntity } from '../entities/tenant-app-license.entity';
 import { AppLicenseAccessService } from './app-license-access.service';
@@ -22,6 +28,9 @@ describe('AppLicenseAccessService', () => {
   const licenseRepo = { find: jest.fn() };
   const subscriptionRepo = { findOne: jest.fn() };
   const saasPlanRepo = { findOne: jest.fn() };
+  const saasModuleRepo = { findOne: jest.fn() };
+  const saasPlanFeatureRepo = { findOne: jest.fn() };
+  const systemModuleAccessService = { assertModuleAccess: jest.fn() };
   const app = { id: 7, code: 'workflow', status: 'published', installed: false } as AppPackageEntity & {
     installed: boolean;
   };
@@ -58,6 +67,9 @@ describe('AppLicenseAccessService', () => {
         { provide: getRepositoryToken(TenantAppLicenseEntity), useValue: licenseRepo },
         { provide: getRepositoryToken(SaasSubscriptionEntity), useValue: subscriptionRepo },
         { provide: getRepositoryToken(SaasPlanEntity), useValue: saasPlanRepo },
+        { provide: getRepositoryToken(SaasModuleEntity), useValue: saasModuleRepo },
+        { provide: getRepositoryToken(SaasPlanFeatureEntity), useValue: saasPlanFeatureRepo },
+        { provide: SystemModuleAccessService, useValue: systemModuleAccessService },
       ],
     }).compile();
 
@@ -171,15 +183,24 @@ describe('AppLicenseAccessService', () => {
         where: [
           expect.objectContaining({
             tenantId: 23,
-            status: 'active',
+            status: SAAS_SUBSCRIPTION_ACTIVE,
             startTime: expect.any(Object),
-            endTime: expect.any(Object),
+            endTime: IsNull(),
+            deleteTime: IsNull(),
           }),
           expect.objectContaining({
             tenantId: 23,
-            status: 'active',
+            status: SAAS_SUBSCRIPTION_ACTIVE,
             startTime: expect.any(Object),
             endTime: expect.any(Object),
+            deleteTime: IsNull(),
+          }),
+          expect.objectContaining({
+            tenantId: 23,
+            status: SAAS_SUBSCRIPTION_TRIALING,
+            startTime: expect.any(Object),
+            endTime: expect.any(Object),
+            deleteTime: IsNull(),
           }),
         ],
       }),
@@ -244,6 +265,93 @@ describe('AppLicenseAccessService', () => {
     await expect(service.getAccessState(23, app)).resolves.toMatchObject({
       access_status: 'revoked',
       action: 'contact_admin',
+    });
+  });
+
+  it('rejects acquisition when the current SaaS subscription does not include the app SaaS module', async () => {
+    subscriptionRepo.findOne.mockResolvedValue({ tenantId: 23, planId: 5, status: 'active' });
+    saasModuleRepo.findOne.mockResolvedValue({ code: 'recruiting', status: 1 });
+    saasPlanFeatureRepo.findOne.mockResolvedValue(null);
+
+    await expect(
+      service.assertAppAcquisitionAvailable(
+        23,
+        { ...app, saasModuleCode: 'recruiting' },
+        'purchase',
+      ),
+    ).rejects.toThrow('Current plan has not enabled this module');
+
+    expect(systemModuleAccessService.assertModuleAccess).not.toHaveBeenCalled();
+  });
+
+  it('does not treat soft-deleted or null-ended trialing subscriptions as current acquisition entitlement', async () => {
+    subscriptionRepo.findOne.mockResolvedValue(null);
+    saasModuleRepo.findOne.mockResolvedValue({ code: 'recruiting', status: 1 });
+
+    await expect(
+      service.assertAppAcquisitionAvailable(
+        23,
+        { ...app, saasModuleCode: 'recruiting' },
+        'purchase',
+      ),
+    ).rejects.toThrow('Current plan has not enabled this module');
+
+    const subscriptionQuery = subscriptionRepo.findOne.mock.calls.at(-1)?.[0];
+    expect(subscriptionQuery).toEqual(expect.objectContaining({
+      order: { createTime: 'DESC', id: 'DESC' },
+    }));
+    expect(subscriptionQuery.where).toEqual([
+      expect.objectContaining({
+        tenantId: 23,
+        status: SAAS_SUBSCRIPTION_ACTIVE,
+        endTime: IsNull(),
+        deleteTime: IsNull(),
+      }),
+      expect.objectContaining({
+        tenantId: 23,
+        status: SAAS_SUBSCRIPTION_ACTIVE,
+        endTime: expect.any(Object),
+        deleteTime: IsNull(),
+      }),
+      expect.objectContaining({
+        tenantId: 23,
+        status: SAAS_SUBSCRIPTION_TRIALING,
+        startTime: expect.any(Object),
+        endTime: expect.any(Object),
+        deleteTime: IsNull(),
+      }),
+    ]);
+    expect(subscriptionQuery.where).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: SAAS_SUBSCRIPTION_TRIALING,
+          endTime: IsNull(),
+        }),
+      ]),
+    );
+    expect(saasPlanFeatureRepo.findOne).not.toHaveBeenCalled();
+  });
+
+  it('checks the required system module with the required SaaS module before acquisition', async () => {
+    subscriptionRepo.findOne.mockResolvedValue({ tenantId: 23, planId: 5, status: 'active' });
+    saasModuleRepo.findOne.mockResolvedValue({ code: 'recruiting', status: 1 });
+    saasPlanFeatureRepo.findOne.mockResolvedValue({ planId: 5, featureKey: 'recruiting', enabled: 1 });
+    systemModuleAccessService.assertModuleAccess.mockRejectedValueOnce(
+      new BadRequestException('Tenant has not enabled this module'),
+    );
+
+    await expect(
+      service.assertAppAcquisitionAvailable(
+        23,
+        { ...app, saasModuleCode: 'recruiting', systemModuleCode: 'job_board' },
+        'start_trial',
+      ),
+    ).rejects.toThrow('Tenant has not enabled this module');
+
+    expect(systemModuleAccessService.assertModuleAccess).toHaveBeenCalledWith({
+      tenantId: 23,
+      moduleCode: 'job_board',
+      requiredSaasModuleCode: 'recruiting',
     });
   });
 });

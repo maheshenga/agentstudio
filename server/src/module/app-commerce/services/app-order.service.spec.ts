@@ -8,6 +8,7 @@ import { AppPricePlanEntity } from '../entities/app-price-plan.entity';
 import { AppOrderEntity } from '../entities/app-order.entity';
 import { TenantAppLicenseEntity } from '../entities/tenant-app-license.entity';
 import { AppOrderService } from './app-order.service';
+import { AppLicenseAccessService } from './app-license-access.service';
 import { AppPricePlanService } from './app-price-plan.service';
 import { AppRevenueLedgerService } from './app-revenue-ledger.service';
 
@@ -18,6 +19,9 @@ describe('AppOrderService', () => {
   const pricePlanService = {
     findTenantApp: jest.fn(),
     listApplicablePlans: jest.fn(),
+  };
+  const appLicenseAccessService = {
+    assertAppAcquisitionAvailable: jest.fn(),
   };
   const orderRepo = {
     create: jest.fn(),
@@ -71,6 +75,7 @@ describe('AppOrderService', () => {
         AppOrderService,
         { provide: ConfigService, useValue: configService },
         { provide: AppPricePlanService, useValue: pricePlanService },
+        { provide: AppLicenseAccessService, useValue: appLicenseAccessService },
         { provide: getRepositoryToken(AppOrderEntity), useValue: orderRepo },
         { provide: getRepositoryToken(TenantAppLicenseEntity), useValue: licenseRepo },
         { provide: DataSource, useValue: dataSource },
@@ -150,6 +155,26 @@ describe('AppOrderService', () => {
       lock: { mode: 'pessimistic_write' },
     });
     expect(txOrderRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('rejects an application order before opening a transaction when app module access is unavailable', async () => {
+    appLicenseAccessService.assertAppAcquisitionAvailable.mockRejectedValueOnce(
+      new BadRequestException('Current plan has not enabled this module'),
+    );
+
+    await expect(
+      service.createTenantOrder(23, 9, 'workflow', {
+        price_plan_code: 'pro_monthly',
+        payment_method: 'alipay',
+      }),
+    ).rejects.toThrow('Current plan has not enabled this module');
+
+    expect(appLicenseAccessService.assertAppAcquisitionAvailable).toHaveBeenCalledWith(
+      23,
+      app,
+      'purchase',
+    );
+    expect(dataSource.transaction).not.toHaveBeenCalled();
   });
 
   it('rejects free, included, disabled, foreign-tenant, unpublished, or unavailable price plans', async () => {
@@ -327,6 +352,24 @@ describe('AppOrderService', () => {
     await expect(service.startTrial(23, 9, 'workflow', 'pro_monthly')).rejects.toBeInstanceOf(
       BadRequestException,
     );
+  });
+
+  it('rejects an application trial before opening a transaction when app module access is unavailable', async () => {
+    appLicenseAccessService.assertAppAcquisitionAvailable.mockRejectedValueOnce(
+      new BadRequestException('Tenant has not enabled this module'),
+    );
+    pricePlanService.listApplicablePlans.mockResolvedValue([createPlan({ trialDays: 7 })]);
+
+    await expect(service.startTrial(23, 9, 'workflow', 'pro_monthly')).rejects.toThrow(
+      'Tenant has not enabled this module',
+    );
+
+    expect(appLicenseAccessService.assertAppAcquisitionAvailable).toHaveBeenCalledWith(
+      23,
+      app,
+      'start_trial',
+    );
+    expect(dataSource.transaction).not.toHaveBeenCalled();
   });
 
   it('marks only the authoritative tenant pending order as payment requested', async () => {

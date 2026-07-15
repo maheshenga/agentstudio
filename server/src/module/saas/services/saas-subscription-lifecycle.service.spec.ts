@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { Between, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 
 import {
   SAAS_SUBSCRIPTION_ACTIVE,
@@ -33,7 +33,7 @@ describe('SaasSubscriptionLifecycleService', () => {
     service = module.get(SaasSubscriptionLifecycleService);
   });
 
-  it('expires only active subscriptions whose end time has passed', async () => {
+  it('expires active or trialing subscriptions whose end time has passed', async () => {
     const now = new Date('2026-07-03T00:00:00.000Z');
     subscriptionRepo.find.mockResolvedValue([
       { id: 1, status: SAAS_SUBSCRIPTION_ACTIVE, endTime: new Date('2026-07-02T23:59:59.000Z') },
@@ -45,7 +45,7 @@ describe('SaasSubscriptionLifecycleService', () => {
 
     expect(subscriptionRepo.find).toHaveBeenCalledWith({
       where: {
-        status: SAAS_SUBSCRIPTION_ACTIVE,
+        status: In([SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_TRIALING]),
         endTime: LessThanOrEqual(now),
       },
       select: ['id'],
@@ -133,7 +133,7 @@ describe('SaasSubscriptionLifecycleService', () => {
     });
   });
 
-  it('does not mark null-end or inactive subscriptions as expiring soon', () => {
+  it('does not mark null-end or frozen subscriptions as expiring soon but treats trialing as current', () => {
     const now = new Date('2026-07-03T00:00:00.000Z');
 
     expect(service.decorateSubscription({ status: SAAS_SUBSCRIPTION_ACTIVE }, now, 7)).toEqual({
@@ -166,7 +166,7 @@ describe('SaasSubscriptionLifecycleService', () => {
       ),
     ).toEqual({
       days_until_expiry: 2,
-      is_expiring_soon: false,
+      is_expiring_soon: true,
       is_expired_by_time: false,
     });
   });
@@ -203,7 +203,7 @@ describe('SaasSubscriptionLifecycleService', () => {
     const now = new Date('2026-07-03T00:00:00.000Z');
 
     expect(service.buildExpiringWhere(now, 9999)).toEqual({
-      status: SAAS_SUBSCRIPTION_ACTIVE,
+      status: In([SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_TRIALING]),
       endTime: Between(now, new Date('2027-07-03T00:00:00.000Z')),
     });
   });
@@ -212,7 +212,7 @@ describe('SaasSubscriptionLifecycleService', () => {
     const now = new Date('2026-07-03T00:00:00.000Z');
 
     expect(service.buildExpiringWhere(now, 'bad' as any)).toEqual({
-      status: SAAS_SUBSCRIPTION_ACTIVE,
+      status: In([SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_TRIALING]),
       endTime: Between(now, new Date('2026-07-10T00:00:00.000Z')),
     });
   });

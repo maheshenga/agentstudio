@@ -1,11 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, In } from 'typeorm';
 
 import { SaasOrderEntity } from '../entities/saas-order.entity';
 import { SaasPlanEntity } from '../entities/saas-plan.entity';
 import { SaasSubscriptionEntity } from '../entities/saas-subscription.entity';
+import { SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_TRIALING } from '../constants';
 import { SaasQuotaService } from './saas-quota.service';
 import { SaasOrderService } from './saas-order.service';
 
@@ -176,7 +177,7 @@ describe('SaasOrderService', () => {
     expect(txSubscriptionRepo.update).toHaveBeenCalledWith(
       {
         tenantId: 12,
-        status: 'active',
+        status: In([SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_TRIALING]),
       },
       {
         status: 'expired',
@@ -232,7 +233,7 @@ describe('SaasOrderService', () => {
     expect(txSubscriptionRepo.update).toHaveBeenCalledWith(
       {
         tenantId: 12,
-        status: 'active',
+        status: In([SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_TRIALING]),
       },
       {
         status: 'expired',
@@ -270,7 +271,7 @@ describe('SaasOrderService', () => {
     expect(txSubscriptionRepo.update).toHaveBeenCalledWith(
       {
         tenantId: 12,
-        status: 'active',
+        status: In([SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_TRIALING]),
       },
       {
         status: 'expired',

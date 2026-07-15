@@ -9,7 +9,15 @@
           </div>
           <div class="developer-apps-page__header-actions">
             <ElButton :icon="Refresh" :loading="loading" @click="loadApps">刷新</ElButton>
-            <ElButton type="primary" :icon="Plus" @click="openCreateDialog">创建应用</ElButton>
+            <ElButton
+              type="primary"
+              :icon="Plus"
+              :disabled="!hasApprovedRuntime"
+              :title="hasApprovedRuntime ? '创建应用' : '请先完成开发者认证'"
+              @click="openCreateDialog"
+            >
+              创建应用
+            </ElButton>
           </div>
         </div>
       </template>
@@ -675,6 +683,9 @@
   const staticRuntimeApproved = computed(() => runtimeApproved('static'))
   const iframeRuntimeApproved = computed(() => runtimeApproved('iframe'))
   const serviceRuntimeApproved = computed(() => runtimeApproved('service'))
+  const hasApprovedRuntime = computed(() =>
+    certificationRuntimeTypes.some((runtimeType) => runtimeApproved(runtimeType))
+  )
   const runtimeOptions = computed(() => [
     { label: '静态应用', value: 'static', disabled: !staticRuntimeApproved.value },
     { label: '外部应用', value: 'iframe', disabled: !iframeRuntimeApproved.value },
@@ -707,7 +718,7 @@
   const certificationDescription = computed(() => {
     if (profileLoading.value) return '正在加载认证状态。'
     if (profileError.value) return profileError.value
-    if (!profile.value) return '当前可提交静态应用；申请认证后可提交受限的服务应用。'
+    if (!profile.value) return '请先完成开发者认证，认证通过后可创建和提交已批准运行类型的应用。'
     if (profile.value.disabled) return profile.value.review_message || '开发者认证已禁用。'
     if (profile.value.certification_status === 'pending') return '认证申请正在等待平台审核。'
     if (profile.value.certification_status === 'certified') {
@@ -804,6 +815,10 @@
   }
 
   function openCreateDialog() {
+    if (!hasApprovedRuntime.value) {
+      ElMessage.warning('请先完成开发者认证')
+      return
+    }
     editingCode.value = ''
     resetForm()
     form.runtime_type =

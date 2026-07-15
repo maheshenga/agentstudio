@@ -1,8 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
+import { DataSource, FindOptionsWhere, In, Repository } from 'typeorm';
 
-import { SAAS_ORDER_PAID, SAAS_ORDER_PENDING, SAAS_PAYMENT_ALIPAY, SAAS_PLAN_FREE, SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_EXPIRED } from '../constants';
+import { SAAS_ORDER_PAID, SAAS_ORDER_PENDING, SAAS_PAYMENT_ALIPAY, SAAS_PLAN_FREE, SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_EXPIRED, SAAS_SUBSCRIPTION_TRIALING } from '../constants';
 import { CreateUpgradeOrderDto } from '../dto/create-upgrade-order.dto';
 import { SaasOrderEntity } from '../entities/saas-order.entity';
 import { SaasPlanEntity } from '../entities/saas-plan.entity';
@@ -196,7 +196,7 @@ export class SaasOrderService {
       await subscriptionRepo.update(
         {
           tenantId: order.tenantId,
-          status: SAAS_SUBSCRIPTION_ACTIVE,
+          status: In([SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_TRIALING]),
         },
         {
           status: SAAS_SUBSCRIPTION_EXPIRED,

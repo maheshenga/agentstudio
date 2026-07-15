@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, LessThanOrEqual, MoreThanOrEqual, Repository } from 'typeorm';
+import { Between, In, LessThanOrEqual, MoreThanOrEqual, Repository } from 'typeorm';
 
 import { Task } from '../../../common/decorators/task.decorator';
-import { SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_EXPIRED } from '../constants';
+import {
+  SAAS_SUBSCRIPTION_ACTIVE,
+  SAAS_SUBSCRIPTION_EXPIRED,
+  SAAS_SUBSCRIPTION_TRIALING,
+} from '../constants';
 import { SaasSubscriptionEntity } from '../entities/saas-subscription.entity';
 
 export interface LifecycleSweepResult {
@@ -35,7 +39,7 @@ export class SaasSubscriptionLifecycleService {
   async sweepExpiredSubscriptions(now = new Date()): Promise<LifecycleSweepResult> {
     const expiredSubscriptions = await this.subscriptionRepo.find({
       where: {
-        status: SAAS_SUBSCRIPTION_ACTIVE,
+        status: In([SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_TRIALING]),
         endTime: LessThanOrEqual(now),
       },
       select: ['id'] as any,
@@ -109,7 +113,9 @@ export class SaasSubscriptionLifecycleService {
 
     const diffMs = endTime.getTime() - now.getTime();
     const daysUntilExpiry = diffMs <= 0 ? Math.floor(diffMs / 86_400_000) : Math.ceil(diffMs / 86_400_000);
-    const isActive = subscription.status === SAAS_SUBSCRIPTION_ACTIVE;
+    const isActive =
+      subscription.status === SAAS_SUBSCRIPTION_ACTIVE ||
+      subscription.status === SAAS_SUBSCRIPTION_TRIALING;
     const isExpiredByTime = isActive && diffMs <= 0;
 
     return {
@@ -131,7 +137,7 @@ export class SaasSubscriptionLifecycleService {
     const days = this.clampDays(rawDays, 7);
     const endTime = this.addDays(now, days);
     return {
-      status: SAAS_SUBSCRIPTION_ACTIVE,
+      status: In([SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_TRIALING]),
       endTime: Between(now, endTime),
     };
   }

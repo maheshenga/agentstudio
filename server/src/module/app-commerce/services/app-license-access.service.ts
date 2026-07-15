@@ -1,12 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, LessThanOrEqual, MoreThan, Repository } from 'typeorm';
 
 import { AppPackageEntity } from '../../app/entities/app-package.entity';
-import { SAAS_SUBSCRIPTION_ACTIVE } from '../../saas/constants';
+import { SAAS_SUBSCRIPTION_ACTIVE, SAAS_SUBSCRIPTION_TRIALING } from '../../saas/constants';
+import { SaasModuleEntity } from '../../saas/entities/saas-module.entity';
+import { SaasPlanFeatureEntity } from '../../saas/entities/saas-plan-feature.entity';
 import { SaasPlanEntity } from '../../saas/entities/saas-plan.entity';
 import { SaasSubscriptionEntity } from '../../saas/entities/saas-subscription.entity';
+import { SystemModuleAccessService } from '../../system-module/services/system-module-access.service';
 import { AppPricePlanEntity } from '../entities/app-price-plan.entity';
 import { TenantAppLicenseEntity } from '../entities/tenant-app-license.entity';
 import {
@@ -46,6 +49,13 @@ export type AppCommerceSubject = Pick<AppPackageEntity, 'id' | 'code'> & {
   installed?: boolean;
 };
 
+export type AppAcquisitionIntent = 'purchase' | 'start_trial';
+
+export type AppAcquisitionSubject = Pick<
+  AppPackageEntity,
+  'id' | 'code' | 'saasModuleCode' | 'systemModuleCode'
+>;
+
 @Injectable()
 export class AppLicenseAccessService {
   constructor(
@@ -57,7 +67,33 @@ export class AppLicenseAccessService {
     private readonly subscriptionRepo: Repository<SaasSubscriptionEntity>,
     @InjectRepository(SaasPlanEntity)
     private readonly saasPlanRepo: Repository<SaasPlanEntity>,
+    @InjectRepository(SaasModuleEntity)
+    private readonly saasModuleRepo: Repository<SaasModuleEntity>,
+    @InjectRepository(SaasPlanFeatureEntity)
+    private readonly saasPlanFeatureRepo: Repository<SaasPlanFeatureEntity>,
+    private readonly systemModuleAccessService: SystemModuleAccessService,
   ) {}
+
+  async assertAppAcquisitionAvailable(
+    tenantId: number,
+    app: AppAcquisitionSubject,
+    _intent: AppAcquisitionIntent,
+  ): Promise<void> {
+    const saasModuleCode = String(app.saasModuleCode || '').trim();
+    const systemModuleCode = String(app.systemModuleCode || '').trim();
+
+    if (saasModuleCode) {
+      await this.assertTenantSaasModuleEnabled(Number(tenantId), saasModuleCode);
+    }
+
+    if (systemModuleCode) {
+      await this.systemModuleAccessService.assertModuleAccess({
+        tenantId: Number(tenantId),
+        moduleCode: systemModuleCode,
+        requiredSaasModuleCode: saasModuleCode || undefined,
+      });
+    }
+  }
 
   async getAccessState(
     tenantId: number,
@@ -204,30 +240,71 @@ export class AppLicenseAccessService {
   }
 
   private async getCurrentSaasPlanCode(tenantId: number): Promise<string | null> {
-    const now = new Date();
-    const subscription = await this.subscriptionRepo.findOne({
-      where: [
-        {
-          tenantId: Number(tenantId),
-          status: SAAS_SUBSCRIPTION_ACTIVE,
-          startTime: LessThanOrEqual(now),
-          endTime: IsNull(),
-        },
-        {
-          tenantId: Number(tenantId),
-          status: SAAS_SUBSCRIPTION_ACTIVE,
-          startTime: LessThanOrEqual(now),
-          endTime: MoreThan(now),
-        },
-      ],
-      order: { createTime: 'DESC', id: 'DESC' },
-    });
+    const subscription = await this.getCurrentSubscription(tenantId);
     if (!subscription) return null;
 
     const saasPlan = await this.saasPlanRepo.findOne({
       where: { id: Number(subscription.planId), status: 1 },
     });
     return saasPlan?.code ? String(saasPlan.code).trim().toLowerCase() : null;
+  }
+
+  private async assertTenantSaasModuleEnabled(tenantId: number, moduleCode: string) {
+    const module = await this.saasModuleRepo.findOne({
+      where: { code: moduleCode, deleteTime: IsNull() },
+    });
+    if (!module) {
+      throw new NotFoundException(`Module ${moduleCode} not found`);
+    }
+    if (Number(module.status) !== 1) {
+      throw new BadRequestException('Module is disabled');
+    }
+
+    const subscription = await this.getCurrentSubscription(tenantId);
+    if (!subscription) {
+      throw new BadRequestException('Current plan has not enabled this module');
+    }
+    const feature = await this.saasPlanFeatureRepo.findOne({
+      where: {
+        planId: Number(subscription.planId),
+        featureKey: moduleCode,
+        enabled: 1,
+        deleteTime: IsNull(),
+      },
+    });
+    if (!feature) {
+      throw new BadRequestException('Current plan has not enabled this module');
+    }
+  }
+
+  private getCurrentSubscription(tenantId: number): Promise<SaasSubscriptionEntity | null> {
+    const now = new Date();
+    return this.subscriptionRepo.findOne({
+      where: [
+        {
+          tenantId: Number(tenantId),
+          status: SAAS_SUBSCRIPTION_ACTIVE,
+          startTime: LessThanOrEqual(now),
+          endTime: IsNull(),
+          deleteTime: IsNull(),
+        },
+        {
+          tenantId: Number(tenantId),
+          status: SAAS_SUBSCRIPTION_ACTIVE,
+          startTime: LessThanOrEqual(now),
+          endTime: MoreThan(now),
+          deleteTime: IsNull(),
+        },
+        {
+          tenantId: Number(tenantId),
+          status: SAAS_SUBSCRIPTION_TRIALING,
+          startTime: LessThanOrEqual(now),
+          endTime: MoreThan(now),
+          deleteTime: IsNull(),
+        },
+      ],
+      order: { createTime: 'DESC', id: 'DESC' },
+    });
   }
 
   private matchesIncludedPlan(plans: AppPricePlanEntity[], currentCode: string | null) {

@@ -8,6 +8,7 @@ import {
 
 import { AppLicenseAccessService } from '../../app-commerce/services/app-license-access.service';
 import type { AuthorizedAppRuntimeSession } from './app-runtime-session.service';
+import { AppCapabilityPolicyService } from './app-capability-policy.service';
 import { AppServiceInvocationPolicyService } from './app-service-invocation-policy.service';
 
 describe('AppServiceInvocationPolicyService', () => {
@@ -74,6 +75,7 @@ describe('AppServiceInvocationPolicyService', () => {
   const saasModuleService = { assertTenantModuleEnabled: jest.fn() };
   const systemModuleAccessService = { assertModuleAccess: jest.fn() };
   const appLicenseAccessService = { getAccessState: jest.fn() };
+  const capabilityPolicy = { resolveGrantedCapabilities: jest.fn() };
   const runtimeService = { invokeAuthorized: jest.fn() };
   const configService = {
     get: jest.fn((key: string, fallback?: unknown) => {
@@ -110,6 +112,7 @@ describe('AppServiceInvocationPolicyService', () => {
       license_expires_at: null,
       plans: [],
     });
+    capabilityPolicy.resolveGrantedCapabilities.mockReset().mockResolvedValue(['context.read']);
     runtimeService.invokeAuthorized.mockReset();
     versionRepo.findOne
       .mockResolvedValueOnce(callerVersion)
@@ -138,6 +141,7 @@ describe('AppServiceInvocationPolicyService', () => {
       saasModuleService as any,
       systemModuleAccessService as any,
       appLicenseAccessService as any,
+      capabilityPolicy as unknown as AppCapabilityPolicyService,
       runtimeService as any,
     );
   });
@@ -273,6 +277,24 @@ describe('AppServiceInvocationPolicyService', () => {
     expect(redisClient.eval).not.toHaveBeenCalled();
     expect(invocationRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: 'rejected', errorCode: 'service_target_not_entitled' }),
+    );
+  });
+
+  it('rejects a target service without effective context.read before quota acquisition', async () => {
+    capabilityPolicy.resolveGrantedCapabilities.mockResolvedValueOnce([]);
+
+    await expect(service.invoke(session, 'workflow_service', {})).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+
+    expect(capabilityPolicy.resolveGrantedCapabilities).toHaveBeenCalledWith(23, 60);
+    expect(redisClient.eval).not.toHaveBeenCalled();
+    expect(runtimeService.invokeAuthorized).not.toHaveBeenCalled();
+    expect(invocationRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcome: 'rejected',
+        errorCode: 'service_target_context_denied',
+      }),
     );
   });
 
