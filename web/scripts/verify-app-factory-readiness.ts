@@ -77,10 +77,12 @@ for (const token of [
   'ElDialog',
   'ElTable',
   'ElMessageBox',
-  'Factory page rejects scripts',
+  '模块工厂',
+  '构建可版本化的静态模块',
+  '使用模板',
+  '工厂页面会拒绝脚本',
   'templateDrawerVisible',
   'applyTemplate',
-  'Use Template',
   'fetchAppFactoryTemplates',
   'previewAppFactoryManifest',
   'openManifestPreview',
@@ -88,9 +90,21 @@ for (const token of [
   'schema_version',
   'runtime_target',
   'manifest_defaults',
-  'Service templates generate manifests only'
+  '服务模板只生成清单'
 ]) {
   assertIncludes(pageSource, token, 'app factory page')
+}
+
+for (const token of [
+  'Module Factory',
+  'Build versioned static modules',
+  'Use Template',
+  'Create Module',
+  'Factory Templates',
+  'Code is required',
+  'Name is required'
+]) {
+  assert(!pageSource.includes(token), `app factory page must not include legacy English copy: ${token}`)
 }
 
 const menuMigration = readFile('server/src/migrations/1760000000031-SeedAppFactoryMenus.ts')

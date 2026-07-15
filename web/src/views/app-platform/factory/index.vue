@@ -4,16 +4,15 @@
       <template #header>
         <div class="app-factory-page__header">
           <div>
-            <h1 class="app-factory-page__title">Module Factory</h1>
+            <h1 class="app-factory-page__title">模块工厂</h1>
             <p class="app-factory-page__subtitle"
-              >Build versioned static modules or review-bound service manifests for the app
-              platform.</p
+              >构建可版本化的静态模块，或生成必须进入应用平台审核的服务清单。</p
             >
           </div>
           <div class="app-factory-page__actions">
-            <ElButton :icon="Refresh" :loading="loading" @click="loadModules">Refresh</ElButton>
-            <ElButton :icon="Collection" @click="openTemplateDrawer">Use Template</ElButton>
-            <ElButton type="primary" :icon="Plus" @click="openCreateDialog">Create Module</ElButton>
+            <ElButton :icon="Refresh" :loading="loading" @click="loadModules">刷新</ElButton>
+            <ElButton :icon="Collection" @click="openTemplateDrawer">使用模板</ElButton>
+            <ElButton type="primary" :icon="Plus" @click="openCreateDialog">创建模块</ElButton>
           </div>
         </div>
       </template>
@@ -23,14 +22,14 @@
           v-model="filters.keyword"
           clearable
           class="app-factory-page__filter-item"
-          placeholder="Code, name"
+          placeholder="编码、名称"
           @keyup.enter="loadModules"
         />
         <ElSelect
           v-model="filters.status"
           clearable
           class="app-factory-page__select"
-          placeholder="Status"
+          placeholder="状态"
         >
           <ElOption
             v-for="item in statusOptions"
@@ -40,57 +39,57 @@
           />
         </ElSelect>
         <ElButton type="primary" :icon="Search" :loading="loading" @click="loadModules"
-          >Search</ElButton
+          >搜索</ElButton
         >
-        <ElButton @click="resetFilters">Reset</ElButton>
+        <ElButton @click="resetFilters">重置</ElButton>
       </div>
 
       <div v-if="loadError" class="app-factory-page__load-error">
         <ElAlert type="error" :title="loadError" show-icon :closable="false" />
         <ElButton size="small" type="primary" link :loading="loading" @click="loadModules"
-          >Retry</ElButton
+          >重试</ElButton
         >
       </div>
 
       <ElTable v-loading="loading" :data="records" border>
-        <ElTableColumn label="Module" min-width="220" show-overflow-tooltip>
+        <ElTableColumn label="模块" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
             <div class="app-factory-page__module-name">{{ row.name || '-' }}</div>
             <div class="app-factory-page__module-code">{{ row.code || '-' }}</div>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Status" width="130">
+        <ElTableColumn label="状态" width="130">
           <template #default="{ row }">
             <ElTag :type="statusTagType(row.status)" effect="light">{{
               statusText(row.status)
             }}</ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Runtime" width="110">
+        <ElTableColumn label="运行类型" width="110">
           <template #default="{ row }">
             <ElTag :type="row.runtime_target === 'service' ? 'warning' : 'info'" effect="plain">
               {{ row.runtime_target || 'static' }}
             </ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Marketplace App" min-width="190" show-overflow-tooltip>
+        <ElTableColumn label="市场应用" min-width="190" show-overflow-tooltip>
           <template #default="{ row }">{{ row.app_code || '-' }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Version" width="120">
+        <ElTableColumn label="版本" width="120">
           <template #default="{ row }">{{ row.latest_version || '-' }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Binding" min-width="220" show-overflow-tooltip>
+        <ElTableColumn label="绑定" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
-            <div>{{ row.saas_module_code || 'No SaaS module' }}</div>
+            <div>{{ row.saas_module_code || '未绑定 SaaS 模块' }}</div>
             <div class="app-factory-page__muted">{{
-              row.system_module_code || 'No system module'
+              row.system_module_code || '未绑定系统模块'
             }}</div>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Updated" width="170">
+        <ElTableColumn label="更新时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.update_time) }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Actions" fixed="right" width="350">
+        <ElTableColumn label="操作" fixed="right" width="350">
           <template #default="{ row }">
             <ElButton
               link
@@ -98,7 +97,7 @@
               :icon="Edit"
               :loading="editLoadingCode === row.code"
               @click="openEditDialog(row)"
-              >Edit</ElButton
+              >编辑</ElButton
             >
             <ElButton
               v-if="row.runtime_target !== 'service'"
@@ -107,7 +106,7 @@
               :icon="View"
               :loading="previewCode === row.code"
               @click="openPreview(row)"
-              >Page</ElButton
+              >页面</ElButton
             >
             <ElButton
               link
@@ -115,7 +114,7 @@
               :icon="Document"
               :loading="manifestPreviewCode === row.code"
               @click="openManifestPreview(row)"
-              >Manifest</ElButton
+              >清单</ElButton
             >
             <ElButton
               v-if="row.runtime_target !== 'service'"
@@ -125,55 +124,55 @@
               :loading="publishingCode === row.code"
               @click="publishModule(row)"
             >
-              Publish
+              发布
             </ElButton>
           </template>
         </ElTableColumn>
         <template #empty>
-          <ElEmpty description="No factory modules yet" />
+          <ElEmpty description="暂无工厂模块" />
         </template>
       </ElTable>
     </ElCard>
 
-    <ElDrawer v-model="templateDrawerVisible" title="Factory Templates" size="820px">
+    <ElDrawer v-model="templateDrawerVisible" title="工厂模板" size="820px">
       <div class="app-factory-page__template-toolbar">
         <ElInput
           v-model="templateKeyword"
           clearable
-          placeholder="Search templates"
+          placeholder="搜索模板"
           @keyup.enter="loadTemplates"
         />
         <ElButton type="primary" :icon="Search" :loading="templateLoading" @click="loadTemplates"
-          >Search</ElButton
+          >搜索</ElButton
         >
       </div>
       <ElTable v-loading="templateLoading" :data="templates" :row-key="templateKey" border>
-        <ElTableColumn label="Template" min-width="220" show-overflow-tooltip>
+        <ElTableColumn label="模板" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
             <div class="app-factory-page__module-name">{{ row.name || '-' }}</div>
             <div class="app-factory-page__module-code">{{ row.code || '-' }}</div>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Category" width="140">
+        <ElTableColumn label="分类" width="140">
           <template #default="{ row }">{{ row.category || '-' }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Version" width="120">
+        <ElTableColumn label="版本" width="120">
           <template #default="{ row }">
             <div>{{ row.template_version || '1.0.0' }}</div>
             <div class="app-factory-page__muted">schema {{ row.schema_version || 1 }}</div>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Runtime" width="105">
+        <ElTableColumn label="运行类型" width="105">
           <template #default="{ row }">
             <ElTag :type="row.runtime_target === 'service' ? 'warning' : 'info'" effect="plain">
               {{ row.runtime_target || 'static' }}
             </ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="Summary" min-width="260" show-overflow-tooltip>
+        <ElTableColumn label="简介" min-width="260" show-overflow-tooltip>
           <template #default="{ row }">{{ row.summary || '-' }}</template>
         </ElTableColumn>
-        <ElTableColumn label="Actions" fixed="right" width="120">
+        <ElTableColumn label="操作" fixed="right" width="120">
           <template #default="{ row }">
             <ElButton
               link
@@ -181,19 +180,19 @@
               :loading="applyingTemplateCode === templateKey(row)"
               @click="applyTemplate(row)"
             >
-              Apply
+              应用
             </ElButton>
           </template>
         </ElTableColumn>
         <template #empty>
-          <ElEmpty description="No factory templates" />
+          <ElEmpty description="暂无工厂模板" />
         </template>
       </ElTable>
     </ElDrawer>
 
     <ElDialog
       v-model="dialogVisible"
-      :title="editingCode ? 'Edit Module' : 'Create Module'"
+      :title="editingCode ? '编辑模块' : '创建模块'"
       width="880px"
       top="6vh"
     >
@@ -202,8 +201,8 @@
         :type="form.runtime_target === 'service' ? 'info' : 'warning'"
         :title="
           form.runtime_target === 'service'
-            ? 'Service templates generate manifests only. Executable code must use App Platform review.'
-            : 'Factory page rejects scripts, inline event handlers, and javascript URLs.'
+            ? '服务模板只生成清单。可执行代码必须通过应用平台审核。'
+            : '工厂页面会拒绝脚本、内联事件处理器和 javascript 链接。'
         "
         show-icon
         :closable="false"
@@ -217,7 +216,7 @@
       />
       <ElForm ref="formRef" :model="form" :rules="formRules" label-width="132px">
         <div class="app-factory-page__form-grid">
-          <ElFormItem label="Code" prop="code">
+          <ElFormItem label="编码" prop="code">
             <ElInput
               v-model="form.code"
               :disabled="Boolean(editingCode)"
@@ -225,32 +224,32 @@
               placeholder="landing_page"
             />
           </ElFormItem>
-          <ElFormItem label="Name" prop="name">
-            <ElInput v-model="form.name" maxlength="120" placeholder="Landing Page" />
+          <ElFormItem label="名称" prop="name">
+            <ElInput v-model="form.name" maxlength="120" placeholder="落地页" />
           </ElFormItem>
-          <ElFormItem label="Category">
-            <ElInput v-model="form.category" maxlength="50" placeholder="Marketing" />
+          <ElFormItem label="分类">
+            <ElInput v-model="form.category" maxlength="50" placeholder="营销" />
           </ElFormItem>
-          <ElFormItem label="Icon">
+          <ElFormItem label="图标">
             <ElInput v-model="form.icon" maxlength="100" placeholder="ri:pages-line" />
           </ElFormItem>
-          <ElFormItem label="Visibility">
+          <ElFormItem label="可见范围">
             <ElSelect v-model="form.visibility">
-              <ElOption label="Marketplace" value="marketplace" />
-              <ElOption label="Tenant" value="tenant" />
-              <ElOption label="Platform" value="platform" />
-              <ElOption label="Private" value="private" />
+              <ElOption label="应用市场" value="marketplace" />
+              <ElOption label="租户" value="tenant" />
+              <ElOption label="平台" value="platform" />
+              <ElOption label="私有" value="private" />
             </ElSelect>
           </ElFormItem>
-          <ElFormItem label="Sort">
+          <ElFormItem label="排序">
             <ElInputNumber v-model="form.sort" :min="0" :step="10" controls-position="right" />
           </ElFormItem>
-          <ElFormItem label="SaaS Module">
+          <ElFormItem label="SaaS 模块">
             <ElSelect
               v-model="form.saas_module_code"
               clearable
               filterable
-              placeholder="Optional entitlement module"
+              placeholder="可选权益模块"
             >
               <ElOption
                 v-for="item in saasModuleOptions"
@@ -260,12 +259,12 @@
               />
             </ElSelect>
           </ElFormItem>
-          <ElFormItem label="System Module">
+          <ElFormItem label="系统模块">
             <ElSelect
               v-model="form.system_module_code"
               clearable
               filterable
-              placeholder="Optional runtime guard module"
+              placeholder="可选运行守卫模块"
             >
               <ElOption
                 v-for="item in systemModuleOptions"
@@ -276,7 +275,7 @@
             </ElSelect>
           </ElFormItem>
         </div>
-        <ElFormItem label="Summary">
+        <ElFormItem label="简介">
           <ElInput
             v-model="form.summary"
             type="textarea"
@@ -305,17 +304,17 @@
             placeholder=".hero { padding: 32px; }"
           />
         </ElFormItem>
-        <ElFormItem label="Remark">
+        <ElFormItem label="备注">
           <ElInput v-model="form.remark" maxlength="255" />
         </ElFormItem>
       </ElForm>
       <template #footer>
-        <ElButton @click="dialogVisible = false">Cancel</ElButton>
-        <ElButton type="primary" :icon="Check" :loading="saving" @click="saveModule">Save</ElButton>
+        <ElButton @click="dialogVisible = false">取消</ElButton>
+        <ElButton type="primary" :icon="Check" :loading="saving" @click="saveModule">保存</ElButton>
       </template>
     </ElDialog>
 
-    <ElDialog v-model="previewVisible" title="Factory Preview" width="900px" top="6vh">
+    <ElDialog v-model="previewVisible" title="工厂预览" width="900px" top="6vh">
       <iframe
         class="app-factory-page__preview"
         :srcdoc="previewHtml"
@@ -384,7 +383,7 @@
   const applyingTemplateCode = ref('')
   const previewHtml = ref('')
   const manifestPreviewText = ref('')
-  const manifestPreviewTitle = ref('Generated Manifest')
+  const manifestPreviewTitle = ref('生成的清单')
   const templateKeyword = ref('')
   const templateLoading = ref(false)
   const formRef = ref<FormInstance>()
@@ -419,14 +418,14 @@
   })
   const formRules: FormRules = {
     code: [
-      { required: true, message: 'Code is required', trigger: 'blur' },
+      { required: true, message: '请输入模块编码', trigger: 'blur' },
       {
         pattern: /^[a-z][a-z0-9_]{2,79}$/,
-        message: 'Use lowercase snake_case, 3-80 chars',
+        message: '请使用 3-80 位小写 snake_case 编码',
         trigger: 'blur'
       }
     ],
-    name: [{ required: true, message: 'Name is required', trigger: 'blur' }]
+    name: [{ required: true, message: '请输入模块名称', trigger: 'blur' }]
   }
   const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
     year: 'numeric',
@@ -444,10 +443,10 @@
 
   function statusText(status?: string) {
     const map: Record<string, string> = {
-      draft: 'Draft',
-      published: 'Published',
-      disabled: 'Disabled',
-      archived: 'Archived'
+      draft: '草稿',
+      published: '已发布',
+      disabled: '已禁用',
+      archived: '已归档'
     }
     return status ? map[status] || status : '-'
   }
@@ -482,7 +481,7 @@
       icon: '',
       summary: '',
       description: '',
-      html_content: '<main><h1>New module</h1><p>Edit this static page content.</p></main>',
+      html_content: '<main><h1>新模块</h1><p>编辑这段静态页面内容。</p></main>',
       css_content: '.factory-section { padding: 32px; background: #ffffff; border-radius: 8px; }',
       visibility: 'marketplace',
       saas_module_code: '',
@@ -588,7 +587,7 @@
       })
     } catch (error) {
       console.error('[AppPlatformFactoryPage] load modules failed:', error)
-      loadError.value = 'Factory module list failed to load'
+      loadError.value = '工厂模块列表加载失败'
       ElMessage.error(loadError.value)
     } finally {
       loading.value = false
@@ -620,7 +619,7 @@
     } catch (error) {
       console.error('[AppPlatformFactoryPage] load templates failed:', error)
       templates.value = []
-      ElMessage.error('Factory templates failed to load')
+      ElMessage.error('工厂模板加载失败')
     } finally {
       templateLoading.value = false
     }
@@ -665,7 +664,7 @@
       } else {
         await createAppFactoryModule(payload)
       }
-      ElMessage.success('Factory module saved')
+      ElMessage.success('工厂模块已保存')
       dialogVisible.value = false
       await loadModules()
     } finally {
@@ -688,16 +687,16 @@
 
   async function publishModule(row: AppFactoryModuleRecord) {
     if (row.runtime_target === 'service') {
-      ElMessage.warning('Service factory output must be submitted through App Platform review')
+      ElMessage.warning('服务工厂产物必须通过应用平台审核提交')
       return
     }
     const defaultVersion = nextPatchVersion(row.latest_version)
-    const result = (await ElMessageBox.prompt('Version', `Publish ${row.name}`, {
+    const result = (await ElMessageBox.prompt('版本号', `发布 ${row.name}`, {
       inputValue: defaultVersion,
       inputPattern: /^\d+\.\d+\.\d+$/,
-      inputErrorMessage: 'Use semantic version format, for example 1.0.0',
-      confirmButtonText: 'Publish',
-      cancelButtonText: 'Cancel',
+      inputErrorMessage: '请使用语义化版本号，例如 1.0.0',
+      confirmButtonText: '发布',
+      cancelButtonText: '取消',
       type: 'warning'
     })) as { value: string }
 
@@ -706,9 +705,9 @@
       await publishAppFactoryModule(
         row.code,
         result.value,
-        `Published ${row.name} from module factory`
+        `从模块工厂发布 ${row.name}`
       )
-      ElMessage.success('Factory module published')
+      ElMessage.success('工厂模块已发布')
       await loadModules()
     } finally {
       publishingCode.value = ''
@@ -726,7 +725,7 @@
         detail.css_content || '',
         '</style>',
         '<div class="factory-preview">',
-        detail.html_content || '<p>This factory page is empty.</p>',
+        detail.html_content || '<p>这个工厂页面暂无内容。</p>',
         '</div>'
       ].join('\n')
       previewVisible.value = true
@@ -740,7 +739,7 @@
     try {
       const version = nextPatchVersion(row.latest_version)
       const manifest = await previewAppFactoryManifest(row.code, version)
-      manifestPreviewTitle.value = `Generated Manifest · ${row.code}@${version}`
+      manifestPreviewTitle.value = `生成的清单 · ${row.code}@${version}`
       manifestPreviewText.value = JSON.stringify(manifest, null, 2)
       manifestPreviewVisible.value = true
     } finally {
