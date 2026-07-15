@@ -109,6 +109,11 @@ for (const token of [
   assertExcludes(`${runtimeApi}\n${runtimePage}`, token, 'service runtime client')
 }
 
+assert(
+  !/\bconsole\.(?:error|log|warn)\b/.test(runtimePage),
+  'service runtime page must not write request failures to the browser console'
+)
+
 for (const token of ['runtimeDriverLabel', 'runtimeDriverTagType', "'Podman'", "'PM2'"]) {
   assertIncludes(runtimeDisplay, token, 'service runtime display helpers')
 }

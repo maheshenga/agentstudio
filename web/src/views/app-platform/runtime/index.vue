@@ -592,8 +592,7 @@
         process_status: filters.process_status || undefined,
         health_status: filters.health_status || undefined
       })
-    } catch (error) {
-      console.error('[AppServiceRuntimePage] load failed:', error)
+    } catch {
       loadError.value = '运行实例加载失败。'
     } finally {
       loading.value = false
@@ -719,8 +718,7 @@
     try {
       const response = await probeAppService(probeCode.value, payload)
       probeOutput.value = JSON.stringify(response, null, 2)
-    } catch (error) {
-      console.error('[AppServiceRuntimePage] probe failed:', error)
+    } catch {
       probeError.value = '服务探测失败，请检查健康状态后重试。'
     } finally {
       probeLoading.value = false
@@ -740,8 +738,7 @@
     logsError.value = ''
     try {
       logs.value = await fetchAppServiceLogs(logsCode.value, logLines.value)
-    } catch (error) {
-      console.error('[AppServiceRuntimePage] logs failed:', error)
+    } catch {
       logsError.value = '脱敏日志加载失败。'
     } finally {
       logsLoading.value = false
@@ -761,8 +758,7 @@
     detailError.value = ''
     try {
       detail.value = await fetchAppServiceRuntimeDetail(detailCode.value)
-    } catch (error) {
-      console.error('[AppServiceRuntimePage] detail failed:', error)
+    } catch {
       detailError.value = '运行时详情加载失败。'
     } finally {
       detailLoading.value = false
