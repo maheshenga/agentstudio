@@ -64,7 +64,6 @@ for (const token of [
 
 const platformPage = readFile('web/src/views/app-platform/analytics/index.vue')
 for (const token of [
-  'App Analytics',
   'ElSegmented',
   'ArtLineChart',
   'ElTooltip',
@@ -74,11 +73,43 @@ for (const token of [
   'tenant_adoption',
   'recent_failures',
   'Refresh',
-  'Retry',
   'ElEmpty',
   'loadError'
 ]) {
   assertIncludes(platformPage, token, 'platform analytics page')
+}
+
+for (const token of [
+  '应用分析',
+  '监控安装覆盖、打开稳定性、授权拦截和版本使用情况。',
+  '刷新应用分析',
+  '重试',
+  '打开趋势',
+  '已发布应用',
+  '最近失败记录',
+  '暂无分析数据',
+  '应用分析加载失败',
+  '应用分析详情加载失败',
+  '套餐未开通此模块',
+  '租户模块已停用'
+]) {
+  assertIncludes(platformPage, token, 'platform analytics localization')
+}
+
+for (const token of [
+  'App Analytics',
+  'Monitor installation adoption, open reliability, entitlement blockers, and version usage.',
+  'Refresh analytics',
+  'Open trend',
+  'Published apps',
+  'Recent failures',
+  'No analytics data',
+  'App analytics failed to load',
+  'App analytics details failed to load',
+  'Plan module missing',
+  'Tenant module disabled'
+]) {
+  assert(!platformPage.includes(token), `platform analytics page must not include legacy English copy: ${token}`)
 }
 
 const tenantPage = readFile('web/src/views/app-center/usage/index.vue')

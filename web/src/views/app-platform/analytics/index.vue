@@ -4,10 +4,9 @@
       <template #header>
         <div class="app-analytics-page__header">
           <div>
-            <h1 class="app-analytics-page__title">App Analytics</h1>
+            <h1 class="app-analytics-page__title">应用分析</h1>
             <p class="app-analytics-page__subtitle">
-              Monitor installation adoption, open reliability, entitlement blockers, and version
-              usage.
+              监控安装覆盖、打开稳定性、授权拦截和版本使用情况。
             </p>
           </div>
           <div class="app-analytics-page__controls">
@@ -17,12 +16,12 @@
               :disabled="loading"
               @change="handleWindowChange"
             />
-            <ElTooltip content="Refresh" placement="bottom">
+            <ElTooltip content="刷新" placement="bottom">
               <ElButton
                 circle
                 :icon="Refresh"
                 :loading="loading"
-                aria-label="Refresh analytics"
+                aria-label="刷新应用分析"
                 @click="loadOverview"
               />
             </ElTooltip>
@@ -32,12 +31,12 @@
 
       <div v-if="loadError" class="app-analytics-page__error">
         <ElAlert type="error" :title="loadError" show-icon :closable="false" />
-        <ElButton link type="primary" :loading="loading" @click="loadOverview">Retry</ElButton>
+        <ElButton link type="primary" :loading="loading" @click="loadOverview">重试</ElButton>
       </div>
 
       <div v-loading="loading" class="app-analytics-page__content">
         <template v-if="overview">
-          <section aria-label="Platform app analytics summary">
+          <section aria-label="平台应用分析概览">
             <div class="app-analytics-page__kpis">
               <div v-for="item in overviewKpis" :key="item.label" class="app-analytics-page__kpi">
                 <span>{{ item.label }}</span>
@@ -50,8 +49,8 @@
           <section class="app-analytics-page__section">
             <div class="app-analytics-page__section-heading">
               <div>
-                <h2>Open trend</h2>
-                <p>Successful and failed app-open attempts in the selected window.</p>
+                <h2>打开趋势</h2>
+                <p>所选时间范围内应用打开成功与失败的趋势。</p>
               </div>
             </div>
             <div class="app-analytics-page__chart">
@@ -70,61 +69,61 @@
           <section class="app-analytics-page__section">
             <div class="app-analytics-page__section-heading">
               <div>
-                <h2>Published apps</h2>
-                <p>Installation reach and open reliability by application.</p>
+                <h2>已发布应用</h2>
+                <p>按应用查看安装覆盖率和打开稳定性。</p>
               </div>
             </div>
             <div class="app-analytics-page__table-wrap">
               <ElTable :data="overview.apps" border min-width="1040">
-                <ElTableColumn label="App" min-width="210" fixed="left">
+                <ElTableColumn label="应用" min-width="210" fixed="left">
                   <template #default="{ row }">
                     <div class="app-analytics-page__primary">{{ row.name || row.code }}</div>
                     <div class="app-analytics-page__muted">{{ row.code }}</div>
                   </template>
                 </ElTableColumn>
-                <ElTableColumn label="Type" width="105">
+                <ElTableColumn label="类型" width="105">
                   <template #default="{ row }">
                     <ElTag effect="light" type="info">{{ formatType(row.type) }}</ElTag>
                   </template>
                 </ElTableColumn>
-                <ElTableColumn label="Installs" width="105" align="right">
+                <ElTableColumn label="安装数" width="105" align="right">
                   <template #default="{ row }">{{
                     formatInteger(row.active_installations)
                   }}</template>
                 </ElTableColumn>
-                <ElTableColumn label="New" width="90" align="right">
+                <ElTableColumn label="新增" width="90" align="right">
                   <template #default="{ row }">{{ formatInteger(row.new_installations) }}</template>
                 </ElTableColumn>
-                <ElTableColumn label="Opens" width="100" align="right">
+                <ElTableColumn label="打开次数" width="100" align="right">
                   <template #default="{ row }">{{ formatInteger(row.total_opens) }}</template>
                 </ElTableColumn>
-                <ElTableColumn label="Failed" width="95" align="right">
+                <ElTableColumn label="失败次数" width="95" align="right">
                   <template #default="{ row }">{{ formatInteger(row.failed_opens) }}</template>
                 </ElTableColumn>
-                <ElTableColumn label="Blocked" width="100" align="right">
+                <ElTableColumn label="被拦截" width="100" align="right">
                   <template #default="{ row }">{{
                     formatInteger(row.entitlement_blockers)
                   }}</template>
                 </ElTableColumn>
-                <ElTableColumn label="Tenants" width="100" align="right">
+                <ElTableColumn label="租户数" width="100" align="right">
                   <template #default="{ row }">{{ formatInteger(row.unique_tenants) }}</template>
                 </ElTableColumn>
-                <ElTableColumn label="Success" width="110" align="right">
+                <ElTableColumn label="成功率" width="110" align="right">
                   <template #default="{ row }">
                     <ElTag :type="rateTagType(row.success_rate)" effect="light">{{
                       formatRate(row.success_rate)
                     }}</ElTag>
                   </template>
                 </ElTableColumn>
-                <ElTableColumn label="Actions" width="90" fixed="right">
+                <ElTableColumn label="操作" width="90" fixed="right">
                   <template #default="{ row }">
                     <ElButton link type="primary" @click="openAppDetail(row.code)"
-                      >Details</ElButton
+                      >查看详情</ElButton
                     >
                   </template>
                 </ElTableColumn>
                 <template #empty>
-                  <ElEmpty description="No published app analytics" />
+                  <ElEmpty description="暂无已发布应用的分析数据" />
                 </template>
               </ElTable>
             </div>
@@ -133,13 +132,13 @@
           <section class="app-analytics-page__section">
             <div class="app-analytics-page__section-heading">
               <div>
-                <h2>Recent failures</h2>
-                <p>Sanitized app-open failures, limited to the 20 most recent records.</p>
+                <h2>最近失败记录</h2>
+                <p>已做脱敏处理，仅显示最近 20 条应用打开失败记录。</p>
               </div>
             </div>
             <div class="app-analytics-page__table-wrap">
               <ElTable :data="overview.recent_failures" border>
-                <ElTableColumn label="App" min-width="190">
+                <ElTableColumn label="应用" min-width="190">
                   <template #default="{ row }">
                     <div class="app-analytics-page__primary">{{
                       row.app_name || row.app_code
@@ -147,11 +146,11 @@
                     <div class="app-analytics-page__muted">{{ row.app_code }}</div>
                   </template>
                 </ElTableColumn>
-                <ElTableColumn prop="tenant_id" label="Tenant" width="100" />
-                <ElTableColumn label="User" width="100">
+                <ElTableColumn prop="tenant_id" label="租户" width="100" />
+                <ElTableColumn label="用户" width="100">
                   <template #default="{ row }">{{ row.user_id ?? '-' }}</template>
                 </ElTableColumn>
-                <ElTableColumn label="Reason" min-width="190">
+                <ElTableColumn label="原因" min-width="190">
                   <template #default="{ row }">
                     <ElTag :type="reasonTagType(row.reason_code)" effect="light">{{
                       reasonText(row.reason_code)
@@ -160,34 +159,34 @@
                 </ElTableColumn>
                 <ElTableColumn
                   prop="failure_message"
-                  label="Message"
+                  label="信息"
                   min-width="260"
                   show-overflow-tooltip
                 />
-                <ElTableColumn label="Time" width="180">
+                <ElTableColumn label="时间" width="180">
                   <template #default="{ row }">{{ formatDateTime(row.create_time) }}</template>
                 </ElTableColumn>
                 <template #empty>
-                  <ElEmpty description="No failed opens in this window" />
+                  <ElEmpty description="当前时间范围内暂无失败的打开记录" />
                 </template>
               </ElTable>
             </div>
           </section>
         </template>
 
-        <ElEmpty v-else-if="!loading && !loadError" description="No analytics data" />
+        <ElEmpty v-else-if="!loading && !loadError" description="暂无分析数据" />
       </div>
     </ElCard>
 
     <ElDrawer
       v-model="drawerOpen"
-      :title="detail ? `${detail.app.name} analytics` : 'App analytics details'"
+      :title="detail ? `${detail.app.name} 应用分析` : '应用分析详情'"
       size="min(920px, 94vw)"
       destroy-on-close
     >
       <div v-if="detailError" class="app-analytics-page__error">
         <ElAlert type="error" :title="detailError" show-icon :closable="false" />
-        <ElButton link type="primary" :loading="detailLoading" @click="loadDetail">Retry</ElButton>
+        <ElButton link type="primary" :loading="detailLoading" @click="loadDetail">重试</ElButton>
       </div>
 
       <div v-loading="detailLoading" class="app-analytics-page__drawer-content">
@@ -207,7 +206,7 @@
           </div>
 
           <section class="app-analytics-page__section">
-            <div class="app-analytics-page__section-heading"><h2>Open trend</h2></div>
+            <div class="app-analytics-page__section-heading"><h2>打开趋势</h2></div>
             <div class="app-analytics-page__chart">
               <ArtLineChart
                 height="240px"
@@ -222,17 +221,17 @@
           </section>
 
           <section class="app-analytics-page__section">
-            <div class="app-analytics-page__section-heading"><h2>Version adoption</h2></div>
+            <div class="app-analytics-page__section-heading"><h2>版本使用情况</h2></div>
             <div class="app-analytics-page__table-wrap">
               <ElTable :data="detail.version_adoption" border>
-                <ElTableColumn prop="version" label="Version" min-width="150" />
-                <ElTableColumn label="Installations" width="130" align="right">
+                <ElTableColumn prop="version" label="版本" min-width="150" />
+                <ElTableColumn label="安装数" width="130" align="right">
                   <template #default="{ row }">{{ formatInteger(row.installations) }}</template>
                 </ElTableColumn>
-                <ElTableColumn label="Share" width="120" align="right">
+                <ElTableColumn label="占比" width="120" align="right">
                   <template #default="{ row }">{{ formatRate(row.percentage) }}</template>
                 </ElTableColumn>
-                <template #empty><ElEmpty description="No version adoption data" /></template>
+                <template #empty><ElEmpty description="暂无版本使用数据" /></template>
               </ElTable>
             </div>
           </section>
@@ -240,40 +239,40 @@
           <section class="app-analytics-page__section">
             <div class="app-analytics-page__section-heading">
               <div>
-                <h2>Tenant adoption</h2>
-                <p>Up to 100 active installations ordered by recent usage.</p>
+                <h2>租户使用情况</h2>
+                <p>最多显示 100 条活跃安装记录，按最近使用时间排序。</p>
               </div>
             </div>
             <div class="app-analytics-page__table-wrap">
               <ElTable :data="detail.tenant_adoption" border min-width="820">
-                <ElTableColumn prop="tenant_id" label="Tenant" width="100" fixed="left" />
-                <ElTableColumn prop="version" label="Version" min-width="130" />
-                <ElTableColumn label="Opens" width="95" align="right">
+                <ElTableColumn prop="tenant_id" label="租户" width="100" fixed="left" />
+                <ElTableColumn prop="version" label="版本" min-width="130" />
+                <ElTableColumn label="打开次数" width="95" align="right">
                   <template #default="{ row }">{{ formatInteger(row.total_opens) }}</template>
                 </ElTableColumn>
-                <ElTableColumn label="Failed" width="95" align="right">
+                <ElTableColumn label="失败次数" width="95" align="right">
                   <template #default="{ row }">{{ formatInteger(row.failed_opens) }}</template>
                 </ElTableColumn>
-                <ElTableColumn label="Success" width="105" align="right">
+                <ElTableColumn label="成功率" width="105" align="right">
                   <template #default="{ row }">{{ formatRate(row.success_rate) }}</template>
                 </ElTableColumn>
-                <ElTableColumn label="Installed" width="180">
+                <ElTableColumn label="安装时间" width="180">
                   <template #default="{ row }">{{ formatDateTime(row.installed_time) }}</template>
                 </ElTableColumn>
-                <ElTableColumn label="Last open" width="180">
+                <ElTableColumn label="最近打开" width="180">
                   <template #default="{ row }">{{ formatDateTime(row.last_open_time) }}</template>
                 </ElTableColumn>
-                <template #empty><ElEmpty description="No tenant adoption data" /></template>
+                <template #empty><ElEmpty description="暂无租户使用数据" /></template>
               </ElTable>
             </div>
           </section>
 
           <section class="app-analytics-page__section">
-            <div class="app-analytics-page__section-heading"><h2>Recent failures</h2></div>
+            <div class="app-analytics-page__section-heading"><h2>最近失败记录</h2></div>
             <div class="app-analytics-page__table-wrap">
               <ElTable :data="detail.recent_failures" border>
-                <ElTableColumn prop="tenant_id" label="Tenant" width="100" />
-                <ElTableColumn label="Reason" min-width="190">
+                <ElTableColumn prop="tenant_id" label="租户" width="100" />
+                <ElTableColumn label="原因" min-width="190">
                   <template #default="{ row }">
                     <ElTag :type="reasonTagType(row.reason_code)" effect="light">{{
                       reasonText(row.reason_code)
@@ -282,14 +281,14 @@
                 </ElTableColumn>
                 <ElTableColumn
                   prop="failure_message"
-                  label="Message"
+                  label="信息"
                   min-width="260"
                   show-overflow-tooltip
                 />
-                <ElTableColumn label="Time" width="180">
+                <ElTableColumn label="时间" width="180">
                   <template #default="{ row }">{{ formatDateTime(row.create_time) }}</template>
                 </ElTableColumn>
-                <template #empty><ElEmpty description="No failed opens in this window" /></template>
+                <template #empty><ElEmpty description="当前时间范围内暂无失败的打开记录" /></template>
               </ElTable>
             </div>
           </section>
@@ -297,7 +296,7 @@
 
         <ElEmpty
           v-else-if="!detailLoading && !detailError"
-          description="No app analytics details"
+          description="暂无应用分析详情"
         />
       </div>
     </ElDrawer>
@@ -318,9 +317,9 @@
   defineOptions({ name: 'AppPlatformAnalyticsPage' })
 
   const windowOptions = [
-    { label: '7 days', value: 7 },
-    { label: '30 days', value: 30 },
-    { label: '90 days', value: 90 }
+    { label: '7 天', value: 7 },
+    { label: '30 天', value: 30 },
+    { label: '90 天', value: 90 }
   ]
   const days = ref<AppAnalyticsWindow>(30)
   const overview = ref<PlatformAppAnalyticsOverview | null>(null)
@@ -346,34 +345,34 @@
     if (!summary) return []
     return [
       {
-        label: 'Published apps',
+        label: '已发布应用',
         value: formatInteger(summary.published_apps),
-        note: 'Available catalog'
+        note: '目录中可用'
       },
       {
-        label: 'Active installs',
+        label: '活跃安装',
         value: formatInteger(summary.active_installations),
-        note: `${formatInteger(summary.new_installations)} new`
+        note: `${formatInteger(summary.new_installations)} 新增`
       },
       {
-        label: 'Open attempts',
+        label: '打开尝试',
         value: formatInteger(summary.total_opens),
-        note: `${formatInteger(summary.unique_users)} users`
+        note: `${formatInteger(summary.unique_users)} 位用户`
       },
       {
-        label: 'Success rate',
+        label: '成功率',
         value: formatRate(summary.success_rate),
-        note: `${formatInteger(summary.successful_opens)} successful`
+        note: `${formatInteger(summary.successful_opens)} 次成功`
       },
       {
-        label: 'Failed opens',
+        label: '打开失败',
         value: formatInteger(summary.failed_opens),
-        note: 'Sanitized failures'
+        note: '已脱敏失败记录'
       },
       {
-        label: 'Entitlement blocks',
+        label: '授权拦截',
         value: formatInteger(summary.entitlement_blockers),
-        note: `${formatInteger(summary.unique_tenants)} active tenants`
+        note: `${formatInteger(summary.unique_tenants)} 个活跃租户`
       }
     ]
   })
@@ -383,24 +382,24 @@
     if (!summary) return []
     return [
       {
-        label: 'Active installs',
+        label: '活跃安装',
         value: formatInteger(summary.active_installations),
-        note: `${formatInteger(summary.new_installations)} new`
+        note: `${formatInteger(summary.new_installations)} 新增`
       },
       {
-        label: 'Open attempts',
+        label: '打开尝试',
         value: formatInteger(summary.total_opens),
-        note: `${formatInteger(summary.unique_users)} users`
+        note: `${formatInteger(summary.unique_users)} 位用户`
       },
       {
-        label: 'Success rate',
+        label: '成功率',
         value: formatRate(summary.success_rate),
-        note: `${formatInteger(summary.successful_opens)} successful`
+        note: `${formatInteger(summary.successful_opens)} 次成功`
       },
       {
-        label: 'Failed opens',
+        label: '打开失败',
         value: formatInteger(summary.failed_opens),
-        note: `${formatInteger(summary.entitlement_blockers)} blocked`
+        note: `${formatInteger(summary.entitlement_blockers)} 次被拦截`
       }
     ]
   })
@@ -416,8 +415,8 @@
 
   function buildTrendSeries(trend: PlatformAppAnalyticsOverview['trend']): LineDataItem[] {
     return [
-      { name: 'Successful', data: trend.map((item) => item.successful_opens) },
-      { name: 'Failed', data: trend.map((item) => item.failed_opens) }
+      { name: '成功', data: trend.map((item) => item.successful_opens) },
+      { name: '失败', data: trend.map((item) => item.failed_opens) }
     ]
   }
 
@@ -434,9 +433,9 @@
   function formatType(value: unknown) {
     const normalized = String(value || '')
     const labels: Record<string, string> = {
-      internal: 'Internal',
-      static: 'Static',
-      iframe: 'Iframe'
+      internal: '内置应用',
+      static: '静态应用',
+      iframe: '嵌入式页面'
     }
     return labels[normalized] || normalized || '-'
   }
@@ -455,16 +454,16 @@
 
   function reasonText(reason: string) {
     const labels: Record<string, string> = {
-      missing_plan_module: 'Plan module missing',
-      missing_system_module: 'Tenant module disabled',
-      system_module_unavailable: 'System module unavailable',
-      app_not_found: 'App not found',
-      app_not_published: 'App not published',
-      app_not_installed: 'App not installed',
-      published_version_missing: 'Published version missing',
-      open_metadata_error: 'Open metadata error'
+      missing_plan_module: '套餐未开通此模块',
+      missing_system_module: '租户模块已停用',
+      system_module_unavailable: '系统模块不可用',
+      app_not_found: '应用不存在',
+      app_not_published: '应用未发布',
+      app_not_installed: '应用未安装',
+      published_version_missing: '已发布版本不存在',
+      open_metadata_error: '打开元数据异常'
     }
-    return labels[reason] || reason || 'Unknown failure'
+    return labels[reason] || reason || '未知失败'
   }
 
   function reasonTagType(reason: string) {
@@ -482,7 +481,7 @@
       overview.value = await fetchPlatformAppAnalyticsOverview(days.value)
     } catch {
       overview.value = null
-      loadError.value = 'App analytics failed to load'
+      loadError.value = '应用分析加载失败'
     } finally {
       loading.value = false
     }
@@ -496,7 +495,7 @@
       detail.value = await fetchPlatformAppAnalyticsDetail(selectedCode.value, days.value)
     } catch {
       detail.value = null
-      detailError.value = 'App analytics details failed to load'
+      detailError.value = '应用分析详情加载失败'
     } finally {
       detailLoading.value = false
     }
