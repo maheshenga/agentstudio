@@ -552,8 +552,7 @@
       pagination.total = appPage.total
       pagination.page = appPage.page
       pagination.limit = appPage.limit
-    } catch (error) {
-      console.error('[AppPlatformAppsPage] load apps failed:', error)
+    } catch {
       loadError.value = '应用列表加载失败'
       ElMessage.error(loadError.value)
     } finally {
@@ -579,8 +578,7 @@
       ])
       saasModuleOptions.value = Array.isArray(saasModules) ? saasModules : []
       systemModuleOptions.value = Array.isArray(systemModules) ? systemModules : []
-    } catch (error) {
-      console.error('[AppPlatformAppsPage] load module options failed:', error)
+    } catch {
       saasModuleOptions.value = []
       systemModuleOptions.value = []
     }

@@ -128,6 +128,11 @@ for (const token of [
   assertIncludes(platformPage, token, 'platform apps page')
 }
 
+assert(
+  !/\bconsole\.(?:error|log|warn)\b/.test(platformPage),
+  'platform apps page must not write request failures to the browser console'
+)
+
 const reviewPage = readFile('web/src/views/app-platform/reviews/index.vue')
 for (const token of [
   '应用审核中心',
