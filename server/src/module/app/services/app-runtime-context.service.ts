@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 
 import { TenantEntity } from '../../system/tenant/entities/tenant.entity';
 import { SysUserTenantEntity } from '../../system/user/entities/user-tenant.entity';
@@ -46,7 +46,7 @@ export class AppRuntimeContextService {
     app: AppPackageEntity;
     version: AppPackageVersionEntity | null;
   }): Promise<AppRuntimeBootstrap | null> {
-    if (input.app.type !== 'static') return null;
+    if (!['static', 'iframe'].includes(input.app.type)) return null;
 
     const scopes = this.resolveScopes(input.version?.manifest);
     const unavailable: AppRuntimeBootstrap = {
@@ -100,7 +100,12 @@ export class AppRuntimeContextService {
     if (!this.appRepo || !this.versionRepo) return null;
     const [app, version] = await Promise.all([
       this.appRepo.findOne({
-        where: { id: input.appId, type: 'static', status: 'published', deleteTime: IsNull() },
+        where: {
+          id: input.appId,
+          type: In(['static', 'iframe']),
+          status: 'published',
+          deleteTime: IsNull(),
+        },
       }),
       this.versionRepo.findOne({
         where: {

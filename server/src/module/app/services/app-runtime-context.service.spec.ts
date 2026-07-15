@@ -69,12 +69,35 @@ describe('AppRuntimeContextService', () => {
     expect(tenantRepo.findOne).not.toHaveBeenCalled();
   });
 
-  it('returns null for a non-static app', async () => {
+  it('returns allowlisted context for an active scoped iframe app', async () => {
+    tenantRepo.findOne.mockResolvedValue({ id: 23, tenantName: 'Acme', status: 1 });
+    userRepo.findOne.mockResolvedValue({ id: 91, realname: 'Owner', status: 1 });
+    membershipRepo.findOne.mockResolvedValue({ id: 7, tenantId: 23, userId: 91 });
+
     await expect(
       service.buildBootstrap({
         tenantId: 23,
         userId: 91,
         app: { ...staticApp, type: 'iframe' },
+        version: scopedVersion,
+      }),
+    ).resolves.toEqual({
+      protocol_version: 1,
+      scopes: ['runtime:context:read'],
+      context: {
+        tenant: { id: '23', name: 'Acme' },
+        user: { id: '91', display_name: 'Owner' },
+        app: { code: 'job_board', name: 'Job Board', version: '1.2.0' },
+      },
+    });
+  });
+
+  it('returns null for a service app because service context is handled by service invocation policy', async () => {
+    await expect(
+      service.buildBootstrap({
+        tenantId: 23,
+        userId: 91,
+        app: { ...staticApp, type: 'service' },
         version: scopedVersion,
       }),
     ).resolves.toBeNull();
@@ -205,7 +228,9 @@ describe('AppRuntimeContextService', () => {
       app: { code: 'job_board', name: 'Job Board', version: '1.2.0' },
     });
     expect(appRepo.findOne).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ id: 10, status: 'published' }) }),
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 10, status: 'published' }),
+      }),
     );
   });
 });
