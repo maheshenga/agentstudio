@@ -87,6 +87,36 @@ describe('AppPackageStorageService', () => {
     );
   });
 
+  it('preserves the previous public version when copying the replacement fails', async () => {
+    const sourceDir = path.join(packageRoot, 'job_board', '1.0.0');
+    const publishDir = path.join(publicRoot, 'job_board', '1.0.0');
+    fs.mkdirSync(path.join(sourceDir, 'dist'), { recursive: true });
+    fs.mkdirSync(path.join(publishDir, 'dist'), { recursive: true });
+    fs.writeFileSync(path.join(sourceDir, 'dist', 'index.html'), '<html>new</html>');
+    fs.writeFileSync(path.join(publishDir, 'dist', 'index.html'), '<html>old</html>');
+    const expectedContentHash = await service.hashDirectory(sourceDir);
+    const failingService = new (class extends AppPackageStorageService {
+      copyDirectorySync() {
+        throw new Error('copy failed');
+      }
+    })((service as any).config);
+
+    await expect(
+      failingService.publishVersion({
+        appCode: 'job_board',
+        version: '1.0.0',
+        sourceDir,
+        entryFile: 'dist/index.html',
+        expectedContentHash,
+      }),
+    ).rejects.toThrow('copy failed');
+
+    expect(fs.readFileSync(path.join(publishDir, 'dist', 'index.html'), 'utf8')).toBe(
+      '<html>old</html>',
+    );
+    expect(fs.readdirSync(path.dirname(publishDir)).filter((name) => name.includes('.staging-'))).toEqual([]);
+  });
+
   it('extracts an uploaded static app package under the package root', async () => {
     const zip = new JSZip();
     zip.file('manifest.json', '{"code":"job_board","version":"1.0.0"}');

@@ -234,14 +234,48 @@ export class AppPackageStorageService {
     }
 
     const publishPath = this.resolvePublicPath(appCode, version);
-    fs.rmSync(publishPath, { recursive: true, force: true });
-    fs.mkdirSync(path.dirname(publishPath), { recursive: true });
-    fs.cpSync(sourceDir, publishPath, { recursive: true });
+    const publishParent = path.dirname(publishPath);
+    const stagingPath = this.resolvePublicPath(
+      appCode,
+      `.staging-${version}-${randomUUID()}`,
+    );
+    const backupPath = this.resolvePublicPath(appCode, `.backup-${version}-${randomUUID()}`);
+    let backupCreated = false;
+    fs.mkdirSync(publishParent, { recursive: true });
+    try {
+      fs.rmSync(stagingPath, { recursive: true, force: true });
+      this.copyDirectorySync(sourceDir, stagingPath);
+      if (fs.existsSync(publishPath)) {
+        fs.renameSync(publishPath, backupPath);
+        backupCreated = true;
+      }
+      fs.renameSync(stagingPath, publishPath);
+      if (backupCreated) {
+        fs.rmSync(backupPath, { recursive: true, force: true });
+        backupCreated = false;
+      }
+    } catch (error) {
+      fs.rmSync(stagingPath, { recursive: true, force: true });
+      if (backupCreated && !fs.existsSync(publishPath) && fs.existsSync(backupPath)) {
+        fs.renameSync(backupPath, publishPath);
+        backupCreated = false;
+      }
+      throw error;
+    } finally {
+      fs.rmSync(stagingPath, { recursive: true, force: true });
+      if (backupCreated && fs.existsSync(publishPath)) {
+        fs.rmSync(backupPath, { recursive: true, force: true });
+      }
+    }
 
     return {
       publishPath,
       entryUrl: `${this.getPublicPrefix()}${appCode}/${version}/${entryFile}`,
     };
+  }
+
+  protected copyDirectorySync(sourceDir: string, targetDir: string) {
+    fs.cpSync(sourceDir, targetDir, { recursive: true });
   }
 
   private resolveInside(rootPath: string, message: string, ...segments: string[]) {
