@@ -235,6 +235,54 @@ describe('AppFactoryService', () => {
     expect(publishLogRepo.save).toHaveBeenCalled();
   });
 
+  it('rejects duplicate versions before mutating an existing app or package files', async () => {
+    factoryRepo.findOne.mockResolvedValue({
+      id: 1,
+      code: 'landing_page',
+      name: 'Landing Page',
+      htmlContent: '<h1>Hello</h1>',
+      appCode: 'factory_landing_page',
+      visibility: 'marketplace',
+      status: 'published',
+    });
+    appRepo.findOne.mockResolvedValue({ id: 10, code: 'factory_landing_page', status: 'published' });
+    versionRepo.findOne.mockResolvedValue({ id: 20, appId: 10, version: '1.0.0' });
+
+    await expect(service.publishModule('landing_page', { version: '1.0.0' }, 7)).rejects.toThrow(
+      'App version 1.0.0 already exists',
+    );
+
+    expect(appRepo.save).not.toHaveBeenCalled();
+    expect(storage.resolvePackagePath).not.toHaveBeenCalled();
+    expect(storage.publishVersion).not.toHaveBeenCalled();
+    expect(fs.readdirSync(packagePath)).toHaveLength(0);
+  });
+
+  it('does not persist publish state and cleans staged package files when public publish fails', async () => {
+    factoryRepo.findOne.mockResolvedValue({
+      id: 1,
+      code: 'landing_page',
+      name: 'Landing Page',
+      htmlContent: '<h1>Hello</h1>',
+      appCode: 'factory_landing_page',
+      visibility: 'marketplace',
+      status: 'draft',
+    });
+    appRepo.findOne.mockResolvedValue(null);
+    versionRepo.findOne.mockResolvedValue(null);
+    storage.publishVersion.mockRejectedValue(new Error('copy failed'));
+
+    await expect(service.publishModule('landing_page', { version: '1.0.0' }, 7)).rejects.toThrow('copy failed');
+
+    expect(appRepo.save).not.toHaveBeenCalled();
+    expect(versionRepo.save).not.toHaveBeenCalled();
+    expect(appReviewLogRepo.save).not.toHaveBeenCalled();
+    expect(factoryRepo.save).not.toHaveBeenCalled();
+    expect(publishLogRepo.save).not.toHaveBeenCalled();
+    expect(fs.existsSync(path.join(packagePath, 'dist', 'index.html'))).toBe(false);
+    expect(fs.existsSync(path.join(packagePath, 'manifest.json'))).toBe(false);
+  });
+
   it('generates a service manifest but refuses to publish executable output outside review', async () => {
     factoryRepo.findOne.mockResolvedValue({
       id: 2,

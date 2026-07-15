@@ -127,6 +127,43 @@ export class AppFactoryService {
     const manifest = this.buildManifest(factory, version);
 
     let app = await this.appRepo.findOne({ where: { code: appCode, deleteTime: IsNull() } });
+    if (app?.id) {
+      const existingVersion = await this.versionRepo.findOne({
+        where: { appId: app.id, version, deleteTime: IsNull() },
+      });
+      if (existingVersion) {
+        throw new BadRequestException(`App version ${version} already exists`);
+      }
+    }
+
+    const sourceDir = this.storage.resolvePackagePath(appCode, version);
+    let html = '';
+    let contentHash = '';
+    let published: Awaited<ReturnType<AppPackageStorageService['publishVersion']>>;
+    try {
+      html = this.renderStaticPage(factory);
+      fs.rmSync(sourceDir, { recursive: true, force: true });
+      fs.mkdirSync(path.join(sourceDir, 'dist'), { recursive: true });
+      fs.writeFileSync(path.join(sourceDir, 'dist', 'index.html'), html, 'utf8');
+      fs.writeFileSync(
+        path.join(sourceDir, 'manifest.json'),
+        `${JSON.stringify(manifest, null, 2)}\n`,
+        'utf8',
+      );
+      contentHash = await this.storage.hashDirectory(sourceDir);
+
+      published = await this.storage.publishVersion({
+        appCode,
+        version,
+        sourceDir,
+        entryFile: 'dist/index.html',
+        expectedContentHash: contentHash,
+      });
+    } catch (error) {
+      fs.rmSync(sourceDir, { recursive: true, force: true });
+      throw error;
+    }
+
     if (!app) {
       app = this.appRepo.create({
         code: appCode,
@@ -163,38 +200,10 @@ export class AppFactoryService {
       app.sort = factory.sort ?? 100;
       app.remark = factory.remark || '';
     }
+
+    app.entryUrl = published.entryUrl;
+    app.status = 'published';
     let savedApp = await this.appRepo.save(app);
-
-    const existingVersion = await this.versionRepo.findOne({
-      where: { appId: savedApp.id, version, deleteTime: IsNull() },
-    });
-    if (existingVersion) {
-      throw new BadRequestException(`App version ${version} already exists`);
-    }
-
-    const sourceDir = this.storage.resolvePackagePath(appCode, version);
-    const html = this.renderStaticPage(factory);
-    fs.rmSync(sourceDir, { recursive: true, force: true });
-    fs.mkdirSync(path.join(sourceDir, 'dist'), { recursive: true });
-    fs.writeFileSync(path.join(sourceDir, 'dist', 'index.html'), html, 'utf8');
-    fs.writeFileSync(
-      path.join(sourceDir, 'manifest.json'),
-      `${JSON.stringify(manifest, null, 2)}\n`,
-      'utf8',
-    );
-    const contentHash = await this.storage.hashDirectory(sourceDir);
-
-    const published = await this.storage.publishVersion({
-      appCode,
-      version,
-      sourceDir,
-      entryFile: 'dist/index.html',
-      expectedContentHash: contentHash,
-    });
-
-    savedApp.entryUrl = published.entryUrl;
-    savedApp.status = 'published';
-    savedApp = await this.appRepo.save(savedApp);
 
     const appVersion = await this.versionRepo.save(
       this.versionRepo.create({
